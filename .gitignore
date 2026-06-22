@@ -1,0 +1,17 @@
+node_modules
+dist
+*.log
+logs/
+.playwright-mcp
+.codex-dev.log
+.codex-server.log
+*-console.log
+.encoding-audit/
+.data/*.sqlite
+.data/*.sqlite-shm
+.data/*.sqlite-wal
+
+# Local env (contains DeepSeek API key) — never commit
+.env
+.env.*
+!.env.example
