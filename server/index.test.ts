@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LocalFallbackProvider } from "./ai/provider";
 import { buildServer } from "./index";
+import { resetRateLimits } from "./security";
 
 const tempDirs: string[] = [];
 
@@ -15,6 +16,7 @@ function testDbPath(): string {
 
 afterEach(() => {
   tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  resetRateLimits();
 });
 
 describe("local backend API", () => {
@@ -298,36 +300,12 @@ describe("local backend API", () => {
   });
 
   describe("auth API", () => {
-    it("sends SMS code and returns mock code in dev", async () => {
+    it("registers a new user with phone and password", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/auth/sms/send",
-        payload: { phone: "13800138000" },
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.success).toBe(true);
-      expect(body.mockCode).toBe("666666");
-      await app.close();
-    });
-
-    it("registers a new user with valid SMS code", async () => {
-      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      // Step 1: Send SMS
-      await app.inject({
-        method: "POST",
-        url: "/api/auth/sms/send",
-        payload: { phone: "13800138001" },
-      });
-
-      // Step 2: Register
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138001", smsCode: "666666", displayName: "测试用户" },
+        payload: { phone: "13800138001", password: "Password123", displayName: "测试用户", consentAccepted: true },
       });
 
       expect(response.statusCode).toBe(201);
@@ -338,19 +316,12 @@ describe("local backend API", () => {
       await app.close();
     });
 
-    it("rejects registration with wrong SMS code", async () => {
+    it("rejects registration without consent", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      await app.inject({
-        method: "POST",
-        url: "/api/auth/sms/send",
-        payload: { phone: "13800138002" },
-      });
-
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138002", smsCode: "000000" },
+        payload: { phone: "13800138002", password: "Password123", consentAccepted: false },
       });
 
       expect(response.statusCode).toBe(400);
@@ -359,43 +330,34 @@ describe("local backend API", () => {
 
     it("rejects duplicate phone registration", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138003" } });
       await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138003", smsCode: "666666" },
+        payload: { phone: "13800138003", password: "Password123", consentAccepted: true },
       });
 
-      // Second SMS + registration attempt
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138003" } });
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138003", smsCode: "666666" },
+        payload: { phone: "13800138003", password: "Password123", consentAccepted: true },
       });
 
       expect(response.statusCode).toBe(409);
       await app.close();
     });
 
-    it("logs in with SMS code", async () => {
+    it("logs in with phone and password", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      // Register first
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138004" } });
       await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138004", smsCode: "666666" },
+        payload: { phone: "13800138004", password: "Password123", consentAccepted: true },
       });
 
-      // Send SMS again for login
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138004" } });
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/login",
-        payload: { phone: "13800138004", smsCode: "666666" },
+        payload: { phone: "13800138004", password: "Password123" },
       });
 
       expect(response.statusCode).toBe(200);
@@ -405,13 +367,18 @@ describe("local backend API", () => {
       await app.close();
     });
 
-    it("rejects login with wrong credentials", async () => {
+    it("rejects login with wrong password", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138005", password: "Password123", consentAccepted: true },
+      });
 
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/login",
-        payload: { phone: "13900000000", smsCode: "000000" },
+        payload: { phone: "13800138005", password: "WrongPassword123" },
       });
 
       expect(response.statusCode).toBe(401);
@@ -420,12 +387,10 @@ describe("local backend API", () => {
 
     it("returns session for valid token", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138005" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138005", smsCode: "666666", displayName: "会话测试" },
+        payload: { phone: "13800138006", password: "Password123", displayName: "会话测试", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -444,7 +409,6 @@ describe("local backend API", () => {
 
     it("rejects session with invalid token", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
       const response = await app.inject({
         method: "GET",
         url: "/api/auth/session",
@@ -457,23 +421,19 @@ describe("local backend API", () => {
 
     it("logout invalidates session", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138006" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138006", smsCode: "666666" },
+        payload: { phone: "13800138007", password: "Password123", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
-      // Logout
       await app.inject({
         method: "POST",
         url: "/api/auth/logout",
         headers: { authorization: `Bearer ${token}` },
       });
 
-      // Session should be invalid
       const session = await app.inject({
         method: "GET",
         url: "/api/auth/session",
@@ -486,17 +446,13 @@ describe("local backend API", () => {
 
     it("merges guest data after registration", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-
-      // Register
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138007" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138007", smsCode: "666666", displayName: "合并测试" },
+        payload: { phone: "13800138008", password: "Password123", displayName: "合并测试", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
-      // Merge guest data
       const merge = await app.inject({
         method: "POST",
         url: "/api/auth/merge-guest",
@@ -512,7 +468,6 @@ describe("local backend API", () => {
       expect(merge.json().mergedPositions).toBe(1);
       expect(merge.json().mergedRecords).toBe(1);
 
-      // Verify merged state
       const state = await app.inject({
         method: "GET",
         url: "/api/state",
@@ -527,18 +482,15 @@ describe("local backend API", () => {
     it("returns quota info for guest and authenticated user", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
 
-      // Guest quota
       const guestQuota = await app.inject({ method: "GET", url: "/api/quota" });
       expect(guestQuota.statusCode).toBe(200);
       expect(guestQuota.json().isGuest).toBe(true);
       expect(guestQuota.json().dailyLimit).toBe(3);
 
-      // Register and check user quota
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138008" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138008", smsCode: "666666" },
+        payload: { phone: "13800138009", password: "Password123", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -553,17 +505,151 @@ describe("local backend API", () => {
 
       await app.close();
     });
-  });
 
-  describe("onboarding and growth", () => {
-    it("onboarding sets journeyState to ready and creates default position", async () => {
+    it("sends verification email, verifies token, and exposes updated session state", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-      // Register a user first
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138010" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138010", smsCode: "666666", displayName: "测试用户" },
+        payload: { phone: "13800138020", password: "Password123", consentAccepted: true },
+      });
+      expect(reg.statusCode).toBe(201);
+      const token = reg.json().tokens.accessToken as string;
+
+      const profileUpdate = await app.inject({
+        method: "POST",
+        url: "/api/account/profile",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { email: "verify@example.com" },
+      });
+      expect(profileUpdate.statusCode).toBe(200);
+
+      const outbox = await app.inject({
+        method: "GET",
+        url: "/api/mail/outbox",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(outbox.statusCode).toBe(200);
+      const verifyMail = outbox.json().items.find((item: { template: string }) => item.template === "verifyEmail");
+      expect(verifyMail).toBeTruthy();
+      const verifyUrl = String(verifyMail.variables.verifyUrl);
+      const verifyToken = new URL(verifyUrl).searchParams.get("token");
+      expect(verifyToken).toBeTruthy();
+
+      const verifyRes = await app.inject({
+        method: "POST",
+        url: "/api/auth/email/verify",
+        payload: { token: verifyToken },
+      });
+      expect(verifyRes.statusCode).toBe(200);
+
+      const session = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(session.statusCode).toBe(200);
+      expect(session.json().emailVerifiedAt).toBeTruthy();
+      await app.close();
+    });
+
+    it("sends password reset email and resets password successfully", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138021", password: "OldPassword123", consentAccepted: true },
+      });
+      const authToken = reg.json().tokens.accessToken as string;
+
+      const profileUpdate = await app.inject({
+        method: "POST",
+        url: "/api/account/profile",
+        headers: { authorization: `Bearer ${authToken}` },
+        payload: { email: "reset@example.com" },
+      });
+      expect(profileUpdate.statusCode).toBe(200);
+
+      const initialOutbox = await app.inject({
+        method: "GET",
+        url: "/api/mail/outbox",
+        headers: { authorization: `Bearer ${authToken}` },
+      });
+      const verifyMail = initialOutbox.json().items.find((item: { template: string }) => item.template === "verifyEmail");
+      const verifyToken = new URL(String(verifyMail.variables.verifyUrl)).searchParams.get("token");
+      await app.inject({
+        method: "POST",
+        url: "/api/auth/email/verify",
+        payload: { token: verifyToken },
+      });
+
+      const forgot = await app.inject({
+        method: "POST",
+        url: "/api/auth/password/forgot",
+        payload: { email: "reset@example.com" },
+      });
+      expect(forgot.statusCode).toBe(200);
+
+      const outbox = await app.inject({
+        method: "GET",
+        url: "/api/mail/outbox",
+        headers: { authorization: `Bearer ${authToken}` },
+      });
+      const resetMail = outbox.json().items.find((item: { template: string }) => item.template === "resetPassword");
+      expect(resetMail).toBeTruthy();
+      const resetToken = new URL(String(resetMail.variables.resetUrl)).searchParams.get("token");
+      expect(resetToken).toBeTruthy();
+
+      const reset = await app.inject({
+        method: "POST",
+        url: "/api/auth/password/reset",
+        payload: { token: resetToken, password: "NewPassword456" },
+      });
+      expect(reset.statusCode).toBe(200);
+
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { phone: "13800138021", password: "NewPassword456" },
+      });
+      expect(login.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("deletes account with DELETE confirmation and invalidates session", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138022", password: "Password123", consentAccepted: true },
+      });
+      const token = reg.json().tokens.accessToken as string;
+
+      const deletion = await app.inject({
+        method: "DELETE",
+        url: "/api/user",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { confirmationText: "DELETE" },
+      });
+      expect(deletion.statusCode).toBe(200);
+
+      const session = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(session.statusCode).toBe(401);
+      await app.close();
+    });
+  });
+
+  describe("onboarding", () => {
+    it("onboarding sets journeyState to ready and creates default position", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138010", password: "Password123", displayName: "测试用户", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -580,7 +666,6 @@ describe("local backend API", () => {
       expect(body.position.title).toBe("AI 产品经理");
       expect(body.nextStep).toMatch(/intake_jd|import_resume|start_mock/);
 
-      // Verify state reflects the change
       const state = await app.inject({
         method: "GET",
         url: "/api/state",
@@ -591,56 +676,15 @@ describe("local backend API", () => {
 
       await app.close();
     });
-
-    it("growth tasks CRUD: write and read", async () => {
+    it("record save keeps ready journey state", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138011" } });
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138011", smsCode: "666666" },
+        payload: { phone: "13800138012", password: "Password123", consentAccepted: true },
       });
       const token = reg.json().tokens.accessToken;
 
-      // Write a task
-      const writeRes = await app.inject({
-        method: "POST",
-        url: "/api/growth/tasks",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        payload: { type: "mock_session", source: "record", sourceId: "test-record", title: "测试模拟面试" },
-      });
-      expect(writeRes.statusCode).toBe(200);
-      expect(writeRes.json().ok).toBe(true);
-
-      // Read tasks
-      const readRes = await app.inject({
-        method: "GET",
-        url: "/api/growth/tasks",
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(readRes.statusCode).toBe(200);
-      const data = readRes.json();
-      expect(typeof data.streak).toBe("number");
-      expect(Array.isArray(data.recentDays)).toBe(true);
-      // Tasks may be empty if using file mode db — growth_tasks is SQLite-only
-      if (data.tasks.length > 0) {
-        expect(data.tasks.some((t: { type: string }) => t.type === "mock_session")).toBe(true);
-      }
-
-      await app.close();
-    });
-
-    it("record save auto-writes growth task", async () => {
-      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
-      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138012" } });
-      const reg = await app.inject({
-        method: "POST",
-        url: "/api/auth/register",
-        payload: { phone: "13800138012", smsCode: "666666" },
-      });
-      const token = reg.json().tokens.accessToken;
-
-      // First create a position via onboarding
       await app.inject({
         method: "POST",
         url: "/api/onboarding",
@@ -655,7 +699,6 @@ describe("local backend API", () => {
       });
       const positionId = state.json().positions[0].id;
 
-      // Save a record (simulating a mock session save)
       const recordRes = await app.inject({
         method: "POST",
         url: "/api/records",
@@ -682,8 +725,6 @@ describe("local backend API", () => {
       });
       expect(recordRes.statusCode).toBe(200);
 
-      // Growth task should NOT be auto-written by server — that's done by the frontend
-      // But we verify the state includes journeyState
       const finalState = await app.inject({
         method: "GET",
         url: "/api/state",

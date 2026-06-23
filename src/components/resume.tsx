@@ -7,6 +7,7 @@ import { loadDraftState, saveDraftState } from "../lib/store";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, Position } from "../types";
 import { buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
+import { AuthGateCard } from "./auth/AuthGate";
 
 type ResumeAction = "section" | "full" | "match";
 
@@ -98,6 +99,8 @@ export function ResumeWorkspacePage({
   onUpdateEvidence,
   onSetHighlights,
   onOpenJd,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   profile: CandidateProfile;
   position?: Position;
@@ -105,6 +108,8 @@ export function ResumeWorkspacePage({
   onUpdateEvidence: (items: EvidenceItem[]) => void;
   onSetHighlights: (highlights: string[]) => void;
   onOpenJd: () => void;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   const sections = useMemo(() => buildResumeSections(profile), [profile]);
   const [selectedSectionId, setSelectedSectionId] = useState<ResumeSectionId>("highlights");
@@ -133,6 +138,11 @@ export function ResumeWorkspacePage({
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      event.target.value = "";
+      return;
+    }
     try {
       const result = await importResumeFile(file);
       onUpdateResume(result.text);
@@ -147,6 +157,10 @@ export function ResumeWorkspacePage({
   const buildFullResumeText = () => sections.map((section) => `${section.title}\n${sectionDrafts[section.id]}`).join("\n\n");
 
   const generateHighlights = async () => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     setIsGenerating(true);
     try {
       const response = await generateProfileHighlightsOnServer({
@@ -170,6 +184,10 @@ export function ResumeWorkspacePage({
   };
 
   const runAction = async (action: ResumeAction) => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     const baseText = action === "section" ? selectedDraft : action === "full" ? sections.map((section) => `${section.title}\n${sectionDrafts[section.id]}`).join("\n\n") : selectedDraft;
     const title = action === "section" ? `优化「${selectedSection.title}」` : action === "full" ? "优化整份简历" : `按岗位「${repairText(position?.title || "当前岗位")}」做匹配分析`;
     setChatMessages((current) => [
@@ -221,6 +239,10 @@ export function ResumeWorkspacePage({
     event.preventDefault();
     const text = chatInput.trim();
     if (!text) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     setChatMessages((current) => [
       ...current,
       { id: makeId("resume-user"), role: "user", text },
@@ -298,6 +320,7 @@ export function ResumeWorkspacePage({
       </header>
 
       <div className="resume-layout focused-resume-layout">
+        {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
         <aside className="surface-card resume-nav-column compact-nav-column">
           <div className="surface-card-inner">
             <div className="section-row-header">
@@ -362,6 +385,10 @@ export function ResumeWorkspacePage({
                   className="button primary"
                   type="button"
                   onClick={() => {
+                    if (!isLoggedIn) {
+                      onRequireLogin();
+                      return;
+                    }
                     applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
                     setSaveMessage(`已保存「${selectedSection.title}」到后端。`);
                   }}

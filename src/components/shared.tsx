@@ -17,6 +17,7 @@ import type {
   ResumeAnalysis,
   WorkspaceState,
 } from "../types";
+import { QuotaBadge } from "./shared/QuotaBadge";
 
 export type PersonaKey = InterviewStyle;
 
@@ -381,3 +382,5 @@ export function EditorHeader({ icon: Icon, title, description, action }: { icon:
 export function profileSummary(resume: ResumeAnalysis) {
   return `${resume.targetRole} · ${resume.skills.slice(0, 5).join(" / ")}`;
 }
+
+export { QuotaBadge };

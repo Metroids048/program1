@@ -42,19 +42,32 @@ export interface AppDb {
   saveRetrievalRun(run: RetrievalRun): void;
   // Auth
   insertUser(user: UserRow): void;
+  updateUser(user: UserRow): void;
   getUserByPhone(phone: string): UserRow | undefined;
+  getUserByEmail(email: string): UserRow | undefined;
   getUserById(id: string): UserRow | undefined;
+  getUserByEmailVerificationToken(tokenHash: string, afterDate: string): UserRow | undefined;
+  getUserByPasswordResetToken(tokenHash: string, afterDate: string): UserRow | undefined;
   insertAuthIdentity(identity: AuthIdentityRow): void;
   insertSession(session: SessionRow): void;
   deleteSessionByJti(jti: string): void;
+  deleteSessionsByUserId(userId: string): void;
   getSessionByJti(jti: string, afterDate: string): SessionRow | undefined;
 }
 
 export interface UserRow {
   id: string;
   phone: string | null;
+  email: string | null;
   displayName: string;
   passwordHash: string | null;
+  emailVerifiedAt: string | null;
+  emailVerificationTokenHash: string | null;
+  emailVerificationExpiresAt: string | null;
+  passwordResetTokenHash: string | null;
+  passwordResetExpiresAt: string | null;
+  deletedAt: string | null;
+  notificationPrefs: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +120,44 @@ export function createDb(dbPath = process.env.AI_JOB_DB_PATH ?? DEFAULT_DB_PATH)
   } catch {
     return createFileDb(fallbackFilePath);
   }
+}
+
+function normalizeUserRow(user: Partial<UserRow>): UserRow {
+  return {
+    id: String(user.id ?? ""),
+    phone: user.phone ?? null,
+    email: user.email ?? null,
+    displayName: String(user.displayName ?? ""),
+    passwordHash: user.passwordHash ?? null,
+    emailVerifiedAt: user.emailVerifiedAt ?? null,
+    emailVerificationTokenHash: user.emailVerificationTokenHash ?? null,
+    emailVerificationExpiresAt: user.emailVerificationExpiresAt ?? null,
+    passwordResetTokenHash: user.passwordResetTokenHash ?? null,
+    passwordResetExpiresAt: user.passwordResetExpiresAt ?? null,
+    deletedAt: user.deletedAt ?? null,
+    notificationPrefs: typeof user.notificationPrefs === "string" ? user.notificationPrefs : "{}",
+    createdAt: String(user.createdAt ?? ""),
+    updatedAt: String(user.updatedAt ?? ""),
+  };
+}
+
+function mapUserRow(row: Record<string, unknown>): UserRow {
+  return normalizeUserRow({
+    id: String(row.id ?? ""),
+    phone: row.phone as string | null,
+    email: row.email as string | null,
+    displayName: String(row.display_name ?? ""),
+    passwordHash: row.password_hash as string | null,
+    emailVerifiedAt: row.email_verified_at as string | null,
+    emailVerificationTokenHash: row.email_verification_token_hash as string | null,
+    emailVerificationExpiresAt: row.email_verification_expires_at as string | null,
+    passwordResetTokenHash: row.password_reset_token_hash as string | null,
+    passwordResetExpiresAt: row.password_reset_expires_at as string | null,
+    deletedAt: row.deleted_at as string | null,
+    notificationPrefs: typeof row.notification_prefs === "string" ? String(row.notification_prefs) : "{}",
+    createdAt: String(row.created_at ?? ""),
+    updatedAt: String(row.updated_at ?? ""),
+  });
 }
 
 function createSqliteDb(db: Database.Database): AppDb {
@@ -366,19 +417,59 @@ function createSqliteDb(db: Database.Database): AppDb {
       );
     },
     insertUser(user) {
-      db.prepare("insert into users(id, phone, display_name, password_hash, created_at, updated_at) values (?, ?, ?, ?, ?, ?)").run(
-        user.id, user.phone, user.displayName, user.passwordHash, user.createdAt, user.updatedAt,
+      db.prepare("insert into users(id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        user.id,
+        user.phone,
+        user.email,
+        user.displayName,
+        user.passwordHash,
+        user.emailVerifiedAt,
+        user.emailVerificationTokenHash,
+        user.emailVerificationExpiresAt,
+        user.passwordResetTokenHash,
+        user.passwordResetExpiresAt,
+        user.deletedAt,
+        user.notificationPrefs,
+        user.createdAt,
+        user.updatedAt,
+      );
+    },
+    updateUser(user) {
+      db.prepare("update users set phone = ?, email = ?, display_name = ?, password_hash = ?, email_verified_at = ?, email_verification_token_hash = ?, email_verification_expires_at = ?, password_reset_token_hash = ?, password_reset_expires_at = ?, deleted_at = ?, notification_prefs = ?, updated_at = ? where id = ?").run(
+        user.phone,
+        user.email,
+        user.displayName,
+        user.passwordHash,
+        user.emailVerifiedAt,
+        user.emailVerificationTokenHash,
+        user.emailVerificationExpiresAt,
+        user.passwordResetTokenHash,
+        user.passwordResetExpiresAt,
+        user.deletedAt,
+        user.notificationPrefs,
+        user.updatedAt,
+        user.id,
       );
     },
     getUserByPhone(phone) {
-      const row = db.prepare("select id, phone, display_name, password_hash, created_at, updated_at from users where phone = ?").get(phone) as Record<string, unknown> | undefined;
-      if (!row) return undefined;
-      return { id: String(row.id ?? ""), phone: row.phone as string | null, displayName: String(row.display_name ?? ""), passwordHash: row.password_hash as string | null, createdAt: String(row.created_at ?? ""), updatedAt: String(row.updated_at ?? "") };
+      const row = db.prepare("select id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at from users where phone = ?").get(phone) as Record<string, unknown> | undefined;
+      return row ? mapUserRow(row) : undefined;
+    },
+    getUserByEmail(email) {
+      const row = db.prepare("select id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at from users where lower(email) = lower(?)").get(email) as Record<string, unknown> | undefined;
+      return row ? mapUserRow(row) : undefined;
     },
     getUserById(id) {
-      const row = db.prepare("select id, phone, display_name, password_hash, created_at, updated_at from users where id = ?").get(id) as Record<string, unknown> | undefined;
-      if (!row) return undefined;
-      return { id: String(row.id ?? ""), phone: row.phone as string | null, displayName: String(row.display_name ?? ""), passwordHash: row.password_hash as string | null, createdAt: String(row.created_at ?? ""), updatedAt: String(row.updated_at ?? "") };
+      const row = db.prepare("select id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at from users where id = ?").get(id) as Record<string, unknown> | undefined;
+      return row ? mapUserRow(row) : undefined;
+    },
+    getUserByEmailVerificationToken(tokenHash, afterDate) {
+      const row = db.prepare("select id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at from users where email_verification_token_hash = ? and email_verification_expires_at > ?").get(tokenHash, afterDate) as Record<string, unknown> | undefined;
+      return row ? mapUserRow(row) : undefined;
+    },
+    getUserByPasswordResetToken(tokenHash, afterDate) {
+      const row = db.prepare("select id, phone, email, display_name, password_hash, email_verified_at, email_verification_token_hash, email_verification_expires_at, password_reset_token_hash, password_reset_expires_at, deleted_at, notification_prefs, created_at, updated_at from users where password_reset_token_hash = ? and password_reset_expires_at > ?").get(tokenHash, afterDate) as Record<string, unknown> | undefined;
+      return row ? mapUserRow(row) : undefined;
     },
     insertAuthIdentity(identity) {
       db.prepare("insert into auth_identities(id, user_id, provider, identifier, created_at) values (?, ?, ?, ?, ?)").run(
@@ -392,6 +483,9 @@ function createSqliteDb(db: Database.Database): AppDb {
     },
     deleteSessionByJti(jti) {
       db.prepare("delete from user_sessions where token_jti = ?").run(jti);
+    },
+    deleteSessionsByUserId(userId) {
+      db.prepare("delete from user_sessions where user_id = ?").run(userId);
     },
     getSessionByJti(jti, afterDate) {
       const row = db.prepare("select id, user_id, token_jti, expires_at, created_at from user_sessions where token_jti = ? and expires_at > ?").get(jti, afterDate) as Record<string, unknown> | undefined;
@@ -435,7 +529,7 @@ function createFileDb(filePath: string): AppDb {
       documents: parsed.documents ?? [],
       documentChunks: parsed.documentChunks ?? [],
       retrievalRuns: parsed.retrievalRuns ?? [],
-      users: parsed.users ?? [],
+      users: (parsed.users ?? []).map((item) => normalizeUserRow(item)),
       authIdentities: parsed.authIdentities ?? [],
       sessions: parsed.sessions ?? [],
     };
@@ -559,13 +653,28 @@ function createFileDb(filePath: string): AppDb {
       replace((store) => ({ ...store, retrievalRuns: [run, ...store.retrievalRuns] }));
     },
     insertUser(user) {
-      replace((store) => ({ ...store, users: [...store.users, user] }));
+      replace((store) => ({ ...store, users: [...store.users, normalizeUserRow(user)] }));
+    },
+    updateUser(user) {
+      replace((store) => ({
+        ...store,
+        users: store.users.map((item) => (item.id === user.id ? normalizeUserRow(user) : item)),
+      }));
     },
     getUserByPhone(phone) {
       return readStore().users.find((u) => u.phone === phone);
     },
+    getUserByEmail(email) {
+      return readStore().users.find((u) => (u.email ?? "").toLowerCase() === email.toLowerCase());
+    },
     getUserById(id) {
       return readStore().users.find((u) => u.id === id);
+    },
+    getUserByEmailVerificationToken(tokenHash, afterDate) {
+      return readStore().users.find((u) => u.emailVerificationTokenHash === tokenHash && (u.emailVerificationExpiresAt ?? "") > afterDate);
+    },
+    getUserByPasswordResetToken(tokenHash, afterDate) {
+      return readStore().users.find((u) => u.passwordResetTokenHash === tokenHash && (u.passwordResetExpiresAt ?? "") > afterDate);
     },
     insertAuthIdentity(identity) {
       replace((store) => ({ ...store, authIdentities: [...store.authIdentities, identity] }));
@@ -575,6 +684,9 @@ function createFileDb(filePath: string): AppDb {
     },
     deleteSessionByJti(jti) {
       replace((store) => ({ ...store, sessions: store.sessions.filter((s) => s.tokenJti !== jti) }));
+    },
+    deleteSessionsByUserId(userId) {
+      replace((store) => ({ ...store, sessions: store.sessions.filter((s) => s.userId !== userId) }));
     },
     getSessionByJti(jti, afterDate) {
       return readStore().sessions.find((s) => s.tokenJti === jti && s.expiresAt > afterDate);
@@ -625,10 +737,39 @@ function migrate(db: Database.Database): void {
     }
   }
 
+  const accountMigrationPath = resolve("server/migrations/006_account_email.sql");
+  const accountSql = existsSync(accountMigrationPath) ? readFileSync(accountMigrationPath, "utf8") : "";
+  if (accountSql.trim()) {
+    try {
+      db.exec(accountSql);
+    } catch {
+      // Table/index creation may already exist
+    }
+  }
+
+  ensureColumn(db, "users", "email", "alter table users add column email text");
+  ensureColumn(db, "users", "email_verified_at", "alter table users add column email_verified_at text");
+  ensureColumn(db, "users", "email_verification_token_hash", "alter table users add column email_verification_token_hash text");
+  ensureColumn(db, "users", "email_verification_expires_at", "alter table users add column email_verification_expires_at text");
+  ensureColumn(db, "users", "password_reset_token_hash", "alter table users add column password_reset_token_hash text");
+  ensureColumn(db, "users", "password_reset_expires_at", "alter table users add column password_reset_expires_at text");
+  ensureColumn(db, "users", "deleted_at", "alter table users add column deleted_at text");
+  ensureColumn(db, "users", "notification_prefs", "alter table users add column notification_prefs text not null default '{}'");
+
+  db.exec("create unique index if not exists idx_users_email on users(email)");
+  db.exec("create index if not exists idx_users_email_verify on users(email_verification_token_hash, email_verification_expires_at)");
+  db.exec("create index if not exists idx_users_password_reset on users(password_reset_token_hash, password_reset_expires_at)");
+
   const columns = db.prepare("pragma table_info(prompt_runs)").all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === "skill_id")) {
     db.exec("alter table prompt_runs add column skill_id text not null default ''");
   }
+}
+
+function ensureColumn(db: Database.Database, table: string, column: string, statement: string): void {
+  const columns = db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
+  if (columns.some((item) => item.name === column)) return;
+  db.exec(statement);
 }
 
 export function upsertPosition(state: BackendState, position: Position): BackendState {

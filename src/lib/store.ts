@@ -1,5 +1,6 @@
 import { AppState, InterviewQuestion, InterviewRecord, MockTurn, UserJourneyState, WorkspaceState } from "../types";
 import { repairAppState } from "./copy";
+import { apiFetch } from "./authClient";
 import { buildInterviewReport, createInitialAppState, createPosition, createProfile, normalizePosition } from "./interviewEngine";
 
 const SNAPSHOT_KEY = "campus-interview-ai-workbench:serverSnapshotCache:v1";
@@ -231,7 +232,7 @@ export async function migrateGuestDataToServer(accessToken: string): Promise<{ m
   if (!hasContent) return null;
 
   try {
-    const response = await fetch("/api/auth/merge-guest", {
+    const response = await apiFetch("/api/auth/merge-guest", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({

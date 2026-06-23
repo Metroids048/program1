@@ -19,6 +19,7 @@ import {
   type RealtimeSubmitMode,
   type SpeechCaptureState,
 } from "./shared";
+import { AuthGateCard } from "./auth/AuthGate";
 
 const CUE_CARD_SKILL_ID = "live_cue_card_coach";
 
@@ -176,16 +177,21 @@ export function LiveAssistantDashboard({
   position,
   onSaveRecord,
   onSaveQuestion,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   workspace: WorkspaceState | null;
   profile: CandidateProfile;
   position: Position;
   onSaveRecord: (payload: { mode: "live"; title: string; transcript: MockMessage[]; cueCards: AnswerCueCard[]; speechMetrics?: ReturnType<typeof analyzeSpeech>[] }) => void;
   onSaveQuestion: (card: AnswerCueCard) => void;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   return (
     <section className="page page-live desktop-page">
-      <LiveAssistantView profile={profile} position={position} onSaveRecord={onSaveRecord} onSaveQuestion={onSaveQuestion} />
+      {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
+      <LiveAssistantView profile={profile} position={position} onSaveRecord={onSaveRecord} onSaveQuestion={onSaveQuestion} isLoggedIn={isLoggedIn} onRequireLogin={onRequireLogin} />
       {workspace ? <ContextKeywordStrip position={position} /> : null}
     </section>
   );
@@ -196,11 +202,15 @@ export function LiveAssistantView({
   position,
   onSaveRecord,
   onSaveQuestion,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   profile: CandidateProfile;
   position: Position;
   onSaveRecord: (payload: { mode: "live"; title: string; transcript: MockMessage[]; cueCards: AnswerCueCard[]; speechMetrics?: ReturnType<typeof analyzeSpeech>[] }) => void;
   onSaveQuestion: (card: AnswerCueCard) => void;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   const [recognizedDraft, setRecognizedDraft] = useState<RecognizedDraft>({ interimText: "", finalText: "", editableText: "", lastFinalAt: 0 });
   const [captureState, setCaptureState] = useState<SpeechCaptureState>("idle");
@@ -236,6 +246,10 @@ export function LiveAssistantView({
   const generate = useCallback(
     (sourceText = recognizedDraft.editableText) => {
       if (!sourceText.trim()) return;
+      if (!isLoggedIn) {
+        onRequireLogin();
+        return;
+      }
       const question = sourceText.trim();
       const localCard = normalizeCard(generateCueCard(question, profile, position, position.questions, "live"));
       setLastGeneratedAt(Date.now());
@@ -275,7 +289,7 @@ export function LiveAssistantView({
           startTransition(() => setCaptureState("ready"));
         });
     },
-    [position, profile, recognizedDraft.editableText, transcript],
+    [isLoggedIn, onRequireLogin, position, profile, recognizedDraft.editableText, transcript],
   );
 
   useEffect(() => {
@@ -336,6 +350,10 @@ export function LiveAssistantView({
   };
 
   const save = () => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     const speechMetrics = transcript.length > 0 ? [analyzeSpeech(transcript.map((item) => item.text).join(" "), Math.max(durationSec, 30))] : [];
     onSaveRecord({ mode: "live", title: `${repairText(position.title)} 实时助手`, transcript, cueCards, speechMetrics });
     setShowFinishConfirm(false);
@@ -422,7 +440,13 @@ export function LiveAssistantView({
                 <h2>当前回答框架</h2>
               </div>
             </div>
-            {captureState === "generating" && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={onSaveQuestion} />}
+            {captureState === "generating" && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={(card) => {
+              if (!isLoggedIn) {
+                onRequireLogin();
+                return;
+              }
+              onSaveQuestion(card);
+            }} />}
             {cueCards.slice(1, 3).map((card, index) => (
               <article key={card.id} className="cue-history-card">
                 <span>#{index + 1} · 已处理</span>
@@ -465,6 +489,8 @@ export function InterviewRoomView({
   onSaveRecord,
   onSaveQuestion,
   config,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   workspace: WorkspaceState;
   profile: CandidateProfile;
@@ -483,6 +509,8 @@ export function InterviewRoomView({
   }) => void;
   onSaveQuestion: (card: AnswerCueCard) => void;
   config: InterviewConfig;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   const questionPlan = useMemo(() => {
     const priority = workspace.questions.filter((question) => question.priority);
@@ -584,6 +612,10 @@ export function InterviewRoomView({
 
   const showCueCard = () => {
     if (!currentPrompt.trim()) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     const localCard = normalizeCard(generateCueCard(currentPrompt, profile, position, workspace.questions, "mock"));
     setCueCards((current) => [localCard, ...current.filter((item) => item.id !== localCard.id)]);
     setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "正在连接后端模型，先展示本地练习提词卡。", evidenceTrace: [], latencyMs: 0 });
@@ -619,6 +651,10 @@ export function InterviewRoomView({
 
   const submitAnswer = useCallback(() => {
     if (!answer.trim() || !currentQuestion || submitting || !sessionId) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     setSubmitting(true);
     setLastSubmittedAt(Date.now());
     const history: MockMessage[] = [...transcript, { role: "candidate", text: answer.trim() }];
@@ -650,7 +686,7 @@ export function InterviewRoomView({
         setQuestionIndex((current) => Math.min(current + 1, questionPlan.length - 1));
         setSubmitting(false);
       });
-  }, [answer, currentQuestion, position, profile, questionIndex, questionPlan, sessionId, submitting, transcript]);
+  }, [answer, currentQuestion, isLoggedIn, onRequireLogin, position, profile, questionIndex, questionPlan, sessionId, submitting, transcript]);
 
   useEffect(() => {
     if (interviewConfig.submitMode !== "auto") return;
@@ -662,6 +698,10 @@ export function InterviewRoomView({
   }, [answerDraft.editableText, answerDraft.lastFinalAt, interviewConfig.submitMode, lastSubmittedAt, submitAnswer]);
 
   const finish = () => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     const finalTranscript = answer.trim() ? [...transcript, { role: "candidate" as const, text: answer.trim() }] : transcript;
     const finalAnswer = answer.trim() || finalTranscript.filter((message) => message.role === "candidate").at(-1)?.text || "";
     const speechMetrics = analyzeSpeech(finalAnswer, Math.max(durationSec, Math.round(finalAnswer.length / 3), 20));
@@ -685,6 +725,10 @@ export function InterviewRoomView({
 
   if (setupOpen) {
     return <MockSetupModal config={interviewConfig} onClose={() => setSetupOpen(false)} onStart={(next) => {
+      if (!isLoggedIn) {
+        onRequireLogin();
+        return;
+      }
       setInterviewConfig(next);
       setSetupOpen(false);
     }} />;
@@ -693,6 +737,7 @@ export function InterviewRoomView({
   return (
     <>
       <section className="page page-mock desktop-page">
+        {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
         <section className="desktop-topbar mock-topbar mock-statusbar">
           <div className="desktop-topbar-main">
             <strong>{repairText(position.company)} · {repairText(position.title)}</strong>
@@ -802,7 +847,13 @@ export function InterviewRoomView({
                     生成提词卡
                   </button>
                 </div>
-                {submitting && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={onSaveQuestion} />}
+                {submitting && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={(card) => {
+                  if (!isLoggedIn) {
+                    onRequireLogin();
+                    return;
+                  }
+                  onSaveQuestion(card);
+                }} />}
               </div>
             </section>
           </aside>

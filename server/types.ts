@@ -11,12 +11,11 @@ import type {
   SpeechMetrics,
   InterviewAiMeta,
   LifecycleTask,
-  GrowthTask,
   OnboardingPayload,
   UserJourneyState,
 } from "../src/types";
 
-export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewAiMeta, InterviewQuestion, InterviewRecord, LifecycleTask, GrowthTask, MockDecision, MockMessage, OnboardingPayload, Position, SpeechMetrics, UserJourneyState };
+export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewAiMeta, InterviewQuestion, InterviewRecord, LifecycleTask, MockDecision, MockMessage, OnboardingPayload, Position, SpeechMetrics, UserJourneyState };
 
 export interface TranscriptTurn {
   id: string;

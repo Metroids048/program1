@@ -1,5 +1,6 @@
 import { ArrowLeft, Shield } from "lucide-react";
 import { navigateTo } from "../../lib/router";
+import { Seo } from "../system/Seo";
 
 const TERMS_CONTENT = `用户协议
 
@@ -87,12 +88,14 @@ const PRIVACY_CONTENT = `隐私政策
 export function LegalPage({ type }: { type: "terms" | "privacy" }) {
   const title = type === "terms" ? "用户协议" : "隐私政策";
   const content = type === "terms" ? TERMS_CONTENT : PRIVACY_CONTENT;
+  const path = type === "terms" ? "/terms-of-service" : "/privacy-policy";
 
   return (
     <section className="page legal-page">
+      <Seo title={`${title} | AI 求职台`} description={`查看 AI 求职台的${title}与账号、隐私处理说明。`} />
       <div className="legal-card">
         <div className="legal-header">
-          <button type="button" className="legal-back" onClick={() => navigateTo("/account")}>
+          <button type="button" className="legal-back" onClick={() => navigateTo(window.history.length > 1 ? window.location.pathname : "/account")}>
             <ArrowLeft size={16} />
             返回
           </button>
@@ -101,6 +104,7 @@ export function LegalPage({ type }: { type: "terms" | "privacy" }) {
             <h1>{title}</h1>
           </div>
           <p className="legal-date">最后更新：2025年7月</p>
+          <p className="legal-link-hint">固定访问路径：{path}</p>
         </div>
         <div className="legal-body">
           {content.split("\n").map((line, index) => {

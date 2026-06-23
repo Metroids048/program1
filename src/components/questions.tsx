@@ -4,6 +4,7 @@ import { repairText } from "../lib/copy";
 import { importResumeFile } from "../lib/resumeImport";
 import { makeId, nowIso } from "./shared";
 import type { InterviewQuestion, Position, PositionMaterial, WorkspaceState } from "../types";
+import { AuthGateCard } from "./auth/AuthGate";
 
 function extractKeywords(text: string, limit = 8): string[] {
   const matches = text.match(/[A-Za-z][A-Za-z0-9+#./-]{1,}|[\u4e00-\u9fa5]{2,}/g) ?? [];
@@ -60,12 +61,16 @@ export function QuestionsWorkspace({
   onUpdateMaterials,
   onUpdateQuestion,
   onAddQuestion,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   workspace: WorkspaceState | null;
   position: Position | undefined;
   onUpdateMaterials: (materials: PositionMaterial[]) => void;
   onUpdateQuestion: (questionId: string, patch: Partial<InterviewQuestion>) => void;
   onAddQuestion: (question: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => void;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   const [projectTitle, setProjectTitle] = useState("");
   const [projectDetail, setProjectDetail] = useState("");
@@ -103,6 +108,10 @@ export function QuestionsWorkspace({
   };
 
   const saveMaterial = (material: PositionMaterial) => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     onUpdateMaterials([material, ...materials]);
   };
 
@@ -125,6 +134,11 @@ export function QuestionsWorkspace({
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      event.target.value = "";
+      return;
+    }
     try {
       const result = await importResumeFile(file);
       saveMaterial(
@@ -147,6 +161,10 @@ export function QuestionsWorkspace({
   const submitQuestion = (event: FormEvent) => {
     event.preventDefault();
     if (!newQuestion.trim()) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     onAddQuestion({
       question: newQuestion.trim(),
       category,
@@ -185,6 +203,7 @@ export function QuestionsWorkspace({
         </div>
       ) : (
         <div className="materials-workbench">
+          {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
           <section className="surface-card">
             <div className="surface-card-inner">
               <div className="section-row-header">
@@ -299,11 +318,35 @@ export function QuestionsWorkspace({
                                   <label className="field-label" htmlFor={`${item.id}-answer`}>
                                     参考答案
                                   </label>
-                                  <textarea id={`${item.id}-answer`} className="input textarea compact" value={repairText(item.answer || "")} aria-label={`${item.id} 答案`} onChange={(event) => onUpdateQuestion(item.id, { answer: event.target.value })} />
+                                  <textarea
+                                    id={`${item.id}-answer`}
+                                    className="input textarea compact"
+                                    value={repairText(item.answer || "")}
+                                    aria-label={`${item.id} 答案`}
+                                    onChange={(event) => {
+                                      if (!isLoggedIn) {
+                                        onRequireLogin();
+                                        return;
+                                      }
+                                      onUpdateQuestion(item.id, { answer: event.target.value });
+                                    }}
+                                  />
                                   <label className="field-label" htmlFor={`${item.id}-notes`}>
                                     笔记 / 追问
                                   </label>
-                                  <textarea id={`${item.id}-notes`} className="input textarea compact" value={repairText(item.notes)} aria-label={`${item.id} 笔记`} onChange={(event) => onUpdateQuestion(item.id, { notes: event.target.value })} />
+                                  <textarea
+                                    id={`${item.id}-notes`}
+                                    className="input textarea compact"
+                                    value={repairText(item.notes)}
+                                    aria-label={`${item.id} 笔记`}
+                                    onChange={(event) => {
+                                      if (!isLoggedIn) {
+                                        onRequireLogin();
+                                        return;
+                                      }
+                                      onUpdateQuestion(item.id, { notes: event.target.value });
+                                    }}
+                                  />
                                 </div>
                               ) : null}
                             </article>

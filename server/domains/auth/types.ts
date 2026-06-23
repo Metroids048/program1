@@ -1,8 +1,18 @@
+export interface NotificationPrefs {
+  marketing: boolean;
+  product: boolean;
+  security: boolean;
+}
+
 export interface User {
   id: string;
   phone: string | null;
+  email: string | null;
   displayName: string;
   passwordHash: string | null;
+  emailVerifiedAt: string | null;
+  deletedAt: string | null;
+  notificationPrefs: NotificationPrefs;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,18 +47,21 @@ export interface AuthTokens {
 
 export interface RegisterInput {
   phone: string;
-  smsCode: string;
+  password: string;
   displayName?: string;
+  consentAccepted: boolean;
 }
 
 export interface LoginInput {
   phone: string;
-  smsCode?: string;
-  password?: string;
+  password: string;
 }
 
 export interface SessionInfo {
   userId: string;
   phone: string | null;
+  email: string | null;
+  emailVerifiedAt: string | null;
   displayName: string;
+  notificationPrefs: NotificationPrefs;
 }

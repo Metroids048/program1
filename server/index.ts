@@ -15,6 +15,8 @@ import { createQuotaService } from "./domains/quota/quota.service";
 import type { SessionInfo } from "./domains/auth/types";
 import { makeId, nowIso } from "./utils";
 import { createInitialAppState, createPosition } from "../src/lib/interviewEngine";
+import { createMailService } from "./mail/service";
+import { applyRateLimit, requireAuth, setCorsHeaders } from "./security";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -151,13 +153,13 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   const app = Fastify({ logger: false });
   const db = createDb(options.dbPath);
   const orchestrator = new AiOrchestrator(db, options.llmClient ?? createLlmClient(), createSearchTool());
-  const auth = createAuthService(db);
+  const mailer = createMailService();
+  const auth = createAuthService(db, mailer);
   const quota = createQuotaService(db);
+  const corsOrigin = process.env.APP_CORS_ORIGIN ?? process.env.APP_BASE_URL ?? "http://127.0.0.1:5173";
 
   app.addHook("onRequest", async (_request, reply) => {
-    reply.header("Access-Control-Allow-Origin", "*");
-    reply.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    setCorsHeaders(reply);
   });
 
   app.options("/*", async () => ({ ok: true }));
@@ -177,6 +179,14 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
 
   // Register auth routes
   registerAuthRoutes(app, auth);
+
+  app.get("/api/mail/outbox", async (request, reply) => {
+    if (process.env.NODE_ENV === "production") {
+      return reply.code(404).send({ error: "NOT_FOUND" });
+    }
+    requireAuth(request);
+    return { items: mailer.listOutbox() };
+  });
 
   // Merge guest data into authenticated user account
   app.post("/api/auth/merge-guest", async (request, reply) => {
@@ -251,54 +261,6 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     return { ok: true, profile, position, nextStep };
   });
 
-  // Growth tasks
-  app.get("/api/growth/tasks", async (request) => {
-    const userId = request.session?.userId;
-    if (!userId) return { tasks: [], streak: 0, recentDays: [] };
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (db.db) {
-      const rows = db.db.prepare(
-        "select task_type, completed_at from growth_tasks where user_id = ? and completed_at >= ? order by completed_at desc",
-      ).all(userId, today.toISOString()) as Array<{ task_type: string; completed_at: string }>;
-      const tasks = rows.map((r) => ({ type: r.task_type, completedAt: r.completed_at }));
-      const streakRow = db.db.prepare(
-        "select count(distinct date(completed_at)) as streak from growth_tasks where user_id = ?",
-      ).get(userId) as { streak: number } | undefined;
-      // Recent 7 days for calendar
-      const recentDaysRows = db.db.prepare(
-        "select distinct date(completed_at) as day from growth_tasks where user_id = ? and completed_at >= ? order by day desc limit 7",
-      ).all(userId, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) as Array<{ day: string }>;
-      return { tasks, streak: streakRow?.streak ?? 0, recentDays: recentDaysRows.map((r) => r.day) };
-    }
-    return { tasks: [], streak: 0, recentDays: [] };
-  });
-
-  app.post("/api/growth/tasks", async (request) => {
-    const userId = request.session?.userId;
-    if (!userId) return { ok: false, error: "UNAUTHORIZED" };
-    const body = request.body as { type?: string; source?: string; sourceId?: string; title?: string };
-    if (!body.type) return { ok: false, error: "MISSING_TYPE" };
-    const id = makeId("gtask");
-    const now = nowIso();
-    if (db.db) {
-      db.db.prepare("insert into growth_tasks(id, user_id, task_type, completed_at, meta) values (?, ?, ?, ?, ?)")
-        .run(id, userId, body.type, now, JSON.stringify({ source: body.source, sourceId: body.sourceId, title: body.title }));
-    }
-    // Return updated tasks
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (db.db) {
-      const rows = db.db.prepare(
-        "select task_type, completed_at from growth_tasks where user_id = ? and completed_at >= ? order by completed_at desc",
-      ).all(userId, today.toISOString()) as Array<{ task_type: string; completed_at: string }>;
-      const tasks = rows.map((r) => ({ type: r.task_type, completedAt: r.completed_at }));
-      return { ok: true, tasks };
-    }
-    return { ok: true, tasks: [] };
-  });
-
   // Feedback
   app.post("/api/feedback", async (request) => {
     const body = request.body as { category?: string; content?: string; contact?: string };
@@ -312,12 +274,27 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       db.db.prepare("insert into audit_events(id, user_id, action, detail, created_at) values (?, ?, ?, ?, ?)")
         .run(makeId("audit"), request.session?.userId ?? null, "feedback", id, now);
     }
+    const supportEmail = process.env.SUPPORT_EMAIL?.trim();
+    if (supportEmail) {
+      await mailer.sendEmail({
+        to: supportEmail,
+        subject: "收到新的用户反馈",
+        template: "feedbackNotice",
+        userId: request.session?.userId ?? null,
+        variables: {
+          ticketId: id,
+          category: body.category ?? "other",
+          content: body.content ?? "",
+          contact: body.contact ?? "",
+        },
+      });
+    }
     return { ok: true, ticketId: id };
   });
 
   // Data export
   app.post("/api/data/export", async (request) => {
-    const userId = request.session?.userId;
+    const userId = requireAuth(request).userId;
     const state = db.getState(userId);
     const exportData = {
       profile: state.profile,
@@ -334,8 +311,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
 
   // Data deletion request
   app.post("/api/data/delete-request", async (request) => {
-    const userId = request.session?.userId;
-    if (!userId) return { ok: false, error: "UNAUTHORIZED" };
+    const userId = requireAuth(request).userId;
     // Soft delete: clear user state
     const empty: BackendState = { profile: createInitialAppState().profile, positions: [], records: [], journeyState: "guest" };
     db.saveState(empty, userId);
@@ -400,13 +376,14 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/positions/analyze", async (request) => {
+    applyRateLimit(`positions-analyze:${request.session?.userId ?? request.ip}`, 30, 60 * 60 * 1000);
     requireQuota("position-analyze");
     const body = AnalyzePositionBody.parse(request.body);
     return toApiSnapshot(await orchestrator.analyzePosition(body.jobText, body.positionId), body.positionId);
   });
 
   app.get<{ Params: { id: string } }>("/api/positions/:id/context", async (request, reply) => {
-    const state = db.getState();
+    const state = db.getState(request.session?.userId);
     const position = state.positions.find((item) => item.id === request.params.id);
     if (!position) return reply.code(404).send({ error: "POSITION_NOT_FOUND" });
     return {
@@ -449,7 +426,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     if (!parsed.success) {
       reply.raw.writeHead(400, {
         "Content-Type": "application/json; charset=utf-8",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": corsOrigin,
       });
       reply.raw.end(JSON.stringify({
         error: "VALIDATION_ERROR",
@@ -462,7 +439,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": corsOrigin,
     });
     const send = (event: string, data: unknown) => {
       reply.raw.write(`event: ${event}\n`);
@@ -497,7 +474,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": corsOrigin,
     });
     const send = (event: string, data: unknown) => {
       reply.raw.write(`event: ${event}\n`);
@@ -599,9 +576,12 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     return { ok: true };
   });
 
-  app.get("/api/records", async () => ({ records: db.listRecords() }));
+  app.get("/api/records", async () => {
+    return { records: db.listRecords() };
+  });
 
   app.get<{ Params: { id: string } }>("/api/records/:id", async (request, reply) => {
+    requireAuth(request);
     const record = db.getRecord(request.params.id);
     if (!record) return reply.code(404).send({ error: "RECORD_NOT_FOUND" });
     return { record };
@@ -613,7 +593,12 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     return { results };
   });
 
-  app.post("/api/export", async () => toClientAppState(db.getState()));
+  app.post("/api/export", async (request) => {
+    const state = db.getState(request.session?.userId);
+    return toClientAppState(state, {
+      activePositionId: state.positions[0]?.id,
+    });
+  });
 
   app.post("/api/import", async (request, reply) => {
     const body = request.body as Partial<AppState>;
@@ -626,7 +611,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       records: Array.isArray(body.interviewRecords) ? body.interviewRecords : [],
       journeyState: "ready",
     };
-    db.saveState(state);
+    db.saveState(state, request.session?.userId);
     state.records.forEach((record) => db.saveRecord(record));
     const nextState = toClientAppState(state, {
       activePositionId: body.activePositionId,

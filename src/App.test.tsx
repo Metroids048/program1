@@ -1,18 +1,27 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { InterviewRecord } from "./types";
 import { createPosition, createProfile } from "./lib/interviewEngine";
 import { serializeAppState } from "./lib/store";
 import { saveUiPrefs } from "./lib/store";
 
-// Mock auth to always return logged-in for existing tests
+let authState: {
+  session: { userId: string; phone: string; displayName: string } | null;
+  loading: boolean;
+  isLoggedIn: boolean;
+} = {
+  session: { userId: "test-user", phone: "13800138000", displayName: "测试用户" },
+  loading: false,
+  isLoggedIn: true,
+};
+
 vi.mock("./lib/auth", () => ({
   useAuth: () => ({
-    session: { userId: "test-user", phone: "13800138000", displayName: "测试用户" },
-    loading: false,
-    isLoggedIn: true,
+    session: authState.session,
+    loading: authState.loading,
+    isLoggedIn: authState.isLoggedIn,
     getToken: () => "mock-token",
     setAuth: vi.fn(),
     clearAuth: vi.fn(),
@@ -113,9 +122,22 @@ function mockCueCardStream(questionText = "请介绍一个你做过的增长项�
 afterEach(() => {
   vi.restoreAllMocks();
   lastRecognition = null;
+  authState = {
+    session: { userId: "test-user", phone: "13800138000", displayName: "测试用户" },
+    loading: false,
+    isLoggedIn: true,
+  };
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
   Reflect.deleteProperty(window, "SpeechRecognition");
+});
+
+beforeEach(() => {
+  authState = {
+    session: { userId: "test-user", phone: "13800138000", displayName: "测试用户" },
+    loading: false,
+    isLoggedIn: true,
+  };
 });
 
 function renderApp(route = "/") {
@@ -139,7 +161,7 @@ describe("App", () => {
     expect(nav.queryByRole("button", { name: "上下文资料" })).not.toBeInTheDocument();
   });
 
-  it("uses the real JD intake home to create a position and enter mock setup", async () => {
+  it("uses the product home to create a position and enter mock setup", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -160,18 +182,41 @@ describe("App", () => {
     renderApp();
     const main = within(screen.getByRole("main"));
 
-    expect(main.getByRole("heading", { level: 1, name: "真实 JD intake" })).toBeInTheDocument();
-    expect(main.getByLabelText("JD intake 输入")).toBeInTheDocument();
-    expect(main.getByText("用户原文")).toBeInTheDocument();
-    expect(main.getByText("缺失字段")).toBeInTheDocument();
-    expect(main.queryByText("岗位草稿")).not.toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 1, name: "把岗位或问题放进来，马上开始准备" })).toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 2, name: "大对话框首页" })).toBeInTheDocument();
+    expect(main.getByLabelText("首页主输入")).toBeInTheDocument();
+    expect(main.queryByText("真实 JD intake")).not.toBeInTheDocument();
 
-    await user.type(main.getByLabelText("JD intake 输入"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
-    await user.click(main.getByRole("button", { name: "发送" }));
-    await user.click(await screen.findByRole("button", { name: "保存岗位" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /腾讯/ })).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "进入模拟配置" }));
+    await user.type(main.getByLabelText("首页主输入"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
+    await user.click(main.getByRole("button", { name: "保存当前岗位" }));
+    await waitFor(() => expect(screen.getByText("腾讯 · 高级产品经理")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "进入模拟面试" }));
     expect(window.location.pathname).toBe("/mock");
+  });
+
+  it("redirects guests to login when they trigger gated homepage actions", async () => {
+    authState = {
+      session: null,
+      loading: false,
+      isLoggedIn: false,
+    };
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
+      return mockJsonResponse(mockStateWithPosition());
+    });
+
+    const user = userEvent.setup();
+    renderApp("/");
+
+    await screen.findByRole("heading", { name: "把岗位或问题放进来，马上开始准备" });
+    expect(screen.getByText("页面可以先看；点击进入、生成或保存时会引导你登录。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "进入实时助手" }));
+    expect(await screen.findByRole("dialog", { name: "登录后继续" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "去登录" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
+    expect(new URLSearchParams(window.location.search).get("returnTo")).toBe("/live");
   });
 
   it("keeps live speech text after stop, lets the user edit, and generates a cue card", async () => {

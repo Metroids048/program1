@@ -1,5 +1,6 @@
 import { Zap } from "lucide-react";
 import { useEffect, useState } from "react";
+import { apiFetch } from "../../lib/authClient";
 
 interface QuotaInfo {
   dailyUsed: number;
@@ -13,7 +14,7 @@ export function QuotaBadge() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/quota")
+    void apiFetch("/api/quota")
       .then((res) => (res.ok ? res.json() as Promise<QuotaInfo> : null))
       .then((data) => { if (active && data) setQuota(data); })
       .catch(() => undefined);

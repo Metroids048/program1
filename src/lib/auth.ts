@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 export interface AuthSession {
   userId: string;
   phone: string | null;
+  email?: string | null;
+  emailVerifiedAt?: string | null;
   displayName: string;
+  notificationPrefs?: {
+    marketing?: boolean;
+    product?: boolean;
+    security?: boolean;
+  };
 }
 
 interface AuthTokens {
@@ -13,6 +20,7 @@ interface AuthTokens {
 
 const TOKENS_KEY = "ai-job:tokens:v1";
 const SESSION_KEY = "ai-job:session:v1";
+const AUTH_EVENT = "ai-job:auth-change";
 
 function readTokens(): AuthTokens | null {
   try {
@@ -30,6 +38,7 @@ function writeTokens(tokens: AuthTokens | null) {
     localStorage.removeItem(TOKENS_KEY);
     localStorage.removeItem(SESSION_KEY);
   }
+  window.dispatchEvent(new Event(AUTH_EVENT));
 }
 
 function readSession(): AuthSession | null {
@@ -47,6 +56,7 @@ function writeSession(session: AuthSession | null) {
   } else {
     localStorage.removeItem(SESSION_KEY);
   }
+  window.dispatchEvent(new Event(AUTH_EVENT));
 }
 
 async function fetchSession(token: string): Promise<AuthSession | null> {
@@ -84,6 +94,18 @@ export function useAuth() {
     void init();
   }, []);
 
+  useEffect(() => {
+    const sync = () => {
+      setSession(readSession());
+    };
+    window.addEventListener(AUTH_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(AUTH_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
   const getToken = (): string | null => {
     const tokens = readTokens();
     if (!tokens || new Date(tokens.expiresAt) <= new Date()) {
@@ -103,6 +125,10 @@ export function useAuth() {
       writeTokens(tokens);
       writeSession(sess);
       setSession(sess);
+    },
+    updateSession: (next: AuthSession | null) => {
+      writeSession(next);
+      setSession(next);
     },
     clearAuth: () => {
       writeTokens(null);

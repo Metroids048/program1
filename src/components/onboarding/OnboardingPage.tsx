@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { apiFetch } from "../../lib/authClient";
 import { navigateTo } from "../../lib/router";
 import type { OnboardingPayload, Position } from "../../types";
+import { Seo } from "../system/Seo";
 
 interface Step {
   key: string;
@@ -65,7 +67,7 @@ export function OnboardingPage({
       entryPath: "onboarding",
     };
     try {
-      const res = await fetch("/api/onboarding", {
+      const res = await apiFetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -82,7 +84,7 @@ export function OnboardingPage({
   const handleSkip = async () => {
     // Submit minimal onboarding
     try {
-      await fetch("/api/onboarding", {
+      await apiFetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entryPath: "skip" }),
@@ -124,7 +126,9 @@ export function OnboardingPage({
 
   return (
     <div className="onboarding-page">
+      <Seo title="欢迎使用 | AI 求职台" description="用 1 分钟完成首次设置，快速进入你的面试准备主线。" />
       <div className="onboarding-card">
+        <p className="onboarding-kicker">首次进入</p>
         <div className="onboarding-progress">
           {STEPS.map((_, index) => (
             <div key={index} className={`onboarding-dot ${index <= stepIndex ? "active" : ""}`} />
@@ -132,6 +136,11 @@ export function OnboardingPage({
         </div>
 
         <h1 className="onboarding-step-title">{step.title}</h1>
+        <p className="onboarding-step-copy">
+          {step.key === "targetRole" ? "先告诉我们你的目标方向，后面的 JD 分析和题目生成会更贴近你的求职目标。" :
+            step.key === "resumeText" ? "粘贴简历后，我们会优先帮你抽取证据素材、问题库和提词卡上下文。" :
+              "这些信息会帮助系统为你生成更贴近真实场景的模拟面试。"}
+        </p>
 
         {selectedOptions.length > 0 ? (
           <div className="onboarding-options">

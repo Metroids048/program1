@@ -1,4 +1,5 @@
 import type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewRecord, MockDecision, MockMessage, Position, PositionIntakeFieldSource, PositionIntakeFieldKey, PositionMaterial } from "../types";
+import { apiFetch } from "./authClient";
 
 export interface AiRunMeta {
   backendStatus: "success" | "fallback" | "error" | "cache";
@@ -93,7 +94,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function analyzePositionOnServer(jobText: string, positionId?: string): Promise<{ profile: AppState["profile"]; positions: AppState["positions"]; activePositionId: string; records: InterviewRecord[] }> {
-  const response = await fetch("/api/positions/analyze", {
+  const response = await apiFetch("/api/positions/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jobText, positionId }),
@@ -102,7 +103,7 @@ export async function analyzePositionOnServer(jobText: string, positionId?: stri
 }
 
 export async function analyzeProfileOnServer(resumeText: string): Promise<{ profile: AppState["profile"]; positions: AppState["positions"]; activePositionId: string; records: InterviewRecord[] }> {
-  const response = await fetch("/api/profile/analyze", {
+  const response = await apiFetch("/api/profile/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ resumeText }),
@@ -111,14 +112,14 @@ export async function analyzeProfileOnServer(resumeText: string): Promise<{ prof
 }
 
 export async function fetchStateSnapshot(): Promise<{ profile: AppState["profile"]; positions: AppState["positions"]; activePositionId: string; records: InterviewRecord[] }> {
-  const response = await fetch("/api/state");
+  const response = await apiFetch("/api/state");
   return readJson(response);
 }
 
 export async function upsertPositionIntakeOnServer(
   input: IntakeSubmitPayload,
 ): Promise<{ profile: CandidateProfile; positions: Position[]; activePositionId: string; records: InterviewRecord[]; intakeAssistant: IntakeAssistantPayload }> {
-  const response = await fetch("/api/positions/intake", {
+  const response = await apiFetch("/api/positions/intake", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -132,7 +133,7 @@ export async function updateProfileOnServer(input: {
   evidenceLibrary: CandidateProfile["evidenceLibrary"];
   highlights: string[];
 }): Promise<{ profile: CandidateProfile; positions: Position[]; activePositionId: string; records: InterviewRecord[] }> {
-  const response = await fetch("/api/profile", {
+  const response = await apiFetch("/api/profile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -141,7 +142,7 @@ export async function updateProfileOnServer(input: {
 }
 
 export async function updatePositionMaterialsOnServer(positionId: string, materials: PositionMaterial[]): Promise<{ position: Position }> {
-  const response = await fetch(`/api/positions/${encodeURIComponent(positionId)}/materials`, {
+  const response = await apiFetch(`/api/positions/${encodeURIComponent(positionId)}/materials`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ materials }),
@@ -150,7 +151,7 @@ export async function updatePositionMaterialsOnServer(positionId: string, materi
 }
 
 export async function updatePositionQuestionsOnServer(positionId: string, questions: Position["questions"]): Promise<{ position: Position }> {
-  const response = await fetch(`/api/positions/${encodeURIComponent(positionId)}/questions`, {
+  const response = await apiFetch(`/api/positions/${encodeURIComponent(positionId)}/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ questions }),
@@ -165,7 +166,7 @@ export async function streamCueCardFromServer(input: {
   enableSearch?: boolean;
   recentHistory?: MockMessage[];
 }): Promise<CueCardStreamResult> {
-  const response = await fetch("/api/copilot/cue-card/stream", {
+  const response = await apiFetch("/api/copilot/cue-card/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -241,7 +242,7 @@ export async function streamCueCardFromServer(input: {
 }
 
 export async function saveRecordOnServer(record: InterviewRecord): Promise<{ record: InterviewRecord; records: InterviewRecord[] }> {
-  const response = await fetch("/api/records", {
+  const response = await apiFetch("/api/records", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(record),
@@ -250,7 +251,7 @@ export async function saveRecordOnServer(record: InterviewRecord): Promise<{ rec
 }
 
 export async function createMockSessionOnServer(positionId?: string, config?: Record<string, unknown>): Promise<MockSessionResult> {
-  const response = await fetch("/api/mock/session", {
+  const response = await apiFetch("/api/mock/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ positionId, config }),
@@ -260,7 +261,7 @@ export async function createMockSessionOnServer(positionId?: string, config?: Re
 
 export async function answerMockSessionOnServer(input: MockAnswerInput): Promise<MockAnswerResult> {
   const sessionId = input.sessionId?.trim() || "current";
-  const response = await fetch(`/api/mock/session/${encodeURIComponent(sessionId)}/answer`, {
+  const response = await apiFetch(`/api/mock/session/${encodeURIComponent(sessionId)}/answer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -274,12 +275,12 @@ export async function answerMockSessionOnServer(input: MockAnswerInput): Promise
 }
 
 export async function exportFromServer(): Promise<AppState> {
-  const response = await fetch("/api/export", { method: "POST" });
+  const response = await apiFetch("/api/export", { method: "POST" });
   return readJson(response);
 }
 
 export async function importToServer(state: AppState): Promise<ImportServerResult> {
-  const response = await fetch("/api/import", {
+  const response = await apiFetch("/api/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(state),
@@ -288,7 +289,7 @@ export async function importToServer(state: AppState): Promise<ImportServerResul
 }
 
 export async function followUpFromServer(transcript: MockMessage[], positionId?: string): Promise<string> {
-  const response = await fetch("/api/copilot/follow-up", {
+  const response = await apiFetch("/api/copilot/follow-up", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transcript, positionId }),
@@ -298,7 +299,7 @@ export async function followUpFromServer(transcript: MockMessage[], positionId?:
 }
 
 export async function runResumeAiOnServer(input: ResumeAiRequest): Promise<ResumeAiResponse> {
-  const response = await fetch("/api/resume/ai", {
+  const response = await apiFetch("/api/resume/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -311,7 +312,7 @@ export async function generateProfileHighlightsOnServer(input: {
   displayName?: string;
   positionId?: string;
 }): Promise<{ highlights: string[]; meta: AiRunMeta }> {
-  const response = await fetch("/api/profile/highlights", {
+  const response = await apiFetch("/api/profile/highlights", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -325,7 +326,7 @@ export async function reconstructCueCard(input: {
   feedback: string;
   originalCard: AnswerCueCard;
 }): Promise<CueCardStreamResult> {
-  const response = await fetch("/api/copilot/cue-card/reconstruct", {
+  const response = await apiFetch("/api/copilot/cue-card/reconstruct", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

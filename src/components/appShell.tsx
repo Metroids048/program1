@@ -5,17 +5,17 @@ import {
   ClipboardList,
   FileSearch,
   FileText,
+  MessageSquarePlus,
   Headphones,
   Menu,
   Mic,
   ScrollText,
-  TrendingUp,
   UserRound,
 } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { loadUiPrefs, saveUiPrefs } from "../lib/store";
 
-export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "growth" | "account" | "legalTerms" | "legalPrivacy";
+export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account" | "legalTerms" | "legalPrivacy";
 
 type NavItem = {
   id: PrimaryRouteName;
@@ -31,14 +31,12 @@ const PRIMARY_NAV: NavItem[] = [
   { id: "questions", label: "问题库", icon: ScrollText },
   { id: "resume", label: "简历", icon: FileText },
   { id: "records", label: "面试记录", icon: ClipboardList },
-  { id: "growth", label: "成长", icon: TrendingUp },
 ];
 
 const NAV_GROUPS: Array<{ title?: string; items: NavItem[] }> = [
   { title: "面试准备主线", items: PRIMARY_NAV.slice(0, 3) },
   { title: "资料库", items: PRIMARY_NAV.slice(3, 6) },
-  { items: PRIMARY_NAV.slice(6, 7) },
-  { items: PRIMARY_NAV.slice(7) },
+  { items: PRIMARY_NAV.slice(6) },
 ];
 
 const MOBILE_NAV_BREAKPOINT = 760;
@@ -61,6 +59,7 @@ export function AppShell({
   isLoggedIn,
   onNavigate,
   onAccount,
+  onFeedback,
   children,
 }: {
   activeNav: PrimaryRouteName;
@@ -68,6 +67,7 @@ export function AppShell({
   isLoggedIn: boolean;
   onNavigate: (route: PrimaryRouteName) => void;
   onAccount: () => void;
+  onFeedback: () => void;
   children: ReactNode;
 }) {
   const isMobile = useMobileNav();
@@ -113,40 +113,40 @@ export function AppShell({
         ) : null}
       </div>
 
-      {isLoggedIn ? (
-        <>
-          <nav className="shell-nav" aria-label="主导航">
-            {NAV_GROUPS.map((group, groupIndex) => (
-              <Fragment key={group.title ?? `group-${groupIndex}`}>
-                {groupIndex > 0 ? <div className="shell-nav-divider" aria-hidden="true" /> : null}
-                {group.title && (expanded || isMobile) ? <span className="shell-nav-group-label">{group.title}</span> : null}
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = item.id === activeNav;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={active ? "shell-nav-item active" : "shell-nav-item"}
-                      aria-current={active ? "page" : undefined}
-                      aria-label={item.label}
-                      title={item.label}
-                      onClick={() => {
-                        onNavigate(item.id);
-                        closeMobileDrawer();
-                      }}
-                    >
-                      <span className="shell-nav-icon">
-                        <Icon size={18} />
-                      </span>
-                      {expanded || isMobile ? <span className="shell-nav-label">{item.label}</span> : null}
-                    </button>
-                  );
-                })}
-              </Fragment>
-            ))}
-          </nav>
+      <>
+        <nav className="shell-nav" aria-label="主导航">
+          {NAV_GROUPS.map((group, groupIndex) => (
+            <Fragment key={group.title ?? `group-${groupIndex}`}>
+              {groupIndex > 0 ? <div className="shell-nav-divider" aria-hidden="true" /> : null}
+              {group.title && (expanded || isMobile) ? <span className="shell-nav-group-label">{group.title}</span> : null}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = item.id === activeNav;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={active ? "shell-nav-item active" : "shell-nav-item"}
+                    aria-current={active ? "page" : undefined}
+                    aria-label={item.label}
+                    title={item.label}
+                    onClick={() => {
+                      onNavigate(item.id);
+                      closeMobileDrawer();
+                    }}
+                  >
+                    <span className="shell-nav-icon">
+                      <Icon size={18} />
+                    </span>
+                    {expanded || isMobile ? <span className="shell-nav-label">{item.label}</span> : null}
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
+        </nav>
 
+        {isLoggedIn ? (
           <button className="shell-account" type="button" onClick={onAccount} aria-label={`${accountName || "候选人"}，打开账户与数据`}>
             <span className="shell-nav-icon">
               <UserRound size={18} />
@@ -158,22 +158,28 @@ export function AppShell({
               </span>
             )}
           </button>
-        </>
-      ) : (
-        <nav className="shell-nav" aria-label="访客导航">
+        ) : (
           <button
+            className="shell-account"
             type="button"
-            className="shell-nav-item"
             onClick={() => {
               onNavigate("authLogin");
               closeMobileDrawer();
             }}
+            aria-label="登录后自动保存与同步"
           >
-            <span className="shell-nav-icon"><UserRound size={18} /></span>
-            {(expanded || isMobile) && <span className="shell-nav-label">登录 / 注册</span>}
+            <span className="shell-nav-icon">
+              <UserRound size={18} />
+            </span>
+            {(expanded || isMobile) && (
+              <span className="shell-account-copy">
+                <strong>登录 / 注册</strong>
+                <small>登录后自动保存与同步</small>
+              </span>
+            )}
           </button>
-        </nav>
-      )}
+        )}
+      </>
     </>
   );
 
@@ -219,6 +225,10 @@ export function AppShell({
       <main className="main main-v3" id="main-content">
         {children}
       </main>
+      <button type="button" className="feedback-fab" onClick={onFeedback} aria-label="打开反馈入口">
+        <MessageSquarePlus size={18} />
+        <span>反馈</span>
+      </button>
     </div>
   );
 }

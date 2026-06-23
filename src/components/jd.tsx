@@ -2,6 +2,7 @@ import { FileSearch, Sparkles } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import type { CandidateProfile, InterviewRecord, Position, WorkspaceState } from "../types";
+import { AuthGateCard } from "./auth/AuthGate";
 
 function compactItems(items: string[], fallback: string): string[] {
   const cleaned = items.map(repairText).filter(Boolean);
@@ -33,6 +34,8 @@ export function JdWorkspace({
   records,
   onSubmitJd,
   onCreateQuestions,
+  isLoggedIn,
+  onRequireLogin,
 }: {
   workspace: WorkspaceState | null;
   profile: CandidateProfile;
@@ -40,6 +43,8 @@ export function JdWorkspace({
   records: InterviewRecord[];
   onSubmitJd: (jobText: string) => void;
   onCreateQuestions: (items: Array<{ question: string; category: string; difficulty: string; notes?: string }>) => void;
+  isLoggedIn: boolean;
+  onRequireLogin: () => void;
 }) {
   const [draft, setDraft] = useState(workspace?.jobText ?? "");
   const [savedMessage, setSavedMessage] = useState("");
@@ -75,11 +80,19 @@ export function JdWorkspace({
   const submitJd = (event: FormEvent) => {
     event.preventDefault();
     if (!draft.trim()) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     onSubmitJd(draft.trim());
   };
 
   const saveLikelyQuestions = () => {
     if (!analysis) return;
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
     onCreateQuestions(
       analysis.likelyQuestions.slice(0, 6).map((question) => ({
         question,
@@ -103,6 +116,7 @@ export function JdWorkspace({
 
       {workspace && position && analysis ? (
         <div className="jd-prep-layout">
+          {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
           <section className="surface-card jd-left-column">
             <div className="surface-card-inner">
               <div className="section-row-header">

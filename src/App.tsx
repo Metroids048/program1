@@ -12,6 +12,7 @@ import {
   updateProfileOnServer,
   upsertPositionIntakeOnServer,
 } from "./lib/apiClient";
+import { apiFetch } from "./lib/authClient";
 import { repairAppState, repairText } from "./lib/copy";
 import { buildInterviewReport, createInitialAppState, saveQuestionFromCueCard, toWorkspace } from "./lib/interviewEngine";
 import { navigateTo, parseRoute } from "./lib/router";
@@ -37,13 +38,16 @@ import type {
 import { LiveAssistantDashboard, InterviewRoomView } from "./components/live";
 import { AccountModal, RecordsView } from "./components/records";
 import { AuthPage } from "./components/auth/AuthPage";
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./components/auth/RecoveryPages";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
-import { GrowthPage } from "./components/growth/GrowthPage";
 import { AccountPage } from "./components/account/AccountPage";
 import { LegalPage } from "./components/legal/LegalPage";
 import { JdWorkspace } from "./components/jd";
 import { QuestionsWorkspace } from "./components/questions";
 import { ResumeWorkspacePage } from "./components/resume";
+import { NotFoundPage, ServerErrorPage } from "./components/system/StatusPages";
+import { Seo } from "./components/system/Seo";
+import { AuthGateModal } from "./components/auth/AuthGate";
 
 type ServerSnapshot = {
   profile: CandidateProfile;
@@ -96,39 +100,34 @@ export function App() {
     if (typeof window === "undefined") return "/";
     return parseRoute(window.location.pathname).name === "recordDetail" ? "/records" : window.location.pathname;
   });
+  const [snapshotHydrated, setSnapshotHydrated] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [loginGatePath, setLoginGatePath] = useState<string | null>(null);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
   const redirectedRef = useRef(false);
 
-  // Auth gate: redirect to login if accessing protected route while not logged in
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !snapshotHydrated) return;
     const currentRoute = parseRoute(routePath);
-    const publicRoutes = new Set(["authLogin", "authRegister", "legalTerms", "legalPrivacy"]);
-    if (!isLoggedIn && !publicRoutes.has(currentRoute.name)) {
-      if (redirectedRef.current) return;
-      redirectedRef.current = true;
-      navigateTo("/auth/login", { replace: true });
-      setRoutePath("/auth/login");
-      return;
-    }
-    // Onboarding gate: if journeyState is onboarding, only allow onboarding and auth/legal
+    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "legalTerms", "legalPrivacy", "termsOfService", "privacyPolicy", "notFound", "serverError"]);
     if (isLoggedIn && appState.journeyState === "onboarding" && currentRoute.name !== "onboarding" && !publicRoutes.has(currentRoute.name)) {
       if (redirectedRef.current) return;
       redirectedRef.current = true;
       navigateTo("/onboarding", { replace: true });
       setRoutePath("/onboarding");
+      return;
     }
     redirectedRef.current = false;
-  }, [isLoggedIn, authLoading, appState.journeyState, routePath]);
+  }, [isLoggedIn, authLoading, appState.journeyState, routePath, snapshotHydrated]);
 
   // When user logs in, transition journeyState from guest to onboarding
   useEffect(() => {
-    if (!authLoading && isLoggedIn && appState.journeyState === "guest") {
+    if (!authLoading && snapshotHydrated && isLoggedIn && appState.journeyState === "guest" && appState.positions.length === 0 && appState.interviewRecords.length === 0 && !appState.profile.resumeText.trim()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAppState((current) => repairAppState({ ...current, journeyState: "onboarding" }));
+      setAppState((current) => repairAppState({ ...current, journeyState: "ready" }));
     }
-  }, [isLoggedIn, authLoading, appState.journeyState]);
+  }, [isLoggedIn, authLoading, appState.journeyState, appState.positions.length, appState.interviewRecords.length, appState.profile.resumeText, snapshotHydrated]);
 
   useEffect(() => {
     let active = true;
@@ -141,8 +140,12 @@ export function App() {
           saveServerSnapshotCache(next);
           return next;
         });
+        setSnapshotHydrated(true);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setSnapshotHydrated(true);
+      });
     return () => {
       active = false;
     };
@@ -177,8 +180,7 @@ export function App() {
   const route = parseRoute(routePath);
   const activeNav: PrimaryRouteName =
     route.name === "recordDetail" ? "records" :
-    route.name === "authLogin" || route.name === "authRegister" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" ? "home" :
-    route.name === "growth" ? "growth" :
+    route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" || route.name === "termsOfService" || route.name === "privacyPolicy" || route.name === "notFound" || route.name === "serverError" ? "home" :
     route.name === "account" ? "account" :
     route.name;
   const routeRecordId = route.name === "recordDetail" ? route.recordId : "";
@@ -186,7 +188,19 @@ export function App() {
 
   const openRoute = (path: string, options?: { replace?: boolean }) => {
     navigateTo(path, options);
-    setRoutePath(path);
+    if (typeof window === "undefined") {
+      setRoutePath(path);
+      return;
+    }
+    setRoutePath(new URL(path, window.location.origin).pathname);
+  };
+
+  const requireLoginFor = (path: string) => {
+    if (isLoggedIn) {
+      openRoute(path);
+      return;
+    }
+    setLoginGatePath(path);
   };
 
   const patchState = (updater: (current: AppState) => AppState) => {
@@ -235,7 +249,6 @@ export function App() {
   };
 
   const updateResume = (resumeText: string) => {
-    const hasExistingResume = profile.resumeText.trim().length > 0;
     void updateProfileOnServer({
       resumeText,
       evidenceLibrary: profile.evidenceLibrary,
@@ -251,19 +264,6 @@ export function App() {
           },
         }));
       });
-    // Auto-write growth task on first resume import
-    if (!hasExistingResume && resumeText.trim().length > 0) {
-      void fetch("/api/growth/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "import_resume",
-          source: "resume",
-          sourceId: "manual",
-          title: "首次导入简历",
-        }),
-      }).catch(() => undefined);
-    }
   };
 
   const updateEvidence = (items: EvidenceItem[]) => {
@@ -402,17 +402,6 @@ export function App() {
         }));
       })
       .catch(() => undefined);
-    // Auto-write growth task
-    void fetch("/api/growth/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: payload.mode === "live" ? "cue_card" : "mock_session",
-        source: "record",
-        sourceId: record.id,
-        title: record.title,
-      }),
-    }).catch(() => undefined);
     openRoute("/records");
   };
 
@@ -441,14 +430,22 @@ export function App() {
         if (nav === "questions") openRoute("/questions");
         if (nav === "resume") openRoute("/resume");
         if (nav === "records") openRoute("/records");
-        if (nav === "growth") openRoute("/growth");
         if (nav === "account") openRoute("/account");
       }}
       onAccount={() => setAccountOpen(true)}
+      onFeedback={() => setFeedbackOpen(true)}
     >
+      <Seo title="AI 求职台" description="围绕真实 JD、简历和面试记录，完成从准备到复盘的 AI 面试闭环。" />
+
       {(route.name === "authLogin" || route.name === "authRegister") && (
-        <AuthPage mode={route.name === "authLogin" ? "login" : "register"} />
+        <AuthPage mode={route.name === "authLogin" ? "login" : "register"} returnTo={route.returnTo} />
       )}
+
+      {route.name === "forgotPassword" && <ForgotPasswordPage />}
+
+      {route.name === "resetPassword" && <ResetPasswordPage token={route.token} />}
+
+      {route.name === "verifyEmail" && <VerifyEmailPage token={route.token} />}
 
       {route.name === "onboarding" && <OnboardingPage onComplete={(position) => {
         if (position) {
@@ -463,22 +460,29 @@ export function App() {
         }
       }} />}
 
-      {route.name === "growth" && <GrowthPage />}
-
       {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
 
       {route.name === "legalTerms" && <LegalPage type="terms" />}
 
       {route.name === "legalPrivacy" && <LegalPage type="privacy" />}
 
+      {route.name === "termsOfService" && <LegalPage type="terms" />}
+
+      {route.name === "privacyPolicy" && <LegalPage type="privacy" />}
+
+      {route.name === "notFound" && <NotFoundPage />}
+
+      {route.name === "serverError" && <ServerErrorPage />}
+
       {route.name === "home" && (
         <HomeDashboard
-          workspace={activeWorkspace}
           positions={positions}
           activePositionId={activePositionId}
           onSubmitJd={createOrUpdatePosition}
-          onSelectPosition={(positionId) => patchState((current) => ({ ...current, activePositionId: positionId }))}
           onOpenMock={startConfiguredMock}
+          onOpenLive={() => openRoute("/live")}
+          onRequireLogin={requireLoginFor}
+          isLoggedIn={isLoggedIn}
         />
       )}
 
@@ -489,6 +493,8 @@ export function App() {
           position={activePosition}
           onSaveRecord={saveInterviewRecord}
           onSaveQuestion={addQuestionFromCueCard}
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/live")}
         />
       ) : (
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><BriefcaseBusiness size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入实时助手。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
@@ -502,6 +508,8 @@ export function App() {
           onSaveRecord={saveInterviewRecord}
           onSaveQuestion={addQuestionFromCueCard}
           config={interviewConfig}
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/mock")}
         />
       ) : (
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><Mic size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入模拟面试。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
@@ -515,6 +523,8 @@ export function App() {
           records={interviewRecords}
           onSubmitJd={createOrUpdatePosition}
           onCreateQuestions={(items) => items.forEach((item) => addQuestion(item))}
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/jd")}
         />
       )}
 
@@ -525,6 +535,8 @@ export function App() {
           onUpdateMaterials={updateMaterials}
           onUpdateQuestion={updateQuestion}
           onAddQuestion={addQuestion}
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/questions")}
         />
       )}
 
@@ -536,6 +548,8 @@ export function App() {
           onUpdateEvidence={updateEvidence}
           onSetHighlights={updateHighlights}
           onOpenJd={() => openRoute("/jd")}
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/resume")}
         />
       )}
 
@@ -548,12 +562,25 @@ export function App() {
             patchState((current) => ({ ...current, activeRecordId: id }));
             openRoute("/records");
           }}
-          onMock={() => startConfiguredMock()}
+          onMock={() => {
+            if (!isLoggedIn) {
+              requireLoginFor("/mock");
+              return;
+            }
+            startConfiguredMock();
+          }}
           onOpenQuestions={() => openRoute("/questions")}
           onOpenResume={() => openRoute("/resume")}
           onOpenJd={() => openRoute("/jd")}
         />
       )}
+
+      {loginGatePath ? (
+        <AuthGateModal
+          returnTo={loginGatePath}
+          onClose={() => setLoginGatePath(null)}
+        />
+      ) : null}
 
       {accountOpen && (
         <AccountModal
@@ -567,6 +594,73 @@ export function App() {
           onClear={clearAll}
         />
       )}
+
+      {feedbackOpen && (
+        <div className="drawer-backdrop" role="presentation" onClick={() => setFeedbackOpen(false)}>
+          <section className="dialog-panel compact-dialog" role="dialog" aria-modal="true" aria-label="提交反馈" onClick={(event) => event.stopPropagation()}>
+            <h2>提交反馈</h2>
+            <p className="dialog-copy">告诉我们你遇到的问题、想要的功能，或任何让你想离开的卡点。</p>
+            <GlobalFeedbackForm onClose={() => setFeedbackOpen(false)} />
+          </section>
+        </div>
+      )}
     </AppShell>
+  );
+}
+
+function GlobalFeedbackForm({ onClose }: { onClose: () => void }) {
+  const { session } = useAuth();
+  const [category, setCategory] = useState("other");
+  const [contact, setContact] = useState(session?.email ?? "");
+  const [content, setContent] = useState("");
+  const [state, setState] = useState<"idle" | "saving" | "success" | "error">("idle");
+
+  const submit = async () => {
+    if (!content.trim()) return;
+    setState("saving");
+    try {
+      const res = await apiFetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, contact: contact.trim() || undefined, content: content.trim() }),
+      });
+      if (!res.ok) throw new Error("FAILED");
+      setState("success");
+      setTimeout(() => {
+        onClose();
+      }, 400);
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="drawer-form">
+      <label className="auth-field">
+        <span className="auth-label">反馈分类</span>
+        <select className="account-select" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <option value="bug">Bug 报告</option>
+          <option value="ai_quality">AI 质量</option>
+          <option value="feature">功能建议</option>
+          <option value="other">其他</option>
+        </select>
+      </label>
+      <label className="auth-field">
+        <span className="auth-label">联系邮箱</span>
+        <input className="auth-input" type="email" value={contact} onChange={(event) => setContact(event.target.value)} placeholder="方便回访时联系你" />
+      </label>
+      <label className="auth-field">
+        <span className="auth-label">问题描述</span>
+        <textarea className="account-textarea" rows={5} value={content} onChange={(event) => setContent(event.target.value)} placeholder="遇到了什么问题？你期望看到什么行为？" />
+      </label>
+      {state === "success" ? <p className="auth-success">反馈已发送，谢谢你帮我们把产品做得更好。</p> : null}
+      {state === "error" ? <p className="auth-error">提交失败，请稍后重试。</p> : null}
+      <div className="drawer-actions">
+        <button type="button" className="button secondary" onClick={onClose}>取消</button>
+        <button type="button" className="button primary" onClick={submit} disabled={state === "saving" || !content.trim()}>
+          {state === "saving" ? "提交中..." : "提交反馈"}
+        </button>
+      </div>
+    </div>
   );
 }

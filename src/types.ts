@@ -265,11 +265,6 @@ export interface LifecycleTask {
   completedAt?: string;
 }
 
-export interface GrowthTask {
-  type: string;
-  completedAt: string;
-}
-
 export interface OnboardingPayload {
   displayName?: string;
   targetRole?: string;

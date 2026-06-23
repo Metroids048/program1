@@ -1,14 +1,3 @@
--- Phase 3: Growth tasks
-create table if not exists growth_tasks (
-  id text primary key,
-  user_id text not null,
-  task_type text not null, -- 'mock_session', 'cue_card', 'review_questions', 'daily_login'
-  completed_at text not null,
-  meta text default '{}'
-);
-
-create index if not exists idx_growth_tasks_user on growth_tasks(user_id, task_type, completed_at);
-
 -- Phase 4: Feedback
 create table if not exists feedback_tickets (
   id text primary key,
