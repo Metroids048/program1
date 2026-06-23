@@ -941,7 +941,7 @@ export function recomputePosition(position: Position, profile: CandidateProfile)
 
 export function createInitialAppState(): AppState {
   const profile = createProfile("");
-  return { profile, positions: [], activePositionId: "", interviewRecords: [], activeRecordId: "", aiMode: false };
+  return { profile, positions: [], activePositionId: "", interviewRecords: [], activeRecordId: "", aiMode: false, journeyState: "guest" };
 }
 
 // Flatten the active position into the legacy WorkspaceState the per-position

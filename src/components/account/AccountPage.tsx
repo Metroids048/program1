@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Download, Trash2, MessageSquare, Shield } from "lucide-react";
+import { Download, Trash2, MessageSquare, Shield, Activity } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { navigateTo } from "../../lib/router";
+import type { UserJourneyState } from "../../types";
 
 interface QuotaInfo {
   dailyUsed: number;
@@ -10,8 +11,18 @@ interface QuotaInfo {
   isGuest: boolean;
 }
 
-export function AccountPage() {
+export function AccountPage({ journeyState }: { journeyState?: UserJourneyState }) {
   const { session, isLoggedIn, clearAuth } = useAuth();
+
+  const JOURNEY_LABELS: Record<UserJourneyState, string> = {
+    guest: "访客",
+    onboarding: "首次设置中",
+    ready: "准备就绪",
+    preparing: "面试准备中",
+    interviewing: "面试练习中",
+    reviewing: "复盘回顾中",
+    returning: "复访用户",
+  };
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackCategory, setFeedbackCategory] = useState("other");
@@ -112,6 +123,13 @@ export function AccountPage() {
           <div className="account-info-row">
             <span className="account-info-label">手机号</span>
             <span>{session?.phone ? `${session.phone.slice(0, 3)}****${session.phone.slice(7)}` : "未绑定"}</span>
+          </div>
+          <div className="account-info-row">
+            <span className="account-info-label">状态</span>
+            <span className="account-status-badge">
+              <Activity size={12} />
+              {JOURNEY_LABELS[journeyState || "guest"]}
+            </span>
           </div>
         </div>
 

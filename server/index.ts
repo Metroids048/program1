@@ -8,13 +8,13 @@ import { createLlmClient } from "./llm";
 import type { LlmClient } from "./llm";
 import { AiOrchestrator } from "./orchestrator";
 import { createSearchTool } from "./search";
-import type { AnswerCueCard, AppState, BackendState, InterviewRecord } from "./types";
+import type { AnswerCueCard, AppState, BackendState, InterviewRecord, Position } from "./types";
 import { createAuthService } from "./domains/auth/auth.service";
 import { registerAuthRoutes } from "./domains/auth/auth.routes";
 import { createQuotaService } from "./domains/quota/quota.service";
 import type { SessionInfo } from "./domains/auth/types";
 import { makeId, nowIso } from "./utils";
-import { createInitialAppState } from "../src/lib/interviewEngine";
+import { createInitialAppState, createPosition } from "../src/lib/interviewEngine";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -198,6 +198,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       profile: body?.profile ?? userState.profile,
       positions: [...userState.positions, ...newPositions],
       records: [...userState.records, ...newRecords],
+      journeyState: userState.journeyState ?? "ready",
     };
     db.saveState(merged, request.session.userId);
     return { ok: true, mergedPositions: newPositions.length, mergedRecords: newRecords.length };
@@ -219,26 +220,41 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
 
   // Onboarding
   app.post("/api/onboarding", async (request) => {
-    if (!request.session) return { ok: true, note: "guest" };
+    if (!request.session) return { ok: true, note: "guest", profile: createInitialAppState().profile, nextStep: "intake_jd" as const };
     const body = request.body as Record<string, unknown>;
     const userId = request.session.userId;
     const state = db.getState(userId);
+    const targetRole = (body.targetRole as string) || state.profile.resume.targetRole || "待定岗位";
     const profile = {
       ...state.profile,
-      displayName: (body.displayName as string) || state.profile.displayName,
+      displayName: (body.displayName as string) || state.profile.displayName || "候选人",
+      resumeText: (body.resumeText as string) || state.profile.resumeText || "",
     };
-    db.saveState({ ...state, profile }, userId);
+    // Generate a default position from targetRole if no positions exist
+    let position: Position | undefined;
+    if (state.positions.length === 0) {
+      const defaultJd = `目标岗位：${targetRole}\n城市：${body.city || "待定"}\n经验：${body.experience || "待定"}\n阶段：${body.stage || "准备面试"}`;
+      position = createPosition(defaultJd, profile);
+    }
+    const nextState: BackendState = {
+      ...state,
+      profile,
+      positions: position ? [position, ...state.positions] : state.positions,
+      journeyState: "ready",
+    };
+    db.saveState(nextState, userId);
     if (db.db) {
       db.db.prepare("insert into audit_events(id, user_id, action, detail, created_at) values (?, ?, ?, ?, ?)")
         .run(makeId("audit"), userId, "onboarding", JSON.stringify(body), nowIso());
     }
-    return { ok: true };
+    const nextStep = profile.resumeText.trim() ? "intake_jd" as const : "import_resume" as const;
+    return { ok: true, profile, position, nextStep };
   });
 
   // Growth tasks
   app.get("/api/growth/tasks", async (request) => {
     const userId = request.session?.userId;
-    if (!userId) return { tasks: [], streak: 0 };
+    if (!userId) return { tasks: [], streak: 0, recentDays: [] };
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -250,9 +266,37 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       const streakRow = db.db.prepare(
         "select count(distinct date(completed_at)) as streak from growth_tasks where user_id = ?",
       ).get(userId) as { streak: number } | undefined;
-      return { tasks, streak: streakRow?.streak ?? 0 };
+      // Recent 7 days for calendar
+      const recentDaysRows = db.db.prepare(
+        "select distinct date(completed_at) as day from growth_tasks where user_id = ? and completed_at >= ? order by day desc limit 7",
+      ).all(userId, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) as Array<{ day: string }>;
+      return { tasks, streak: streakRow?.streak ?? 0, recentDays: recentDaysRows.map((r) => r.day) };
     }
-    return { tasks: [], streak: 0 };
+    return { tasks: [], streak: 0, recentDays: [] };
+  });
+
+  app.post("/api/growth/tasks", async (request) => {
+    const userId = request.session?.userId;
+    if (!userId) return { ok: false, error: "UNAUTHORIZED" };
+    const body = request.body as { type?: string; source?: string; sourceId?: string; title?: string };
+    if (!body.type) return { ok: false, error: "MISSING_TYPE" };
+    const id = makeId("gtask");
+    const now = nowIso();
+    if (db.db) {
+      db.db.prepare("insert into growth_tasks(id, user_id, task_type, completed_at, meta) values (?, ?, ?, ?, ?)")
+        .run(id, userId, body.type, now, JSON.stringify({ source: body.source, sourceId: body.sourceId, title: body.title }));
+    }
+    // Return updated tasks
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (db.db) {
+      const rows = db.db.prepare(
+        "select task_type, completed_at from growth_tasks where user_id = ? and completed_at >= ? order by completed_at desc",
+      ).all(userId, today.toISOString()) as Array<{ task_type: string; completed_at: string }>;
+      const tasks = rows.map((r) => ({ type: r.task_type, completedAt: r.completed_at }));
+      return { ok: true, tasks };
+    }
+    return { ok: true, tasks: [] };
   });
 
   // Feedback
@@ -293,7 +337,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     const userId = request.session?.userId;
     if (!userId) return { ok: false, error: "UNAUTHORIZED" };
     // Soft delete: clear user state
-    const empty: BackendState = { profile: createInitialAppState().profile, positions: [], records: [] };
+    const empty: BackendState = { profile: createInitialAppState().profile, positions: [], records: [], journeyState: "guest" };
     db.saveState(empty, userId);
     if (db.db) {
       db.db.prepare("insert into audit_events(id, user_id, action, detail, created_at) values (?, ?, ?, ?, ?)")
@@ -580,6 +624,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       profile: body.profile,
       positions: body.positions,
       records: Array.isArray(body.interviewRecords) ? body.interviewRecords : [],
+      journeyState: "ready",
     };
     db.saveState(state);
     state.records.forEach((record) => db.saveRecord(record));
@@ -626,6 +671,7 @@ function toClientAppState(
     interviewRecords: state.records,
     activeRecordId,
     aiMode: true,
+    journeyState: state.journeyState ?? "guest",
   };
 }
 

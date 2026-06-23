@@ -10,9 +10,13 @@ import type {
   Position,
   SpeechMetrics,
   InterviewAiMeta,
+  LifecycleTask,
+  GrowthTask,
+  OnboardingPayload,
+  UserJourneyState,
 } from "../src/types";
 
-export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewAiMeta, InterviewQuestion, InterviewRecord, MockDecision, MockMessage, Position, SpeechMetrics };
+export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewAiMeta, InterviewQuestion, InterviewRecord, LifecycleTask, GrowthTask, MockDecision, MockMessage, OnboardingPayload, Position, SpeechMetrics, UserJourneyState };
 
 export interface TranscriptTurn {
   id: string;
@@ -157,8 +161,16 @@ export interface BackendState {
   profile: CandidateProfile;
   positions: Position[];
   records: InterviewRecord[];
+  journeyState: UserJourneyState;
 }
 
 export interface ApiStateSnapshot extends BackendState {
   activePositionId: string;
+}
+
+export interface OnboardingResponse {
+  ok: boolean;
+  profile: CandidateProfile;
+  position?: Position;
+  nextStep: "intake_jd" | "import_resume" | "start_mock";
 }

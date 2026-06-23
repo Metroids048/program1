@@ -8,6 +8,8 @@ export type StageId =
   | "records"
   | "recordReport";
 
+export type UserJourneyState = "guest" | "onboarding" | "ready" | "preparing" | "interviewing" | "reviewing" | "returning";
+
 export type ApplicationStatus = "planning" | "applied" | "interviewing" | "offer" | "closed";
 
 export type QuestionCategory = string;
@@ -249,6 +251,33 @@ export interface InterviewReport {
   improvementPoints?: string[];
   suggestedNextPractice?: string;
   source?: "model" | "local";
+  followUpTasks?: LifecycleTask[];
+}
+
+export interface LifecycleTask {
+  id: string;
+  type: "mock_session" | "cue_card" | "review_questions" | "resume_optimize" | "daily_login" | "import_resume" | "intake_jd";
+  source: "record" | "cueCard" | "resume" | "system" | "manual";
+  sourceId: string;
+  title: string;
+  status: "pending" | "completed";
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface GrowthTask {
+  type: string;
+  completedAt: string;
+}
+
+export interface OnboardingPayload {
+  displayName?: string;
+  targetRole?: string;
+  city?: string;
+  experience?: string;
+  stage?: string;
+  resumeText?: string;
+  entryPath?: string;
 }
 
 export interface SubscriptionPlan {
@@ -318,4 +347,5 @@ export interface AppState {
   interviewRecords: InterviewRecord[];
   activeRecordId: string;
   aiMode: boolean;
+  journeyState: UserJourneyState;
 }

@@ -58,12 +58,14 @@ function useMobileNav() {
 export function AppShell({
   activeNav,
   accountName,
+  isLoggedIn,
   onNavigate,
   onAccount,
   children,
 }: {
   activeNav: PrimaryRouteName;
   accountName: string;
+  isLoggedIn: boolean;
   onNavigate: (route: PrimaryRouteName) => void;
   onAccount: () => void;
   children: ReactNode;
@@ -94,7 +96,7 @@ export function AppShell({
             </span>
           )}
         </button>
-        {!isMobile ? (
+        {!isMobile && isLoggedIn ? (
           <button
             className="shell-collapse-button"
             type="button"
@@ -111,49 +113,67 @@ export function AppShell({
         ) : null}
       </div>
 
-      <nav className="shell-nav" aria-label="主导航">
-        {NAV_GROUPS.map((group, groupIndex) => (
-          <Fragment key={group.title ?? `group-${groupIndex}`}>
-            {groupIndex > 0 ? <div className="shell-nav-divider" aria-hidden="true" /> : null}
-            {group.title && (expanded || isMobile) ? <span className="shell-nav-group-label">{group.title}</span> : null}
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const active = item.id === activeNav;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={active ? "shell-nav-item active" : "shell-nav-item"}
-                  aria-current={active ? "page" : undefined}
-                  aria-label={item.label}
-                  title={item.label}
-                  onClick={() => {
-                    onNavigate(item.id);
-                    closeMobileDrawer();
-                  }}
-                >
-                  <span className="shell-nav-icon">
-                    <Icon size={18} />
-                  </span>
-                  {expanded || isMobile ? <span className="shell-nav-label">{item.label}</span> : null}
-                </button>
-              );
-            })}
-          </Fragment>
-        ))}
-      </nav>
+      {isLoggedIn ? (
+        <>
+          <nav className="shell-nav" aria-label="主导航">
+            {NAV_GROUPS.map((group, groupIndex) => (
+              <Fragment key={group.title ?? `group-${groupIndex}`}>
+                {groupIndex > 0 ? <div className="shell-nav-divider" aria-hidden="true" /> : null}
+                {group.title && (expanded || isMobile) ? <span className="shell-nav-group-label">{group.title}</span> : null}
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.id === activeNav;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={active ? "shell-nav-item active" : "shell-nav-item"}
+                      aria-current={active ? "page" : undefined}
+                      aria-label={item.label}
+                      title={item.label}
+                      onClick={() => {
+                        onNavigate(item.id);
+                        closeMobileDrawer();
+                      }}
+                    >
+                      <span className="shell-nav-icon">
+                        <Icon size={18} />
+                      </span>
+                      {expanded || isMobile ? <span className="shell-nav-label">{item.label}</span> : null}
+                    </button>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </nav>
 
-      <button className="shell-account" type="button" onClick={onAccount} aria-label={`${accountName || "候选人"}，打开账户与数据`}>
-        <span className="shell-nav-icon">
-          <UserRound size={18} />
-        </span>
-        {(expanded || isMobile) && (
-          <span className="shell-account-copy">
-            <strong>{accountName || "候选人"}</strong>
-            <small>账户与数据</small>
-          </span>
-        )}
-      </button>
+          <button className="shell-account" type="button" onClick={onAccount} aria-label={`${accountName || "候选人"}，打开账户与数据`}>
+            <span className="shell-nav-icon">
+              <UserRound size={18} />
+            </span>
+            {(expanded || isMobile) && (
+              <span className="shell-account-copy">
+                <strong>{accountName || "候选人"}</strong>
+                <small>账户与数据</small>
+              </span>
+            )}
+          </button>
+        </>
+      ) : (
+        <nav className="shell-nav" aria-label="访客导航">
+          <button
+            type="button"
+            className="shell-nav-item"
+            onClick={() => {
+              onNavigate("authLogin");
+              closeMobileDrawer();
+            }}
+          >
+            <span className="shell-nav-icon"><UserRound size={18} /></span>
+            {(expanded || isMobile) && <span className="shell-nav-label">登录 / 注册</span>}
+          </button>
+        </nav>
+      )}
     </>
   );
 
@@ -171,11 +191,17 @@ export function AppShell({
             </button>
             <div className="mobile-topbar-copy">
               <strong>AI 求职台</strong>
-              <small>{PRIMARY_NAV.find((item) => item.id === activeNav)?.label ?? "岗位台"}</small>
+              <small>{isLoggedIn ? (PRIMARY_NAV.find((item) => item.id === activeNav)?.label ?? "岗位台") : "面试准备"}</small>
             </div>
-            <button className="mobile-topbar-button" type="button" onClick={onAccount} aria-label="打开账户与数据">
-              <UserRound size={18} />
-            </button>
+            {isLoggedIn ? (
+              <button className="mobile-topbar-button" type="button" onClick={onAccount} aria-label="打开账户与数据">
+                <UserRound size={18} />
+              </button>
+            ) : (
+              <button className="mobile-topbar-button" type="button" onClick={() => { onNavigate("authLogin"); closeMobileDrawer(); }} aria-label="登录">
+                <UserRound size={18} />
+              </button>
+            )}
           </header>
 
           {mobileDrawerOpen ? (

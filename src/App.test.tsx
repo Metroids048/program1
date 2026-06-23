@@ -7,6 +7,18 @@ import { createPosition, createProfile } from "./lib/interviewEngine";
 import { serializeAppState } from "./lib/store";
 import { saveUiPrefs } from "./lib/store";
 
+// Mock auth to always return logged-in for existing tests
+vi.mock("./lib/auth", () => ({
+  useAuth: () => ({
+    session: { userId: "test-user", phone: "13800138000", displayName: "测试用户" },
+    loading: false,
+    isLoggedIn: true,
+    getToken: () => "mock-token",
+    setAuth: vi.fn(),
+    clearAuth: vi.fn(),
+  }),
+}));
+
 type SpeechRecognitionMock = {
   start: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -51,6 +63,7 @@ function mockStateResponse() {
     positions: [],
     activePositionId: "",
     records: [],
+    journeyState: "ready",
   };
 }
 
@@ -62,6 +75,7 @@ function mockStateWithPosition() {
     positions: [position],
     activePositionId: position.id,
     records: [],
+    journeyState: "ready",
   };
 }
 
@@ -346,6 +360,7 @@ describe("App", () => {
       interviewRecords: [],
       activeRecordId: "",
       aiMode: true,
+      journeyState: "ready" as const,
     };
     const file = new File([serializeAppState(backupState)], "backup.json", { type: "application/json" });
     Object.defineProperty(file, "text", {

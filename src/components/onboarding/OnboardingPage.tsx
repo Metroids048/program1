@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, ArrowLeft, Check } from "lucide-react";
 import { navigateTo } from "../../lib/router";
+import type { OnboardingPayload, Position } from "../../types";
 
 interface Step {
   key: string;
@@ -18,10 +19,22 @@ const STEPS: Step[] = [
   { key: "resume", title: "简历导入", field: "resumeText", placeholder: "粘贴简历文字或点击下方上传（支持 .docx / .pdf）" },
 ];
 
-export function OnboardingPage() {
+interface OnboardingResponse {
+  ok: boolean;
+  profile: Record<string, unknown>;
+  position?: Position;
+  nextStep: "intake_jd" | "import_resume" | "start_mock";
+}
+
+export function OnboardingPage({
+  onComplete,
+}: {
+  onComplete?: (position?: Position) => void;
+}) {
   const [stepIndex, setStepIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
+  const [nextStep, setNextStep] = useState<"intake_jd" | "import_resume" | "start_mock">("intake_jd");
 
   const step = STEPS[stepIndex];
   if (!step) return null;
@@ -43,16 +56,47 @@ export function OnboardingPage() {
   };
 
   const submitOnboarding = async () => {
+    const payload: OnboardingPayload = {
+      targetRole: values.targetRole || undefined,
+      city: values.city || undefined,
+      experience: values.experience || undefined,
+      stage: values.stage || undefined,
+      resumeText: values.resumeText || undefined,
+      entryPath: "onboarding",
+    };
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as OnboardingResponse;
+      if (data.nextStep) setNextStep(data.nextStep);
+      if (data.position && onComplete) onComplete(data.position);
+    } catch {
+      // Best effort
+    }
+    setDone(true);
+  };
+
+  const handleSkip = async () => {
+    // Submit minimal onboarding
     try {
       await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ entryPath: "skip" }),
       });
     } catch {
       // Best effort
     }
     setDone(true);
+  };
+
+  const nextStepHint: Record<string, string> = {
+    intake_jd: "下一步建议：粘贴目标岗位 JD，系统会为你分析岗位要求并生成面试题。",
+    import_resume: "下一步建议：导入简历，让 AI 帮你提炼证据库并匹配岗位。",
+    start_mock: "下一步建议：直接进入模拟面试，体验 AI 面试官。",
   };
 
   if (done) {
@@ -64,7 +108,7 @@ export function OnboardingPage() {
           </div>
           <h2 className="onboarding-done-title">准备就绪</h2>
           <p className="onboarding-done-text">
-            现在可以创建你的第一个岗位，开始面试练习。
+            {nextStepHint[nextStep] || "现在可以创建你的第一个岗位，开始面试练习。"}
           </p>
           <button type="button" className="onboarding-done-btn" onClick={() => navigateTo("/", { replace: true })}>
             进入岗位台
@@ -128,7 +172,7 @@ export function OnboardingPage() {
           </button>
         </div>
 
-        <button type="button" className="onboarding-skip" onClick={() => setDone(true)}>
+        <button type="button" className="onboarding-skip" onClick={handleSkip}>
           跳过引导，直接开始
         </button>
       </div>

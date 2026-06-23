@@ -1,4 +1,4 @@
-import { AppState, InterviewQuestion, InterviewRecord, MockTurn, WorkspaceState } from "../types";
+import { AppState, InterviewQuestion, InterviewRecord, MockTurn, UserJourneyState, WorkspaceState } from "../types";
 import { repairAppState } from "./copy";
 import { buildInterviewReport, createInitialAppState, createPosition, createProfile, normalizePosition } from "./interviewEngine";
 
@@ -59,6 +59,18 @@ function normalizeQuestion(question: InterviewQuestion): InterviewQuestion {
   };
 }
 
+const JOURNEY_STATES: readonly UserJourneyState[] = ["guest", "onboarding", "ready", "preparing", "interviewing", "reviewing", "returning"];
+
+function isValidJourneyState(value: unknown): value is UserJourneyState {
+  return typeof value === "string" && (JOURNEY_STATES as readonly string[]).includes(value);
+}
+
+function deriveJourneyState(state: AppState): UserJourneyState {
+  if (state.positions.length === 0 && state.interviewRecords.length === 0) return "ready";
+  if (state.interviewRecords.length > 0) return "reviewing";
+  return "preparing";
+}
+
 function normalizeImportedState(state: AppState): AppState {
   const profile = {
     ...state.profile,
@@ -91,6 +103,7 @@ function normalizeImportedState(state: AppState): AppState {
       ? state.activePositionId
       : positions[0]?.id ?? "",
     aiMode: Boolean(state.aiMode),
+    journeyState: isValidJourneyState(state.journeyState) ? state.journeyState : deriveJourneyState(state),
   });
 }
 
@@ -103,7 +116,7 @@ function migrateLegacy(value: unknown): AppState | null {
   const position = createPosition(typeof legacy.jobText === "string" ? legacy.jobText : "", profile, { mockTurns: turns });
   const report = buildInterviewReport(position.mockTurns, position.questions, position.matchReport);
   const withReport = { ...position, report };
-  return { profile, positions: [withReport], activePositionId: withReport.id, interviewRecords: [], activeRecordId: "", aiMode: false };
+  return { profile, positions: [withReport], activePositionId: withReport.id, interviewRecords: [], activeRecordId: "", aiMode: false, journeyState: "guest" as UserJourneyState };
 }
 
 function readJson<T>(key: string): T | null {

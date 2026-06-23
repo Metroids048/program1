@@ -312,7 +312,23 @@ export function HomeDashboard({
             })}
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="home-position-section home-position-section-wide" aria-label="创建第一个岗位">
+          <div className="home-position-head">
+            <div>
+              <span className="subtle-label">开始准备</span>
+              <h2>创建你的第一个岗位</h2>
+            </div>
+          </div>
+          <div className="empty-card">
+            <div className="empty-card-icon">
+              <BriefcaseBusiness size={20} />
+            </div>
+            <h2>还没有岗位卡</h2>
+            <p>在上方粘贴一个真实 JD，或直接写岗位关键词，系统会帮你分析并生成面试准备资料。</p>
+          </div>
+        </section>
+      )}
     </section>
   );
 }

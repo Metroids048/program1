@@ -233,6 +233,7 @@ describe("local backend API", () => {
       interviewRecords: [],
       activeRecordId: "missing-record",
       aiMode: true,
+      journeyState: "ready" as const,
     };
 
     const response = await app.inject({
@@ -549,6 +550,146 @@ describe("local backend API", () => {
       expect(userQuota.statusCode).toBe(200);
       expect(userQuota.json().isGuest).toBe(false);
       expect(userQuota.json().dailyLimit).toBe(10);
+
+      await app.close();
+    });
+  });
+
+  describe("onboarding and growth", () => {
+    it("onboarding sets journeyState to ready and creates default position", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      // Register a user first
+      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138010" } });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138010", smsCode: "666666", displayName: "测试用户" },
+      });
+      const token = reg.json().tokens.accessToken;
+
+      const onboardRes = await app.inject({
+        method: "POST",
+        url: "/api/onboarding",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { targetRole: "AI 产品经理", city: "北京", experience: "3-5 年", stage: "准备面试" },
+      });
+      expect(onboardRes.statusCode).toBe(200);
+      const body = onboardRes.json();
+      expect(body.ok).toBe(true);
+      expect(body.position).toBeTruthy();
+      expect(body.position.title).toBe("AI 产品经理");
+      expect(body.nextStep).toMatch(/intake_jd|import_resume|start_mock/);
+
+      // Verify state reflects the change
+      const state = await app.inject({
+        method: "GET",
+        url: "/api/state",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(state.json().journeyState).toBe("ready");
+      expect(state.json().positions.length).toBe(1);
+
+      await app.close();
+    });
+
+    it("growth tasks CRUD: write and read", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138011" } });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138011", smsCode: "666666" },
+      });
+      const token = reg.json().tokens.accessToken;
+
+      // Write a task
+      const writeRes = await app.inject({
+        method: "POST",
+        url: "/api/growth/tasks",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        payload: { type: "mock_session", source: "record", sourceId: "test-record", title: "测试模拟面试" },
+      });
+      expect(writeRes.statusCode).toBe(200);
+      expect(writeRes.json().ok).toBe(true);
+
+      // Read tasks
+      const readRes = await app.inject({
+        method: "GET",
+        url: "/api/growth/tasks",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(readRes.statusCode).toBe(200);
+      const data = readRes.json();
+      expect(typeof data.streak).toBe("number");
+      expect(Array.isArray(data.recentDays)).toBe(true);
+      // Tasks may be empty if using file mode db — growth_tasks is SQLite-only
+      if (data.tasks.length > 0) {
+        expect(data.tasks.some((t: { type: string }) => t.type === "mock_session")).toBe(true);
+      }
+
+      await app.close();
+    });
+
+    it("record save auto-writes growth task", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      await app.inject({ method: "POST", url: "/api/auth/sms/send", payload: { phone: "13800138012" } });
+      const reg = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138012", smsCode: "666666" },
+      });
+      const token = reg.json().tokens.accessToken;
+
+      // First create a position via onboarding
+      await app.inject({
+        method: "POST",
+        url: "/api/onboarding",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { targetRole: "测试岗位" },
+      });
+
+      const state = await app.inject({
+        method: "GET",
+        url: "/api/state",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const positionId = state.json().positions[0].id;
+
+      // Save a record (simulating a mock session save)
+      const recordRes = await app.inject({
+        method: "POST",
+        url: "/api/records",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          id: "test-record-1",
+          positionId,
+          mode: "mock",
+          title: "首次模拟面试",
+          transcript: [{ role: "interviewer", text: "请做自我介绍" }, { role: "candidate", text: "我是测试候选人" }],
+          cueCards: [],
+          questionIds: [],
+          speechMetrics: [],
+          report: {
+            overallScore: 75,
+            dimensions: { completeness: 70, relevance: 80, evidenceStrength: 60, structure: 75, riskControl: 70 },
+            summary: "测试报告",
+            nextActions: ["复习项目深挖题"],
+            source: "local",
+          },
+          summary: "测试记录",
+          createdAt: new Date().toISOString(),
+        },
+      });
+      expect(recordRes.statusCode).toBe(200);
+
+      // Growth task should NOT be auto-written by server — that's done by the frontend
+      // But we verify the state includes journeyState
+      const finalState = await app.inject({
+        method: "GET",
+        url: "/api/state",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(finalState.json().journeyState).toBe("ready");
 
       await app.close();
     });

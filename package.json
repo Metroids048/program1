@@ -19,7 +19,8 @@
     "test:ai-success-smoke": "node node_modules/tsx/dist/cli.mjs scripts/ai-success-smoke.ts",
     "test:server": "node node_modules/vitest/vitest.mjs run server/index.test.ts --configLoader runner",
     "test:app": "node node_modules/vitest/vitest.mjs run src/App.test.tsx --configLoader runner",
-    "verify": "npm run lint && npm run typecheck:server && npm run test && npm run build"
+    "verify": "npm run lint && npm run typecheck:server && npm run test && npm run build",
+    "sync:github": "node scripts/sync-to-github.mjs"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.2.9",

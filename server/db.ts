@@ -118,7 +118,7 @@ function createSqliteDb(db: Database.Database): AppDb {
       const raw = db.prepare("select json from app_state where id = ?").get(key) as { json: string } | undefined;
       if (raw) return JSON.parse(raw.json) as BackendState;
       const initial = createInitialAppState();
-      const state: BackendState = { profile: initial.profile, positions: initial.positions, records: [] };
+      const state: BackendState = { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
       this.saveState(state, userId);
       return state;
     },
@@ -407,7 +407,7 @@ function createFileDb(filePath: string): AppDb {
     if (!existsSync(filePath)) {
       const initial = createInitialAppState();
       return {
-        state: { profile: initial.profile, positions: initial.positions, records: [] },
+        state: { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" },
         cueCards: [],
         records: [],
         searchResults: [],
@@ -425,7 +425,7 @@ function createFileDb(filePath: string): AppDb {
     const parsed = JSON.parse(readFileSync(filePath, "utf8")) as Partial<FileStore>;
     const initial = createInitialAppState();
     return {
-      state: parsed.state ?? { profile: initial.profile, positions: initial.positions, records: [] },
+      state: parsed.state ?? { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" },
       cueCards: parsed.cueCards ?? [],
       records: parsed.records ?? [],
       searchResults: parsed.searchResults ?? [],
@@ -639,6 +639,7 @@ export function upsertPosition(state: BackendState, position: Position): Backend
 export function toApiSnapshot(state: BackendState, activePositionId?: string): ApiStateSnapshot {
   return {
     ...state,
+    journeyState: state.journeyState ?? "guest",
     activePositionId: state.positions.some((position) => position.id === activePositionId) ? activePositionId! : state.positions[0]?.id ?? "",
   };
 }

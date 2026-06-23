@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
 import { HomeDashboard } from "./components/home";
 import { DEFAULT_CONFIG, type InterviewConfig, makeId, nowIso } from "./components/shared";
+import { useAuth } from "./lib/auth";
 import {
   fetchStateSnapshot,
   saveRecordOnServer,
@@ -30,6 +32,7 @@ import type {
   PositionIntakeFieldKey,
   PositionMaterial,
   SpeechMetrics,
+  UserJourneyState,
 } from "./types";
 import { LiveAssistantDashboard, InterviewRoomView } from "./components/live";
 import { AccountModal, RecordsView } from "./components/records";
@@ -47,6 +50,7 @@ type ServerSnapshot = {
   positions: Position[];
   activePositionId: string;
   records: InterviewRecord[];
+  journeyState?: UserJourneyState;
 };
 
 function toAppStateFromSnapshot(snapshot: ServerSnapshot, current?: AppState): AppState {
@@ -65,6 +69,7 @@ function toAppStateFromSnapshot(snapshot: ServerSnapshot, current?: AppState): A
         ? current.activeRecordId
         : records[0]?.id ?? "",
     aiMode: true,
+    journeyState: snapshot.journeyState ?? current?.journeyState ?? "guest",
   });
   return next;
 }
@@ -80,6 +85,7 @@ function replaceRecord(items: InterviewRecord[], nextRecord: InterviewRecord): I
 }
 
 export function App() {
+  const { isLoggedIn, loading: authLoading } = useAuth();
   const [appState, setAppState] = useState<AppState>(() => {
     const state = repairAppState(loadServerSnapshotCache());
     if (typeof window === "undefined") return state;
@@ -92,6 +98,37 @@ export function App() {
   });
   const [accountOpen, setAccountOpen] = useState(false);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
+  const redirectedRef = useRef(false);
+
+  // Auth gate: redirect to login if accessing protected route while not logged in
+  useEffect(() => {
+    if (authLoading) return;
+    const currentRoute = parseRoute(routePath);
+    const publicRoutes = new Set(["authLogin", "authRegister", "legalTerms", "legalPrivacy"]);
+    if (!isLoggedIn && !publicRoutes.has(currentRoute.name)) {
+      if (redirectedRef.current) return;
+      redirectedRef.current = true;
+      navigateTo("/auth/login", { replace: true });
+      setRoutePath("/auth/login");
+      return;
+    }
+    // Onboarding gate: if journeyState is onboarding, only allow onboarding and auth/legal
+    if (isLoggedIn && appState.journeyState === "onboarding" && currentRoute.name !== "onboarding" && !publicRoutes.has(currentRoute.name)) {
+      if (redirectedRef.current) return;
+      redirectedRef.current = true;
+      navigateTo("/onboarding", { replace: true });
+      setRoutePath("/onboarding");
+    }
+    redirectedRef.current = false;
+  }, [isLoggedIn, authLoading, appState.journeyState, routePath]);
+
+  // When user logs in, transition journeyState from guest to onboarding
+  useEffect(() => {
+    if (!authLoading && isLoggedIn && appState.journeyState === "guest") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAppState((current) => repairAppState({ ...current, journeyState: "onboarding" }));
+    }
+  }, [isLoggedIn, authLoading, appState.journeyState]);
 
   useEffect(() => {
     let active = true;
@@ -198,6 +235,7 @@ export function App() {
   };
 
   const updateResume = (resumeText: string) => {
+    const hasExistingResume = profile.resumeText.trim().length > 0;
     void updateProfileOnServer({
       resumeText,
       evidenceLibrary: profile.evidenceLibrary,
@@ -213,6 +251,19 @@ export function App() {
           },
         }));
       });
+    // Auto-write growth task on first resume import
+    if (!hasExistingResume && resumeText.trim().length > 0) {
+      void fetch("/api/growth/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "import_resume",
+          source: "resume",
+          sourceId: "manual",
+          title: "首次导入简历",
+        }),
+      }).catch(() => undefined);
+    }
   };
 
   const updateEvidence = (items: EvidenceItem[]) => {
@@ -351,6 +402,17 @@ export function App() {
         }));
       })
       .catch(() => undefined);
+    // Auto-write growth task
+    void fetch("/api/growth/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: payload.mode === "live" ? "cue_card" : "mock_session",
+        source: "record",
+        sourceId: record.id,
+        title: record.title,
+      }),
+    }).catch(() => undefined);
     openRoute("/records");
   };
 
@@ -370,6 +432,7 @@ export function App() {
     <AppShell
       activeNav={activeNav}
       accountName={profile.displayName || "候选人"}
+      isLoggedIn={isLoggedIn}
       onNavigate={(nav) => {
         if (nav === "home") openRoute("/");
         if (nav === "live") openRoute("/live");
@@ -387,11 +450,22 @@ export function App() {
         <AuthPage mode={route.name === "authLogin" ? "login" : "register"} />
       )}
 
-      {route.name === "onboarding" && <OnboardingPage />}
+      {route.name === "onboarding" && <OnboardingPage onComplete={(position) => {
+        if (position) {
+          patchState((current) => ({
+            ...current,
+            journeyState: "ready",
+            positions: current.positions.some((p) => p.id === position.id) ? current.positions : [position, ...current.positions],
+            activePositionId: current.activePositionId || position.id,
+          }));
+        } else {
+          patchState((current) => ({ ...current, journeyState: "ready" }));
+        }
+      }} />}
 
       {route.name === "growth" && <GrowthPage />}
 
-      {route.name === "account" && <AccountPage />}
+      {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
 
       {route.name === "legalTerms" && <LegalPage type="terms" />}
 
@@ -408,7 +482,7 @@ export function App() {
         />
       )}
 
-      {route.name === "live" && activeWorkspace && activePosition && (
+      {route.name === "live" && (activeWorkspace && activePosition ? (
         <LiveAssistantDashboard
           workspace={activeWorkspace}
           profile={profile}
@@ -416,9 +490,11 @@ export function App() {
           onSaveRecord={saveInterviewRecord}
           onSaveQuestion={addQuestionFromCueCard}
         />
-      )}
+      ) : (
+        <section className="page"><div className="empty-card"><div className="empty-card-icon"><BriefcaseBusiness size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入实时助手。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
+      ))}
 
-      {route.name === "mock" && activeWorkspace && activePosition && (
+      {route.name === "mock" && (activeWorkspace && activePosition ? (
         <InterviewRoomView
           workspace={activeWorkspace}
           profile={profile}
@@ -427,7 +503,9 @@ export function App() {
           onSaveQuestion={addQuestionFromCueCard}
           config={interviewConfig}
         />
-      )}
+      ) : (
+        <section className="page"><div className="empty-card"><div className="empty-card-icon"><Mic size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入模拟面试。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
+      ))}
 
       {route.name === "jd" && (
         <JdWorkspace
