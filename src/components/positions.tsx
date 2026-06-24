@@ -1,0 +1,560 @@
+import { ArrowRight, BriefcaseBusiness, ClipboardList, MessageCircle, Mic, Trash2 } from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
+import { repairText } from "../lib/copy";
+import { loadDraftState, saveDraftState } from "../lib/store";
+import type { Position } from "../types";
+import { QuotaBadge, configFromPreferences, DEFAULT_CONFIG, type InterviewConfig } from "./shared";
+
+function summarizePositionStatus(position: Position) {
+  if (position.mockTurns.length > 0 || position.report.overallScore > 0) return "已练习";
+  if (position.intake.configuredInterview) return "已配置";
+  if (position.intake.reviewStatus === "confirmed") return "待配置";
+  return "待完善";
+}
+
+function positionSummary(position: Position) {
+  if (position.analysisContext.priorityFocus.length > 0) return position.analysisContext.priorityFocus[0];
+  if (position.intake.missingFields.length > 0) return `待补：${position.intake.missingFields.map((item) => item.label).join("、")}`;
+  return "岗位信息已保存，可继续完善或开始练习。";
+}
+
+export function HomeDashboard({
+  positions,
+  activePositionId,
+  onSubmitJd,
+  onOpenPosition,
+  onOpenCreatedPosition,
+  onOpenMockList,
+  onOpenLive,
+  onRequireLogin,
+  isLoggedIn,
+}: {
+  positions: Position[];
+  activePositionId: string;
+  onSubmitJd: (
+    jobText: string,
+    options?: {
+      positionId?: string;
+      confirmedFields?: Array<{ key: string; value: string; source?: string }>;
+      messages?: Array<{ role: "assistant" | "user"; text: string }>;
+    },
+  ) => Promise<string | null> | string | null;
+  onOpenPosition: (positionId: string) => void;
+  onOpenCreatedPosition: (positionId: string) => void;
+  onOpenMockList: () => void;
+  onOpenLive: () => void;
+  onRequireLogin: (path: string) => void;
+  isLoggedIn: boolean;
+}) {
+  const activePosition = positions.find((item) => item.id === activePositionId) ?? positions[0];
+  const [input, setInput] = useState(() => loadDraftState().homeInput ?? "");
+  const recentPositions = useMemo(() => positions.slice(0, 4), [positions]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    if (!isLoggedIn) {
+      onRequireLogin("/");
+      return;
+    }
+    const previousMessages = activePosition?.intake.messages?.map((message) => ({ role: message.role, text: message.text })) ?? [];
+    const nextMessages = [...previousMessages, { role: "user" as const, text }];
+    const positionId = await onSubmitJd(text, { positionId: activePosition?.id, messages: nextMessages });
+    saveDraftState({ ...loadDraftState(), homeInput: "" });
+    setInput("");
+    if (positionId) onOpenCreatedPosition(positionId);
+  };
+
+  const updateInput = (value: string) => {
+    setInput(value);
+    saveDraftState({ ...loadDraftState(), homeInput: value });
+  };
+
+  return (
+    <section className="page page-home desktop-page">
+      <div className="home-stage home-stage-product">
+        <header className="home-hero home-hero-product">
+          <div className="home-hero-topline">
+            <span className="page-eyebrow">面试准备</span>
+            <QuotaBadge />
+          </div>
+          <h1>把岗位放进来，继续进入岗位完善对话</h1>
+          <p>首页只保留主输入和最小岗位上下文。提交岗位后直接进入完善对话，已有岗位卡则进入完整详情页。</p>
+        </header>
+
+        <div className="home-product-shell">
+          <section className="surface-card home-hero-input-card">
+            <div className="surface-card-inner">
+              <div className="section-row-header">
+                <div>
+                  <span className="subtle-label">主输入区</span>
+                  <h2>输入岗位或 JD</h2>
+                  <p>粘贴真实 JD、面试邀约或岗位背景，系统会先保存岗位，再进入岗位完善对话。</p>
+                </div>
+              </div>
+
+              <form className="home-intake-box home-intake-box-product" onSubmit={submit}>
+                <textarea
+                  id="home-intake-product"
+                  value={input}
+                  aria-label="首页主输入"
+                  onChange={(event) => updateInput(event.target.value)}
+                  placeholder="例如：腾讯 AI 产品经理实习，业务负责人一面，45 分钟，有完整 JD。"
+                />
+                <div className="home-intake-actions">
+                  <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim()}>
+                    保存并继续完善
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              </form>
+
+              <div className="home-suggestion-grid home-suggestion-grid-product">
+                {[
+                  "我有一场 AI 产品运营实习面试，先帮我整理岗位重点",
+                  "这是增长运营 JD，后面我想进入模拟面试",
+                  "帮我把这段招聘信息整理成岗位卡，再继续提问补全",
+                ].map((prompt) => (
+                  <button key={prompt} type="button" className="prompt-chip suggestion-chip" onClick={() => updateInput(prompt)}>
+                    <MessageCircle size={16} />
+                    <span>{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="surface-card home-hero-side-card">
+            <div className="surface-card-inner">
+              <div className="section-row-header">
+                <div>
+                  <span className="subtle-label">当前岗位</span>
+                  <h2>{activePosition ? `${repairText(activePosition.company) || "公司待确认"} · ${repairText(activePosition.title) || "岗位待确认"}` : "还没有岗位卡"}</h2>
+                  <p>实时助手保持独立入口；模拟面试会先进入岗位选择列表。</p>
+                </div>
+              </div>
+
+              <article className="home-mini-status-card">
+                <span>准备状态</span>
+                <strong>{activePosition ? summarizePositionStatus(activePosition) : "等待创建岗位"}</strong>
+                <p>{activePosition ? positionSummary(activePosition) : "保存一个岗位后，这里会显示最小岗位摘要。"} </p>
+              </article>
+
+              <div className="home-card-actions hero-actions-column">
+                <button className="button primary" type="button" onClick={() => {
+                  if (!isLoggedIn) {
+                    onRequireLogin("/live");
+                    return;
+                  }
+                  onOpenLive();
+                }}>
+                  <MessageCircle size={16} />
+                  进入实时助手
+                </button>
+                <button className="button secondary" type="button" onClick={() => {
+                  if (!isLoggedIn) {
+                    onRequireLogin("/mock/positions");
+                    return;
+                  }
+                  onOpenMockList();
+                }}>
+                  <Mic size={16} />
+                  进入模拟面试
+                </button>
+              </div>
+
+              {!isLoggedIn ? <p className="home-guest-hint">页面可以先看；点击进入、生成、保存、上传或开始练习时再登录。</p> : null}
+            </div>
+          </section>
+        </div>
+
+        <section className="home-position-strip">
+          <div className="section-row-header">
+            <div>
+              <span className="subtle-label">岗位卡</span>
+              <h2>最近岗位</h2>
+            </div>
+          </div>
+          {recentPositions.length > 0 ? (
+            <div className="home-position-grid">
+              {recentPositions.map((position) => (
+                <button key={position.id} type="button" className="home-position-card" onClick={() => onOpenPosition(position.id)}>
+                  <div className="home-position-head">
+                    <span className="home-position-icon"><BriefcaseBusiness size={16} /></span>
+                    <strong>{repairText(position.company) || "公司待确认"}</strong>
+                  </div>
+                  <p className="home-position-title">{repairText(position.title) || "岗位待确认"}</p>
+                  <span className="home-position-status">{summarizePositionStatus(position)}</span>
+                  <p className="home-position-summary">{positionSummary(position)}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-card compact">
+              <div className="empty-card-icon"><ClipboardList size={18} /></div>
+              <div>
+                <h2>还没有岗位卡</h2>
+                <p>先在上方输入岗位或 JD，系统会创建岗位卡并带你进入完善对话。</p>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+export function PositionDetailPage({
+  position,
+  onContinueConversation,
+  onOpenMockSetup,
+  onDelete,
+  onBackHome,
+}: {
+  position: Position;
+  onContinueConversation: () => void;
+  onOpenMockSetup: () => void;
+  onDelete: () => void;
+  onBackHome: () => void;
+}) {
+  return (
+    <section className="page desktop-page position-detail-page">
+      <header className="desktop-page-header">
+        <div className="desktop-page-title">
+          <span className="page-eyebrow">岗位详情</span>
+          <h1>{repairText(position.company) || "公司待确认"} · {repairText(position.title) || "岗位待确认"}</h1>
+          <p>{positionSummary(position)}</p>
+        </div>
+        <div className="record-report-actions">
+          <button className="button secondary compact-button" type="button" onClick={onBackHome}>返回首页</button>
+          <button className="button danger compact-button" type="button" onClick={onDelete}>
+            <Trash2 size={14} />
+            删除岗位
+          </button>
+        </div>
+      </header>
+
+      <div className="position-detail-layout">
+        <section className="surface-card position-detail-main">
+          <div className="surface-card-inner">
+            <div className="section-row-header">
+              <div>
+                <span className="subtle-label">左侧</span>
+                <h2>JD 与岗位信息</h2>
+              </div>
+            </div>
+            <div className="position-detail-group">
+              <strong>岗位状态</strong>
+              <p>{summarizePositionStatus(position)}</p>
+            </div>
+            <div className="position-detail-group">
+              <strong>已确认字段</strong>
+              <div className="position-detail-tags">
+                {position.intake.confirmedFields.length > 0 ? position.intake.confirmedFields.map((field) => (
+                  <span key={`${field.key}-${field.value}`} className="pill">{field.label}：{repairText(field.value)}</span>
+                )) : <span className="muted-copy">还没有用户确认字段。</span>}
+              </div>
+            </div>
+            <div className="position-detail-group">
+              <strong>原始 JD</strong>
+              <p className="position-detail-copy">{repairText(position.intake.rawJdText || position.jobText) || "还没有保存 JD 原文。"}</p>
+            </div>
+            <div className="position-detail-group">
+              <strong>准备重点</strong>
+              <ul className="simple-list">
+                {position.analysisContext.priorityFocus.slice(0, 4).map((item) => (
+                  <li key={item}>{repairText(item)}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <aside className="surface-card position-detail-side">
+          <div className="surface-card-inner">
+            <div className="section-row-header">
+              <div>
+                <span className="subtle-label">右侧</span>
+                <h2>面试配置与开始练习</h2>
+              </div>
+            </div>
+            <div className="position-detail-group">
+              <strong>当前配置</strong>
+              <p>{repairText(position.interviewPreferences.interviewerRole)} · {repairText(position.interviewPreferences.difficulty)} · {repairText(position.interviewPreferences.style)}</p>
+            </div>
+            <div className="position-detail-group">
+              <strong>练习进度</strong>
+              <p>{position.mockTurns.length > 0 ? `已完成 ${position.mockTurns.length} 轮回答` : "还没有开始模拟练习"}</p>
+            </div>
+            <div className="position-detail-actions">
+              <button className="button primary" type="button" onClick={onOpenMockSetup}>
+                <Mic size={16} />
+                去模拟配置
+              </button>
+              <button className="button secondary" type="button" onClick={onContinueConversation}>
+                <MessageCircle size={16} />
+                继续完善对话
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+export function PositionConversationPage({
+  position,
+  onSubmitMessage,
+  onOpenMockSetup,
+  onOpenDetail,
+}: {
+  position: Position;
+  onSubmitMessage: (
+    message: string,
+    options: {
+      positionId: string;
+      confirmedFields: Array<{ key: string; value: string; source?: string }>;
+      messages: Array<{ role: "assistant" | "user"; text: string }>;
+    },
+  ) => Promise<void> | void;
+  onOpenMockSetup: () => void;
+  onOpenDetail: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const messages = position.intake.messages;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = input.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    try {
+      const nextMessages = [...messages.map((message) => ({ role: message.role, text: message.text })), { role: "user" as const, text }];
+      const confirmedFields = position.intake.confirmedFields.map((field) => ({ key: field.key, value: field.value, source: field.source }));
+      await onSubmitMessage(text, {
+        positionId: position.id,
+        confirmedFields,
+        messages: nextMessages,
+      });
+      setInput("");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="page desktop-page position-conversation-page">
+      <header className="desktop-page-header">
+        <div className="desktop-page-title">
+          <span className="page-eyebrow">岗位完善对话</span>
+          <h1>{repairText(position.company) || "公司待确认"} · {repairText(position.title) || "岗位待确认"}</h1>
+          <p>对话会自动保存到当前岗位。补齐字段后，你可以直接去模拟配置，或回岗位详情页继续查看。</p>
+        </div>
+      </header>
+
+      <div className="position-conversation-shell">
+        <section className="surface-card position-conversation-main">
+          <div className="surface-card-inner">
+            <div className="position-conversation-thread">
+              {messages.map((message) => (
+                <article key={message.id} className={message.role === "user" ? "position-bubble user" : "position-bubble assistant"}>
+                  <span>{message.role === "user" ? "我" : "系统"}</span>
+                  <p>{repairText(message.text)}</p>
+                </article>
+              ))}
+            </div>
+
+            <form className="position-conversation-input" onSubmit={submit}>
+              <textarea
+                className="input textarea"
+                value={input}
+                aria-label="岗位完善输入"
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="继续补充公司、岗位、面试官、难度、时长或 JD 细节。"
+              />
+              <div className="cta-row">
+                <button className="button primary" type="submit" disabled={!input.trim() || saving}>
+                  {saving ? "保存中..." : "继续完善并自动保存"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <aside className="surface-card position-conversation-side">
+          <div className="surface-card-inner">
+            <div className="section-row-header">
+              <div>
+                <span className="subtle-label">当前岗位信息</span>
+                <h2>边聊边保存</h2>
+              </div>
+            </div>
+            <div className="position-detail-group">
+              <strong>已确认字段</strong>
+              <div className="position-detail-tags">
+                {position.intake.confirmedFields.length > 0 ? position.intake.confirmedFields.map((field) => (
+                  <span key={`${field.key}-${field.value}`} className="pill">{field.label}：{repairText(field.value)}</span>
+                )) : <span className="muted-copy">还没有确认字段。</span>}
+              </div>
+            </div>
+            <div className="position-detail-group">
+              <strong>待补字段</strong>
+              <p>{position.intake.missingFields.length > 0 ? position.intake.missingFields.map((field) => field.label).join("、") : "当前关键信息已基本齐全。"} </p>
+            </div>
+            <div className="position-detail-actions">
+              <button className="button primary" type="button" onClick={onOpenMockSetup}>
+                <Mic size={16} />
+                去模拟配置
+              </button>
+              <button className="button secondary" type="button" onClick={onOpenDetail}>
+                返回岗位详情
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+export function MockPositionListPage({
+  positions,
+  onSelectPosition,
+}: {
+  positions: Position[];
+  onSelectPosition: (positionId: string) => void;
+}) {
+  return (
+    <section className="page desktop-page mock-position-list-page">
+      <header className="desktop-page-header">
+        <div className="desktop-page-title">
+          <span className="page-eyebrow">模拟面试</span>
+          <h1>先选择一个岗位</h1>
+          <p>模拟面试入口先经过岗位选择，再进入配置页，然后进入面试房间。</p>
+        </div>
+      </header>
+      {positions.length > 0 ? (
+        <div className="home-position-grid">
+          {positions.map((position) => (
+            <button key={position.id} type="button" className="home-position-card" onClick={() => onSelectPosition(position.id)}>
+              <div className="home-position-head">
+                <span className="home-position-icon"><BriefcaseBusiness size={16} /></span>
+                <strong>{repairText(position.company) || "公司待确认"}</strong>
+              </div>
+              <p className="home-position-title">{repairText(position.title) || "岗位待确认"}</p>
+              <span className="home-position-status">{position.mockTurns.length > 0 ? "可继续练习" : "进入配置"}</span>
+              <p className="home-position-summary">{positionSummary(position)}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-card">
+          <div className="empty-card-icon"><Mic size={20} /></div>
+          <div>
+            <h2>还没有岗位卡</h2>
+            <p>先回首页创建岗位，再进入模拟面试。</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function MockSetupPage({
+  position,
+  initialConfig,
+  onStart,
+}: {
+  position: Position;
+  initialConfig?: InterviewConfig;
+  onStart: (config: InterviewConfig) => void;
+}) {
+  const [config, setConfig] = useState<InterviewConfig>(initialConfig ?? configFromPreferences(position.interviewPreferences) ?? DEFAULT_CONFIG);
+
+  return (
+    <section className="page desktop-page mock-setup-page">
+      <div className="mock-setup-container">
+        <header className="desktop-page-header">
+          <div className="desktop-page-title">
+            <span className="page-eyebrow">模拟面试配置</span>
+            <h1>{repairText(position.company) || "公司待确认"} · {repairText(position.title) || "岗位待确认"}</h1>
+            <p>保留真正有决策价值的配置项，不展示预计题数和时长。</p>
+          </div>
+        </header>
+
+        <div className="mock-setup-grid refined-mock-setup-grid">
+          <section className="surface-card setup-card">
+            <div className="surface-card-inner">
+              <h2>岗位摘要</h2>
+              <div className="setup-field"><span className="setup-label">公司</span><strong>{repairText(position.company) || "待确认"}</strong></div>
+              <div className="setup-field"><span className="setup-label">岗位</span><strong>{repairText(position.title) || "待确认"}</strong></div>
+              <div className="setup-field"><span className="setup-label">准备重点</span><p className="jd-excerpt">{position.analysisContext.priorityFocus.slice(0, 3).join("；") || "暂无重点摘要"}</p></div>
+              <div className="setup-field"><span className="setup-label">练习状态</span><strong>{position.mockTurns.length > 0 ? "有历史练习，可继续" : "首次进入配置"}</strong></div>
+            </div>
+          </section>
+
+          <section className="surface-card setup-card">
+            <div className="surface-card-inner">
+              <h2>面试参数</h2>
+
+              <label className="setup-field">
+                <span className="setup-label">面试官角色</span>
+                <select className="setup-select" value={config.interviewerRole} onChange={(event) => setConfig((current) => ({ ...current, interviewerRole: event.target.value as InterviewConfig["interviewerRole"] }))}>
+                  <option value="HR">HR</option>
+                  <option value="上级">上级</option>
+                  <option value="业务负责人">业务负责人</option>
+                  <option value="CTO">CTO</option>
+                  <option value="CEO">CEO</option>
+                </select>
+              </label>
+
+              <label className="setup-field">
+                <span className="setup-label">难度</span>
+                <select className="setup-select" value={config.difficulty} onChange={(event) => setConfig((current) => ({ ...current, difficulty: event.target.value as InterviewConfig["difficulty"] }))}>
+                  <option value="正常">正常</option>
+                  <option value="压力面">压力面</option>
+                  <option value="地狱面">地狱面</option>
+                </select>
+              </label>
+
+              <label className="setup-field">
+                <span className="setup-label">风格</span>
+                <select className="setup-select" value={config.style} onChange={(event) => setConfig((current) => ({ ...current, style: event.target.value as InterviewConfig["style"] }))}>
+                  <option value="gentle">温和鼓励型</option>
+                  <option value="strict">专业严格型</option>
+                  <option value="pressure">压力测试型</option>
+                </select>
+              </label>
+
+              <label className="setup-field">
+                <span className="setup-label">性别</span>
+                <select className="setup-select" value={config.interviewerGender} onChange={(event) => setConfig((current) => ({ ...current, interviewerGender: event.target.value as InterviewConfig["interviewerGender"] }))}>
+                  <option value="女">女</option>
+                  <option value="男">男</option>
+                </select>
+              </label>
+
+              <label className="setup-field">
+                <span className="setup-label">提交方式</span>
+                <select className="setup-select" value={config.submitMode} onChange={(event) => setConfig((current) => ({ ...current, submitMode: event.target.value as InterviewConfig["submitMode"] }))}>
+                  <option value="manual">手动确认</option>
+                  <option value="auto">自动提交</option>
+                </select>
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <div className="mock-setup-actions">
+          <button className="button primary large-button" type="button" onClick={() => onStart(config)}>
+            <Mic size={18} />
+            {position.mockTurns.length > 0 ? "保存配置并进入练习" : "进入面试房间"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}

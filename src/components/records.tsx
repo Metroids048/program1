@@ -31,6 +31,7 @@ export function RecordsView({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveQuestionNote,
 }: {
   records: InterviewRecord[];
   positions: Position[];
@@ -40,6 +41,7 @@ export function RecordsView({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveQuestionNote: (payload: { question: string; notes: string }) => void;
 }) {
   const [mode, setMode] = useState<RecordsFilterMode>("all");
   const [positionId, setPositionId] = useState("all");
@@ -106,7 +108,7 @@ export function RecordsView({
 
       <section className="records-report-pane">
         {activeRecord ? (
-          <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} />
+          <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveQuestionNote={onSaveQuestionNote} />
         ) : (
           <div className="records-empty-shell">
             <EmptyState title="还没有面试记录" detail="完成一次实时助手或模拟练习后自动保存。" />
@@ -127,6 +129,7 @@ export function RecordReportView({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveQuestionNote,
 }: {
   record?: InterviewRecord;
   position?: Position;
@@ -134,6 +137,7 @@ export function RecordReportView({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveQuestionNote: (payload: { question: string; notes: string }) => void;
 }) {
   if (!record) {
     return (
@@ -147,7 +151,7 @@ export function RecordReportView({
 
   return (
     <section className="page page-record-detail desktop-page">
-      <RecordReportContent record={record} position={position} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} />
+      <RecordReportContent record={record} position={position} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveQuestionNote={onSaveQuestionNote} />
     </section>
   );
 }
@@ -159,6 +163,7 @@ function RecordReportContent({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveQuestionNote,
 }: {
   record: InterviewRecord;
   position?: Position;
@@ -166,6 +171,7 @@ function RecordReportContent({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveQuestionNote: (payload: { question: string; notes: string }) => void;
 }) {
   const [showMore, setShowMore] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -249,8 +255,19 @@ function RecordReportContent({
                 </button>
               ) : null}
               <div className="record-next-actions">
+                <button
+                  className="button secondary compact-button"
+                  type="button"
+                  onClick={() => {
+                    const firstQuestion = interviewerTurns[0]?.text || record.title;
+                    const shortNote = improvementPoints.slice(0, 2).map((item) => repairText(item)).join("；") || repairText(record.summary);
+                    onSaveQuestionNote({ question: firstQuestion, notes: shortNote });
+                  }}
+                >
+                  一键沉淀到问题记录
+                </button>
                 <button className="button secondary compact-button" type="button" onClick={onOpenQuestions}>
-                  去资料与题库沉淀问题
+                  去问题记录
                 </button>
                 <button className="button secondary compact-button" type="button" onClick={onOpenResume}>
                   去简历补证据

@@ -153,6 +153,7 @@ export interface MockSessionRecord {
   conversationHistory: ConversationMessage[];
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   aiMeta?: InterviewAiMeta;
 }
 

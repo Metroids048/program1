@@ -24,12 +24,12 @@ type NavItem = {
 };
 
 const PRIMARY_NAV: NavItem[] = [
-  { id: "home", label: "岗位台", icon: BriefcaseBusiness },
+  { id: "home", label: "首页", icon: BriefcaseBusiness },
   { id: "live", label: "实时助手", icon: Headphones },
   { id: "mock", label: "模拟面试", icon: Mic },
-  { id: "jd", label: "JD 解析", icon: FileSearch },
-  { id: "questions", label: "问题库", icon: ScrollText },
-  { id: "resume", label: "简历", icon: FileText },
+  { id: "jd", label: "JD分析", icon: FileSearch },
+  { id: "questions", label: "问题记录", icon: ScrollText },
+  { id: "resume", label: "我的简历", icon: FileText },
   { id: "records", label: "面试记录", icon: ClipboardList },
 ];
 

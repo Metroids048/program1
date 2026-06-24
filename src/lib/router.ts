@@ -1,7 +1,12 @@
 export type AppRoute =
   | { name: "home"; path: "/" }
+  | { name: "positionDetail"; path: `/positions/${string}`; positionId: string }
+  | { name: "positionConversation"; path: `/positions/${string}/conversation`; positionId: string }
   | { name: "live"; path: "/live" }
   | { name: "mock"; path: "/mock" }
+  | { name: "mockPositionList"; path: "/mock/positions" }
+  | { name: "mockSetup"; path: `/mock/setup/${string}`; positionId: string }
+  | { name: "mockRoom"; path: `/mock/room/${string}`; positionId: string }
   | { name: "jd"; path: "/jd" }
   | { name: "questions"; path: "/questions" }
   | { name: "resume"; path: "/resume" }
@@ -23,8 +28,25 @@ export type AppRoute =
 
 export function parseRoute(pathname: string): AppRoute {
   const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  if (pathname.startsWith("/positions/") && pathname.endsWith("/conversation")) {
+    const positionId = decodeURIComponent(pathname.slice("/positions/".length, -"/conversation".length));
+    return { name: "positionConversation", path: `/positions/${positionId}/conversation`, positionId };
+  }
+  if (pathname.startsWith("/positions/")) {
+    const positionId = decodeURIComponent(pathname.slice("/positions/".length));
+    return { name: "positionDetail", path: `/positions/${positionId}`, positionId };
+  }
   if (pathname === "/live") return { name: "live", path: "/live" };
   if (pathname === "/mock") return { name: "mock", path: "/mock" };
+  if (pathname === "/mock/positions") return { name: "mockPositionList", path: "/mock/positions" };
+  if (pathname.startsWith("/mock/setup/")) {
+    const positionId = decodeURIComponent(pathname.slice("/mock/setup/".length));
+    return { name: "mockSetup", path: `/mock/setup/${positionId}`, positionId };
+  }
+  if (pathname.startsWith("/mock/room/")) {
+    const positionId = decodeURIComponent(pathname.slice("/mock/room/".length));
+    return { name: "mockRoom", path: `/mock/room/${positionId}`, positionId };
+  }
   if (pathname === "/jd") return { name: "jd", path: "/jd" };
   if (pathname === "/questions") return { name: "questions", path: "/questions" };
   if (pathname === "/resume") return { name: "resume", path: "/resume" };

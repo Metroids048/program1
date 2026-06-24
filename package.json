@@ -18,8 +18,10 @@
     "test:full-flow": "node node_modules/tsx/dist/cli.mjs scripts/full-flow-retest.ts",
     "test:ai-success-smoke": "node node_modules/tsx/dist/cli.mjs scripts/ai-success-smoke.ts",
     "test:server": "node node_modules/vitest/vitest.mjs run server/index.test.ts --configLoader runner",
-    "test:app": "node node_modules/vitest/vitest.mjs run src/App.test.tsx --configLoader runner",
+    "test:app": "node node_modules/vitest/vitest.mjs run src/App.test.tsx src/components/positions.test.tsx src/components/questions.test.tsx src/components/records.test.tsx src/components/resume.test.tsx --configLoader runner",
+    "test:acceptance": "npm run test:app && npm run test:server && npm run test:full-flow && npm run test:ai-success-smoke",
     "verify": "npm run lint && npm run typecheck:server && npm run test && npm run build",
+    "verify:acceptance": "npm run verify && npm run test:acceptance",
     "sync:github": "node scripts/sync-to-github.mjs"
   },
   "dependencies": {

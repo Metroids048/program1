@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
-import { HomeDashboard } from "./components/home";
+import { HomeDashboard, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
 import { DEFAULT_CONFIG, type InterviewConfig, makeId, nowIso } from "./components/shared";
 import { useAuth } from "./lib/auth";
 import {
+  completeMockSessionOnServer,
+  deletePositionOnServer,
   fetchStateSnapshot,
+  getLatestMockSessionOnServer,
   saveRecordOnServer,
   updatePositionMaterialsOnServer,
+  updatePositionPreferencesOnServer,
   updatePositionQuestionsOnServer,
   updateProfileOnServer,
   upsertPositionIntakeOnServer,
@@ -175,11 +179,17 @@ export function App() {
   }, []);
 
   const { profile, positions, activePositionId, interviewRecords, activeRecordId } = appState;
-  const activePosition = positions.find((position) => position.id === activePositionId) ?? positions[0];
-  const activeWorkspace = activePosition ? toWorkspace(profile, activePosition) : null;
   const route = parseRoute(routePath);
+  const routePositionId =
+    route.name === "positionDetail" || route.name === "positionConversation" || route.name === "mockSetup" || route.name === "mockRoom"
+      ? route.positionId
+      : activePositionId;
+  const activePosition = positions.find((position) => position.id === routePositionId) ?? positions.find((position) => position.id === activePositionId) ?? positions[0];
+  const activeWorkspace = activePosition ? toWorkspace(profile, activePosition) : null;
   const activeNav: PrimaryRouteName =
     route.name === "recordDetail" ? "records" :
+    route.name === "positionDetail" || route.name === "positionConversation" ? "home" :
+    route.name === "mockSetup" || route.name === "mockRoom" || route.name === "mockPositionList" ? "mock" :
     route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" || route.name === "termsOfService" || route.name === "privacyPolicy" || route.name === "notFound" || route.name === "serverError" ? "home" :
     route.name === "account" ? "account" :
     route.name;
@@ -211,10 +221,40 @@ export function App() {
     setAppState((current) => toAppStateFromSnapshot(snapshot, current));
   };
 
-  const createOrUpdatePosition = (jobText: string, options?: { positionId?: string; confirmedFields?: Array<{ key: string; value: string; source?: string }>; messages?: Array<{ role: "assistant" | "user"; text: string }> }) => {
+  const openPositionDetail = (positionId: string) => {
+    patchState((current) => ({ ...current, activePositionId: positionId }));
+    openRoute(`/positions/${encodeURIComponent(positionId)}`);
+  };
+
+  const openPositionConversation = (positionId: string) => {
+    patchState((current) => ({ ...current, activePositionId: positionId }));
+    openRoute(`/positions/${encodeURIComponent(positionId)}/conversation`);
+  };
+
+  const openMockPositionList = () => {
+    openRoute("/mock/positions");
+  };
+
+  const openMockSetup = (positionId: string, config?: InterviewConfig) => {
+    patchState((current) => ({ ...current, activePositionId: positionId }));
+    if (config) setInterviewConfig(config);
+    openRoute(`/mock/setup/${encodeURIComponent(positionId)}`);
+  };
+
+  const openMockRoom = (positionId: string, config?: InterviewConfig) => {
+    patchState((current) => ({ ...current, activePositionId: positionId }));
+    if (config) setInterviewConfig(config);
+    openRoute(`/mock/room/${encodeURIComponent(positionId)}`);
+  };
+
+  const createOrUpdatePosition = async (
+    jobText: string,
+    options?: { positionId?: string; confirmedFields?: Array<{ key: string; value: string; source?: string }>; messages?: Array<{ role: "assistant" | "user"; text: string }> },
+  ): Promise<string | null> => {
     const trimmed = jobText.trim();
-    if (!trimmed) return;
-    void upsertPositionIntakeOnServer({
+    if (!trimmed) return null;
+    try {
+      const snapshot = await upsertPositionIntakeOnServer({
       positionId: options?.positionId,
       rawJdText: trimmed,
       inferredFields: [],
@@ -224,9 +264,12 @@ export function App() {
         source: "confirmed",
       })),
       messages: options?.messages,
-    })
-      .then((snapshot) => syncSnapshot(snapshot))
-      .catch(() => undefined);
+      });
+      syncSnapshot(snapshot);
+      return snapshot.activePositionId || snapshot.positions[0]?.id || null;
+    } catch {
+      return null;
+    }
   };
 
   const updateProfile = (next: { resumeText: string; evidenceLibrary: EvidenceItem[]; highlights: string[] }) => {
@@ -402,6 +445,11 @@ export function App() {
         }));
       })
       .catch(() => undefined);
+    if (payload.mode === "mock") {
+      void getLatestMockSessionOnServer(activePosition.id)
+        .then(({ session }) => completeMockSessionOnServer(session.id))
+        .catch(() => undefined);
+    }
     openRoute("/records");
   };
 
@@ -412,9 +460,28 @@ export function App() {
     setAccountOpen(false);
   };
 
-  const startConfiguredMock = (config = interviewConfig) => {
+  const deletePosition = async (positionId: string) => {
+    const snapshot = await deletePositionOnServer(positionId).catch(() => null);
+    if (!snapshot) return;
+    syncSnapshot(snapshot);
+    openRoute("/", { replace: true });
+  };
+
+  const updatePositionPreferences = async (positionId: string, config: InterviewConfig) => {
     setInterviewConfig(config);
-    openRoute("/mock");
+    const response = await updatePositionPreferencesOnServer(positionId, {
+      interviewerRole: config.interviewerRole,
+      difficulty: config.difficulty,
+      interviewerGender: config.interviewerGender,
+      submitMode: config.submitMode,
+      style: config.style,
+    }).catch(() => null);
+    if (response?.position) {
+      patchState((current) => ({
+        ...current,
+        positions: replacePosition(current.positions, response.position),
+      }));
+    }
   };
 
   return (
@@ -425,7 +492,7 @@ export function App() {
       onNavigate={(nav) => {
         if (nav === "home") openRoute("/");
         if (nav === "live") openRoute("/live");
-        if (nav === "mock") openRoute("/mock");
+        if (nav === "mock") openRoute("/mock/positions");
         if (nav === "jd") openRoute("/jd");
         if (nav === "questions") openRoute("/questions");
         if (nav === "resume") openRoute("/resume");
@@ -479,10 +546,37 @@ export function App() {
           positions={positions}
           activePositionId={activePositionId}
           onSubmitJd={createOrUpdatePosition}
-          onOpenMock={startConfiguredMock}
+          onOpenPosition={openPositionDetail}
+          onOpenCreatedPosition={openPositionConversation}
+          onOpenMockList={openMockPositionList}
           onOpenLive={() => openRoute("/live")}
           onRequireLogin={requireLoginFor}
           isLoggedIn={isLoggedIn}
+        />
+      )}
+
+      {route.name === "positionDetail" && activePosition && (
+        <PositionDetailPage
+          position={activePosition}
+          onContinueConversation={() => openPositionConversation(activePosition.id)}
+          onOpenMockSetup={() => openMockSetup(activePosition.id)}
+          onDelete={() => {
+            const confirmed = window.confirm("删除这个岗位后，该岗位的上传资料、问题资产和关联练习记录都会一起删除。是否继续？");
+            if (!confirmed) return;
+            void deletePosition(activePosition.id);
+          }}
+          onBackHome={() => openRoute("/")}
+        />
+      )}
+
+      {route.name === "positionConversation" && activePosition && (
+        <PositionConversationPage
+          position={activePosition}
+          onSubmitMessage={async (message, options) => {
+            await createOrUpdatePosition(message, options);
+          }}
+          onOpenMockSetup={() => openMockSetup(activePosition.id)}
+          onOpenDetail={() => openPositionDetail(activePosition.id)}
         />
       )}
 
@@ -500,7 +594,26 @@ export function App() {
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><BriefcaseBusiness size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入实时助手。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
       ))}
 
-      {route.name === "mock" && (activeWorkspace && activePosition ? (
+      {(route.name === "mock" || route.name === "mockPositionList") && (
+        <MockPositionListPage
+          positions={positions}
+          onSelectPosition={(positionId) => openMockSetup(positionId)}
+        />
+      )}
+
+      {route.name === "mockSetup" && activePosition && (
+        <MockSetupPage
+          position={activePosition}
+          initialConfig={interviewConfig}
+          onStart={(config) => {
+            void updatePositionPreferences(activePosition.id, config).finally(() => {
+              openMockRoom(activePosition.id, config);
+            });
+          }}
+        />
+      )}
+
+      {route.name === "mockRoom" && (activeWorkspace && activePosition ? (
         <InterviewRoomView
           workspace={activeWorkspace}
           profile={profile}
@@ -509,7 +622,7 @@ export function App() {
           onSaveQuestion={addQuestionFromCueCard}
           config={interviewConfig}
           isLoggedIn={isLoggedIn}
-          onRequireLogin={() => requireLoginFor("/mock")}
+          onRequireLogin={() => requireLoginFor(`/mock/room/${activePosition.id}`)}
         />
       ) : (
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><Mic size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入模拟面试。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
@@ -564,14 +677,22 @@ export function App() {
           }}
           onMock={() => {
             if (!isLoggedIn) {
-              requireLoginFor("/mock");
+              requireLoginFor("/mock/positions");
               return;
             }
-            startConfiguredMock();
+            openMockPositionList();
           }}
           onOpenQuestions={() => openRoute("/questions")}
           onOpenResume={() => openRoute("/resume")}
           onOpenJd={() => openRoute("/jd")}
+          onSaveQuestionNote={({ question, notes }) => {
+            addQuestion({
+              question,
+              category: "复盘沉淀",
+              difficulty: "进阶",
+              notes,
+            });
+          }}
         />
       )}
 

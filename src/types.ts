@@ -11,6 +11,7 @@ export type StageId =
 export type UserJourneyState = "guest" | "onboarding" | "ready" | "preparing" | "interviewing" | "reviewing" | "returning";
 
 export type ApplicationStatus = "planning" | "applied" | "interviewing" | "offer" | "closed";
+export type PositionProgressStatus = "draft" | "saved" | "configured" | "practiced";
 
 export type QuestionCategory = string;
 export type QuestionDifficulty = string;
@@ -330,6 +331,7 @@ export interface Position {
   interviewPreferences: InterviewPreferences;
   analysisContext: PositionAnalysisContext;
   status: ApplicationStatus;
+  progressStatus?: PositionProgressStatus;
   notes: string;
   createdAt: string;
   updatedAt: string;

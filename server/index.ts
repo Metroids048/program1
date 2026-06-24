@@ -133,6 +133,14 @@ const QuestionsBody = z.object({
   ),
 });
 
+const PreferencesBody = z.object({
+  interviewerRole: z.enum(["HR", "上级", "CEO", "CTO", "业务负责人"]),
+  difficulty: z.enum(["正常", "压力面", "地狱面"]),
+  interviewerGender: z.enum(["女", "男"]),
+  submitMode: z.enum(["manual", "auto"]),
+  style: z.enum(["gentle", "strict", "pressure"]),
+});
+
 const ResumeAiBody = z.object({
   positionId: z.string().optional(),
   action: z.enum(["section", "full", "match"]),
@@ -420,6 +428,39 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     }
   });
 
+  app.post<{ Params: { id: string } }>("/api/positions/:id/preferences", async (request, reply) => {
+    const body = PreferencesBody.parse(request.body);
+    try {
+      const position = orchestrator.updatePositionPreferences(request.params.id, body);
+      return { position };
+    } catch (error) {
+      if (String(error).includes("POSITION_NOT_FOUND")) {
+        return reply.code(404).send({ error: "POSITION_NOT_FOUND" });
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { id: string } }>("/api/positions/:id/mock-session", async (request, reply) => {
+    const session = orchestrator.getLatestActiveMockSession(request.params.id);
+    if (!session) {
+      return reply.code(404).send({ error: "MOCK_SESSION_NOT_FOUND" });
+    }
+    return { session };
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/positions/:id", async (request, reply) => {
+    try {
+      const state = orchestrator.removePosition(request.params.id);
+      return toApiSnapshot(state);
+    } catch (error) {
+      if (String(error).includes("POSITION_NOT_FOUND")) {
+        return reply.code(404).send({ error: "POSITION_NOT_FOUND" });
+      }
+      throw error;
+    }
+  });
+
   app.post("/api/copilot/cue-card/stream", async (request, reply) => {
     const quotaInfo = requireQuota("cue-card");
     const parsed = CueCardBody.safeParse(request.body);
@@ -540,6 +581,11 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       meta: result.meta,
       conversationHistory: result.conversationHistory,
     };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/mock/session/:id/complete", async (request) => {
+    orchestrator.completeMockSession(request.params.id);
+    return { ok: true };
   });
 
   app.post("/api/records", async (request) => {

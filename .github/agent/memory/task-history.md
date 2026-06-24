@@ -1,5 +1,46 @@
 # Task History
 
+## [TASK-2026-06-24-disaster-iteration-recovery]
+
+- Date: 2026-06-24
+- Type: fix
+- Summary: 按“灾难迭代整顿计划”恢复七主导航与多页面主线，修复岗位抽屉误降级资料库/简历、修正 mock 进入链路的双重配置页，并根治后端 mock answer 因 FTS5 查询污染导致的 500。
+- Files:
+  - `src/App.tsx`
+  - `src/components/jobs.tsx`
+  - `src/components/live.tsx`
+  - `src/components/mock-setup.tsx`
+  - `src/components/questions.tsx`
+  - `server/db.ts`
+  - `server/index.ts`
+  - `server/orchestrator.ts`
+- Verified:
+  - `npm run lint`
+  - `npm run typecheck:server`
+  - `npm test`
+  - `npm run build`
+  - `npm run verify`
+- Notes:
+  - Codex 无渲染层验收，本轮以 `verify`、Vitest 和 Fastify inject 接口链路为验收证据
+  - `server/index.test.ts` 两条 mock 主链路已恢复通过
+  - `lint` 仍保留既有 `react-refresh/only-export-components` warnings，无新增 error
+
+## [TASK-2026-06-24-startup-cache-compat-fix]
+
+- Date: 2026-06-24
+- Type: fix
+- Summary: 修复真实浏览器启动即进入异常页的问题。根因是前端读取旧版 `serverSnapshotCache` 后，`normalizePosition()` 未把岗位对象补齐到完整新结构，导致 `repairAppState()` 访问缺失的 `job/report/answers` 时直接抛错并落入根 `ErrorBoundary`。
+- Files:
+  - `src/lib/interviewEngine.ts`
+  - `src/App.test.tsx`
+- Verified:
+  - 旧缓存最小复现脚本：`loadServerSnapshotCache()` 不再抛错
+  - `node node_modules/vitest/vitest.mjs run src/App.test.tsx -t "survives startup when browser cache still contains an old app snapshot" --reporter=verbose`
+  - `npm run verify`
+- Notes:
+  - 这是“真实本地缓存兼容性”问题，不是后端 500，也不是路由本身跳错
+  - 结论来自本地复现脚本与新增回归测试，不依赖浏览器插件
+
 ## [TASK-2026-06-19-public-mvp-closeout]
 
 - Date: 2026-06-19

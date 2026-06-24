@@ -26,7 +26,7 @@ export interface CueCardStreamResult {
 export interface MockSessionResult {
   sessionId: string;
   question: string;
-  backendStatus?: "success" | "fallback";
+  backendStatus?: "success" | "fallback" | "cache";
   questionSource?: string;
   meta?: AiRunMeta;
   conversationHistory?: ConversationMessage[];
@@ -47,6 +47,16 @@ export interface MockAnswerResult {
   backendStatus?: "success" | "fallback";
   meta?: AiRunMeta;
   conversationHistory?: ConversationMessage[];
+}
+
+export interface StoredMockSession {
+  id: string;
+  positionId: string;
+  config?: Record<string, unknown>;
+  conversationHistory: ConversationMessage[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
 }
 
 export interface ResumeAiRequest {
@@ -156,6 +166,32 @@ export async function updatePositionQuestionsOnServer(positionId: string, questi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ questions }),
   });
+  return readJson(response);
+}
+
+export async function updatePositionPreferencesOnServer(
+  positionId: string,
+  preferences: Position["interviewPreferences"],
+): Promise<{ position: Position }> {
+  const response = await apiFetch(`/api/positions/${encodeURIComponent(positionId)}/preferences`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preferences),
+  });
+  return readJson(response);
+}
+
+export async function deletePositionOnServer(
+  positionId: string,
+): Promise<{ profile: CandidateProfile; positions: Position[]; activePositionId: string; records: InterviewRecord[] }> {
+  const response = await apiFetch(`/api/positions/${encodeURIComponent(positionId)}`, {
+    method: "DELETE",
+  });
+  return readJson(response);
+}
+
+export async function getLatestMockSessionOnServer(positionId: string): Promise<{ session: StoredMockSession }> {
+  const response = await apiFetch(`/api/positions/${encodeURIComponent(positionId)}/mock-session`);
   return readJson(response);
 }
 
@@ -270,6 +306,13 @@ export async function answerMockSessionOnServer(input: MockAnswerInput): Promise
       answer: input.answer,
       transcript: input.transcript,
     }),
+  });
+  return readJson(response);
+}
+
+export async function completeMockSessionOnServer(sessionId: string): Promise<{ ok: true }> {
+  const response = await apiFetch(`/api/mock/session/${encodeURIComponent(sessionId)}/complete`, {
+    method: "POST",
   });
   return readJson(response);
 }

@@ -31,9 +31,11 @@ export interface AppDb {
   savePromptRun(run: PromptRun): void;
   saveMockSession(session: MockSessionRecord): void;
   getMockSession(id: string): MockSessionRecord | undefined;
+  getLatestActiveMockSession(positionId: string): MockSessionRecord | undefined;
   getCachedCueCard(key: string): AnswerCueCard | undefined;
   saveCachedCueCard(key: string, card: AnswerCueCard, positionId: string): void;
   deleteCachedCueCardsByPosition(positionId: string): void;
+  deletePositionArtifacts(positionId: string): void;
   upsertDocument(document: RagDocument): void;
   replaceDocumentChunks(documentId: string, chunks: RagChunk[]): void;
   deleteDocument(sourceType: RagSourceType, sourceId: string): void;
@@ -239,6 +241,12 @@ function createSqliteDb(db: Database.Database): AppDb {
       const row = db.prepare("select json from mock_sessions where id = ?").get(id) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as MockSessionRecord) : undefined;
     },
+    getLatestActiveMockSession(positionId) {
+      const rows = db.prepare("select json from mock_sessions where position_id = ? order by updated_at desc").all(positionId) as Array<{ json: string }>;
+      return rows
+        .map((row) => JSON.parse(row.json) as MockSessionRecord)
+        .find((session) => !session.completedAt);
+    },
     getCachedCueCard(key) {
       const row = db.prepare("select json from cue_card_cache where cache_key = ?").get(key) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as AnswerCueCard) : undefined;
@@ -248,6 +256,15 @@ function createSqliteDb(db: Database.Database): AppDb {
     },
     deleteCachedCueCardsByPosition(positionId) {
       db.prepare("delete from cue_card_cache where position_id = ?").run(positionId);
+    },
+    deletePositionArtifacts(positionId) {
+      db.prepare("delete from cue_card_cache where position_id = ?").run(positionId);
+      db.prepare("delete from mock_sessions where position_id = ?").run(positionId);
+      db.prepare("delete from interview_records where json_extract(json, '$.positionId') = ?").run(positionId);
+      this.deleteDocumentsBySource("jd", positionId);
+      this.deleteDocumentsBySource("question", positionId);
+      this.deleteDocumentsBySource("material", positionId);
+      this.deleteDocumentsBySource("record", positionId);
     },
     upsertDocument(document) {
       db.prepare(
@@ -586,6 +603,11 @@ function createFileDb(filePath: string): AppDb {
     getMockSession(id) {
       return readStore().mockSessions.find((item) => item.id === id);
     },
+    getLatestActiveMockSession(positionId) {
+      return readStore().mockSessions
+        .filter((item) => item.positionId === positionId && !item.completedAt)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    },
     getCachedCueCard(key) {
       return readStore().cueCardCache.find((item) => item.cacheKey === key)?.card;
     },
@@ -600,6 +622,24 @@ function createFileDb(filePath: string): AppDb {
     },
     deleteCachedCueCardsByPosition(positionId) {
       replace((store) => ({ ...store, cueCardCache: store.cueCardCache.filter((item) => item.positionId !== positionId) }));
+    },
+    deletePositionArtifacts(positionId) {
+      replace((store) => {
+        const remainingRecords = store.records.filter((item) => item.positionId !== positionId);
+        return {
+          ...store,
+          records: remainingRecords,
+          mockSessions: store.mockSessions.filter((item) => item.positionId !== positionId),
+          cueCardCache: store.cueCardCache.filter((item) => item.positionId !== positionId),
+          documents: store.documents.filter((item) => item.positionId !== positionId),
+          documentChunks: store.documentChunks.filter((item) => item.positionId !== positionId),
+          state: {
+            ...store.state,
+            positions: store.state.positions.filter((item) => item.id !== positionId),
+            records: store.state.records.filter((item) => item.positionId !== positionId),
+          },
+        };
+      });
     },
     upsertDocument(document) {
       replace((store) => ({

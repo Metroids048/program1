@@ -1,4 +1,7 @@
 import "dotenv/config";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildServer } from "../server/index";
 
 function assertEnv(name: string): string {
@@ -13,7 +16,9 @@ async function main() {
   assertEnv("DEEPSEEK_API_KEY");
   process.env.DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-flash";
 
-  const app = buildServer();
+  const tempDir = mkdtempSync(join(tmpdir(), "ai-success-smoke-"));
+  const dbPath = join(tempDir, "smoke.sqlite");
+  const app = buildServer({ dbPath });
   try {
     const intake = await app.inject({
       method: "POST",
@@ -113,6 +118,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } finally {
     await app.close();
+    rmSync(tempDir, { recursive: true, force: true });
   }
 }
 

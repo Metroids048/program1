@@ -519,7 +519,7 @@ export function InterviewRoomView({
   }, [workspace.questions]);
 
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(config ?? DEFAULT_CONFIG);
-  const [setupOpen, setSetupOpen] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answerDraft, setAnswerDraft] = useState<RecognizedDraft>({ interimText: "", finalText: "", editableText: "", lastFinalAt: 0 });
   const [transcript, setTranscript] = useState<MockMessage[]>([{ role: "interviewer", text: questionPlan[0]?.question ?? "请先介绍一段和当前岗位最相关的经历。" }]);
@@ -557,10 +557,20 @@ export function InterviewRoomView({
       .then((result) => {
         if (!active) return;
         setSessionId(result.sessionId);
-        setTranscript([{ role: "interviewer", text: stripMarkdown(result.question) }]);
+        const restoredTranscript = (result.conversationHistory ?? []).map((item) => ({
+          role: item.role,
+          text: stripMarkdown(item.text),
+        })) as MockMessage[];
+        setTranscript(restoredTranscript.length > 0 ? restoredTranscript : [{ role: "interviewer", text: stripMarkdown(result.question) }]);
         setConversationHistory(result.conversationHistory ?? []);
         formatQuestionSourceLabel(result.questionSource ?? (result.backendStatus === "success" ? "模型出题" : "本地出题"));
-        setBackendHint(result.backendStatus === "success" ? "模型面试官已接入" : `本地练习模式${result.meta?.fallbackReason ? ` · ${repairText(result.meta.fallbackReason)}` : ""}`);
+        setBackendHint(
+          result.backendStatus === "cache"
+            ? "已恢复上次未完成的模拟面试。"
+            : result.backendStatus === "success"
+              ? "模型面试官已接入"
+              : `本地练习模式${result.meta?.fallbackReason ? ` · ${repairText(result.meta.fallbackReason)}` : ""}`,
+        );
         startedAtRef.current = Date.now();
       })
       .catch(() => {

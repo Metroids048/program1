@@ -72,8 +72,6 @@ export function QuestionsWorkspace({
   isLoggedIn: boolean;
   onRequireLogin: () => void;
 }) {
-  const [projectTitle, setProjectTitle] = useState("");
-  const [projectDetail, setProjectDetail] = useState("");
   const [newQuestion, setNewQuestion] = useState("");
   const [newAnswer, setNewAnswer] = useState("");
   const [newNotes, setNewNotes] = useState("");
@@ -83,7 +81,6 @@ export function QuestionsWorkspace({
   const [uploadMessage, setUploadMessage] = useState("");
 
   const materials = position?.materials ?? [];
-  const projectMaterials = materials.filter((item) => item.kind === "project");
   const uploadMaterials = materials.filter((item) => item.kind === "upload");
   const manualPriorityQuestions = (workspace?.questions ?? []).filter((item) => item.source === "manual" || item.priority);
   const otherQuestions = (workspace?.questions ?? []).filter((item) => !(item.source === "manual" || item.priority));
@@ -113,22 +110,6 @@ export function QuestionsWorkspace({
       return;
     }
     onUpdateMaterials([material, ...materials]);
-  };
-
-  const submitProject = (event: FormEvent) => {
-    event.preventDefault();
-    if (!projectTitle.trim() || !projectDetail.trim()) return;
-    saveMaterial(
-      createMaterial({
-        kind: "project",
-        source: "manual",
-        title: projectTitle,
-        detail: projectDetail,
-        tags: ["项目资料"],
-      }),
-    );
-    setProjectTitle("");
-    setProjectDetail("");
   };
 
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -185,9 +166,9 @@ export function QuestionsWorkspace({
     <section className="page page-questions desktop-page">
       <header className="desktop-page-header">
         <div className="desktop-page-title">
-          <span className="page-eyebrow">问题库</span>
-          <h1>当前岗位的用户资料底座</h1>
-          <p>先看项目资料，再看上传资料，最后看你自己保存的问题。它们都会成为 JD 分析、实时助手和模拟追问的上下文输入。</p>
+          <span className="page-eyebrow">问题记录</span>
+          <h1>当前岗位的问题与资料沉淀</h1>
+          <p>这里以问题/QA 沉淀为主，上传资料作为次级能力保留，用于后续 JD 分析、实时助手和模拟追问。</p>
         </div>
       </header>
 
@@ -208,38 +189,9 @@ export function QuestionsWorkspace({
             <div className="surface-card-inner">
               <div className="section-row-header">
                 <div>
-                  <span className="subtle-label">项目信息</span>
-                  <h2>项目资料卡</h2>
-                  <p>重点写项目背景、职责、动作、结果和可追问点，这是最优先给模型喂的岗位上下文。</p>
-                </div>
-              </div>
-
-              <form className="material-form" onSubmit={submitProject}>
-                <input className="input" value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} placeholder="项目名，例如：AI 面试助手增长实验" aria-label="项目名称" />
-                <textarea className="input textarea compact" value={projectDetail} onChange={(event) => setProjectDetail(event.target.value)} placeholder="写清楚背景、目标、行动、结果和你负责的部分。" aria-label="项目详情" />
-                <button className="button primary" type="submit" disabled={!projectTitle.trim() || !projectDetail.trim()}>
-                  <Plus size={16} />
-                  保存项目卡
-                </button>
-              </form>
-
-              <div className="material-card-grid">
-                {projectMaterials.length > 0 ? (
-                  projectMaterials.map((item) => <MaterialCard key={item.id} item={item} onRemove={removeMaterial} />)
-                ) : (
-                  <p className="muted-copy">还没有项目卡。先补一段最可能被深挖的项目，模拟面试会更贴近真实追问。</p>
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="surface-card">
-            <div className="surface-card-inner">
-              <div className="section-row-header">
-                <div>
                   <span className="subtle-label">上传资料</span>
                   <h2>文件解析为资料卡</h2>
-                  <p>上传的文本与项目卡分开展示，不再和题目列表混在同一视觉层。</p>
+                  <p>上传资料保留为次级能力，不再提供手动项目资料卡录入。</p>
                 </div>
                 <label className="button secondary file-button">
                   <FileUp size={16} />
@@ -254,7 +206,7 @@ export function QuestionsWorkspace({
                 {uploadMaterials.length > 0 ? (
                   uploadMaterials.map((item) => <MaterialCard key={item.id} item={item} onRemove={removeMaterial} />)
                 ) : (
-                  <p className="muted-copy">还没有上传资料。可以上传 `.txt`、`.md`、`.pdf`、`.docx`，解析后会进入当前岗位。</p>
+                  <p className="muted-copy">还没有上传资料。可以上传 `.txt`、`.md`、`.pdf`、`.docx`，解析后会进入当前岗位资料。</p>
                 )}
               </div>
             </div>
@@ -265,8 +217,8 @@ export function QuestionsWorkspace({
               <div className="section-row-header">
                 <div>
                   <span className="subtle-label">记录问题</span>
-                  <h2>用户问题库</h2>
-                  <p>这里优先展示你手动保存的问题和高优先级问题，后续可被题词卡、模拟追问和 JD 分析复用。</p>
+                  <h2>问题与 QA</h2>
+                  <p>这里优先展示你手动保存的问题和高优先级问题，后续可被提词卡、模拟追问和 JD 分析复用。</p>
                 </div>
               </div>
 

@@ -299,6 +299,177 @@ describe("local backend API", () => {
     await app.close();
   });
 
+  it("persists interview preferences on the current position", async () => {
+    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const intake = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
+    });
+    const positionId = intake.json().positions[0].id as string;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/positions/${positionId}/preferences`,
+      payload: {
+        interviewerRole: "业务负责人",
+        difficulty: "压力面",
+        interviewerGender: "男",
+        submitMode: "auto",
+        style: "pressure",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.position.interviewPreferences).toMatchObject({
+      interviewerRole: "业务负责人",
+      difficulty: "压力面",
+      interviewerGender: "男",
+      submitMode: "auto",
+      style: "pressure",
+    });
+    expect(body.position.intake.configuredInterview).toBe(true);
+    await app.close();
+  });
+
+  it("returns the latest active mock session, completes it, and stops restoring it afterward", async () => {
+    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const intake = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
+    });
+    const positionId = intake.json().positions[0].id as string;
+
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/mock/session",
+      payload: { positionId, config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
+    });
+    const sessionId = sessionResponse.json().sessionId as string;
+
+    const latest = await app.inject({
+      method: "GET",
+      url: `/api/positions/${positionId}/mock-session`,
+    });
+    expect(latest.statusCode).toBe(200);
+    expect(latest.json().session.id).toBe(sessionId);
+    expect(latest.json().session.completedAt).toBeUndefined();
+
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/mock/session/${sessionId}/complete`,
+    });
+    expect(complete.statusCode).toBe(200);
+    expect(complete.json().ok).toBe(true);
+
+    const afterComplete = await app.inject({
+      method: "GET",
+      url: `/api/positions/${positionId}/mock-session`,
+    });
+    expect(afterComplete.statusCode).toBe(404);
+    expect(afterComplete.json().error).toBe("MOCK_SESSION_NOT_FOUND");
+    await app.close();
+  });
+
+  it("deletes a position and cascades its records, materials, questions and mock sessions", async () => {
+    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const intake = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
+    });
+    const snapshot = intake.json();
+    const positionId = snapshot.positions[0].id as string;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/positions/${positionId}/materials`,
+      payload: {
+        materials: [
+          {
+            id: "material-1",
+            kind: "upload",
+            source: "upload",
+            title: "项目资料",
+            detail: "一份真实项目资料",
+            summary: "一份真实项目资料",
+            keywords: ["项目"],
+            tags: ["上传资料"],
+            linkedQuestionIds: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/api/positions/${positionId}/questions`,
+      payload: {
+        questions: [
+          {
+            id: "question-1",
+            category: "项目深挖",
+            question: "你怎么做 RAG 召回？",
+            reason: "用户手动保存问题",
+            evidenceIds: [],
+            difficulty: "中等",
+            source: "manual",
+            priority: true,
+            notes: "重点题",
+            answer: "",
+            cueCardIds: [],
+            tags: ["用户保存"],
+          },
+        ],
+      },
+    });
+
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/mock/session",
+      payload: { positionId, config: { stage: "上级", difficulty: "正常", submitMode: "manual" } },
+    });
+    const sessionBody = sessionResponse.json();
+
+    const answerResponse = await app.inject({
+      method: "POST",
+      url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      payload: {
+        positionId,
+        answer: "我负责一套面试助手项目，做了 RAG 检索和回归验证。",
+        transcript: [
+          { role: "interviewer", text: sessionBody.question },
+          { role: "candidate", text: "我负责一套面试助手项目，做了 RAG 检索和回归验证。" },
+        ],
+      },
+    });
+    expect(answerResponse.statusCode).toBe(200);
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/positions/${positionId}`,
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+
+    const state = deleteResponse.json();
+    expect(state.positions.some((position: { id: string }) => position.id === positionId)).toBe(false);
+    expect(state.records.some((record: { positionId: string }) => record.positionId === positionId)).toBe(false);
+
+    const records = await app.inject({ method: "GET", url: "/api/records" });
+    expect(records.json().records.some((record: { positionId: string }) => record.positionId === positionId)).toBe(false);
+
+    const context = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context` });
+    expect(context.statusCode).toBe(404);
+
+    const latestMockSession = await app.inject({ method: "GET", url: `/api/positions/${positionId}/mock-session` });
+    expect(latestMockSession.statusCode).toBe(404);
+    await app.close();
+  });
+
   describe("auth API", () => {
     it("registers a new user with phone and password", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });

@@ -298,6 +298,54 @@ export class AiOrchestrator {
     return nextPosition;
   }
 
+  updatePositionPreferences(positionId: string, preferences: Position["interviewPreferences"]): Position {
+    const state = this.loadState();
+    const current = state.positions.find((position) => position.id === positionId);
+    if (!current) throw new Error("POSITION_NOT_FOUND");
+    const nextPosition = recomputePosition(
+      {
+        ...current,
+        interviewPreferences: preferences,
+        intake: {
+          ...current.intake,
+          configuredInterview: true,
+        },
+      },
+      state.profile,
+    );
+    const next = upsertPosition(state, nextPosition);
+    this.persistState(next);
+    return nextPosition;
+  }
+
+  removePosition(positionId: string): BackendState {
+    const state = this.loadState();
+    const positions = state.positions.filter((position) => position.id !== positionId);
+    const records = state.records.filter((record) => record.positionId !== positionId);
+    this.db.deletePositionArtifacts(positionId);
+    const next: BackendState = {
+      ...state,
+      positions,
+      records,
+    };
+    this.persistState(next);
+    return next;
+  }
+
+  getLatestActiveMockSession(positionId: string) {
+    return this.db.getLatestActiveMockSession(positionId);
+  }
+
+  completeMockSession(sessionId: string): void {
+    const current = this.db.getMockSession(sessionId);
+    if (!current) return;
+    this.db.saveMockSession({
+      ...current,
+      completedAt: nowIso(),
+      updatedAt: nowIso(),
+    });
+  }
+
   analyzeProfile(resumeText: string): BackendState {
     const state = this.loadState();
     const profile = createProfile(resumeText);
@@ -895,6 +943,27 @@ export class AiOrchestrator {
     const started = Date.now();
     const state = this.loadState();
     const position = this.getJdContext(positionId);
+    const existingSession = this.db.getLatestActiveMockSession(position.id);
+    if (existingSession?.conversationHistory?.length) {
+      const latestQuestion = [...existingSession.conversationHistory].reverse().find((item) => item.role === "interviewer");
+      return {
+        sessionId: existingSession.id,
+        question: latestQuestion?.text || "继续上次模拟面试",
+        questionSource: "resume",
+        conversationHistory: existingSession.conversationHistory,
+        meta: {
+          backendStatus: "cache",
+          skillId: skills.mockInterviewer.id,
+          fallbackReason: "检测到未完成的模拟面试，已回到上次进度继续练习。",
+          promptId: prompts.mockInterviewer.id,
+          provider: this.llm.model,
+          evidenceTrace: [],
+          latencyMs: Date.now() - started,
+          retrievalCount: 0,
+          searchUsed: false,
+        },
+      };
+    }
     const retrieval = this.rag.retrieve(`${position.title}\n${position.company}\n首题`, { positionId: position.id });
     const localCandidate =
       position.questions.find((question) => question.priority && question.evidenceIds.some((id) => state.profile.evidenceLibrary.some((item) => item.id === id && item.type !== "教育"))) ??
@@ -945,6 +1014,7 @@ export class AiOrchestrator {
       conversationHistory,
       createdAt: nowIso(),
       updatedAt: nowIso(),
+      completedAt: undefined,
       aiMeta: { ...toInterviewAiMeta(meta, this.llm.model), decisionType: "next", internalNote: result.status === "success" ? result.data.reason : "local first question" },
     });
     this.db.savePromptRun(
@@ -1090,6 +1160,7 @@ export class AiOrchestrator {
       conversationHistory: nextHistory,
       createdAt: currentSession?.createdAt ?? nowIso(),
       updatedAt: nowIso(),
+      completedAt: undefined,
       aiMeta: record.aiMeta,
     });
     return { record, followUp: decision.question, decision, meta, conversationHistory: nextHistory };
