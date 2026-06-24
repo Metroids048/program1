@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   analyzeJob,
   analyzeResume,
@@ -112,7 +112,7 @@ describe("interviewEngine", () => {
         style: "gentle",
       } as const,
       analysisContext: { priorityFocus: [], likelyQuestions: [], preparationTips: [], evidenceHighlights: [], materialHighlights: [], updatedAt: new Date().toISOString() },
-      status: "planning" as const,
+      status: "draft" as const,
       notes: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

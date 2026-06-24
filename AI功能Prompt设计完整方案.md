@@ -114,7 +114,6 @@ interface PromptDefinition {
 **Prompt ID:** `copilot.cue-card.v2`
 **功能描述：** 根据面试官问题 + 岗位上下文 + 简历证据，生成六维度结构化提词卡
 **调用位置：** 后端 `orchestrator.createCueCard()` → SSE stream `/api/copilot/cue-card/stream`
-
 #### System Prompt（完整版）
 
 ```text

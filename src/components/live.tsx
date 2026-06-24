@@ -19,7 +19,6 @@ import {
   type RealtimeSubmitMode,
   type SpeechCaptureState,
 } from "./shared";
-import { AuthGateCard } from "./auth/AuthGate";
 
 const CUE_CARD_SKILL_ID = "live_cue_card_coach";
 
@@ -109,10 +108,12 @@ function PersonaBadge({ persona }: { persona: PersonaKey }) {
 
 function MockSetupModal({
   config,
+  questionCount,
   onClose,
   onStart,
 }: {
   config: InterviewConfig;
+  questionCount: number;
   onClose: () => void;
   onStart: (next: InterviewConfig) => void;
 }) {
@@ -131,7 +132,7 @@ function MockSetupModal({
         <div className="setup-form">
           <label>
             <span>题数</span>
-            <input className="input" value="8" readOnly aria-label="题数" />
+            <input className="input" value={`${questionCount} 题`} readOnly aria-label="题数" />
           </label>
           <label>
             <span>风格</span>
@@ -153,7 +154,7 @@ function MockSetupModal({
           </label>
           <label>
             <span>计时</span>
-            <input className="input" value="90 秒 / 题" readOnly aria-label="计时" />
+            <input className="input" value={`${Math.max(1, questionCount * 3)} 分钟`} readOnly aria-label="计时" />
           </label>
         </div>
 
@@ -190,7 +191,6 @@ export function LiveAssistantDashboard({
 }) {
   return (
     <section className="page page-live desktop-page">
-      {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
       <LiveAssistantView profile={profile} position={position} onSaveRecord={onSaveRecord} onSaveQuestion={onSaveQuestion} isLoggedIn={isLoggedIn} onRequireLogin={onRequireLogin} />
       {workspace ? <ContextKeywordStrip position={position} /> : null}
     </section>
@@ -489,6 +489,8 @@ export function InterviewRoomView({
   onSaveRecord,
   onSaveQuestion,
   config,
+  initialSession,
+  skipSetup = false,
   isLoggedIn,
   onRequireLogin,
 }: {
@@ -509,6 +511,15 @@ export function InterviewRoomView({
   }) => void;
   onSaveQuestion: (card: AnswerCueCard) => void;
   config: InterviewConfig;
+  initialSession?: {
+    sessionId: string;
+    question: string;
+    questionSource?: string;
+    conversationHistory: ConversationMessage[];
+    backendStatus: "success" | "fallback" | "error";
+    fallbackReason?: string;
+  };
+  skipSetup?: boolean;
   isLoggedIn: boolean;
   onRequireLogin: () => void;
 }) {
@@ -519,17 +530,23 @@ export function InterviewRoomView({
   }, [workspace.questions]);
 
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(config ?? DEFAULT_CONFIG);
-  const [setupOpen, setSetupOpen] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(!skipSetup);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answerDraft, setAnswerDraft] = useState<RecognizedDraft>({ interimText: "", finalText: "", editableText: "", lastFinalAt: 0 });
-  const [transcript, setTranscript] = useState<MockMessage[]>([{ role: "interviewer", text: questionPlan[0]?.question ?? "请先介绍一段和当前岗位最相关的经历。" }]);
+  const [transcript, setTranscript] = useState<MockMessage[]>([{ role: "interviewer", text: stripMarkdown(initialSession?.question ?? questionPlan[0]?.question ?? "请先介绍一段和当前岗位最相关的经历。") }]);
   const [cueCards, setCueCards] = useState<AnswerCueCard[]>([]);
   const [cueMeta, setCueMeta] = useState<AiRunMeta | null>(null);
-  const [backendHint, setBackendHint] = useState("");
+  const [backendHint, setBackendHint] = useState(
+    initialSession
+      ? initialSession.backendStatus === "success"
+        ? "模型面试官已接入"
+        : `本地练习模式${initialSession.fallbackReason ? ` · ${repairText(initialSession.fallbackReason)}` : ""}`
+      : "",
+  );
   const [instantFeedback, setInstantFeedback] = useState("");
-  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>(initialSession?.conversationHistory ?? []);
   const [latestServerRecord, setLatestServerRecord] = useState<InterviewRecord | null>(null);
-  const [sessionId, setSessionId] = useState("");
+  const [sessionId, setSessionId] = useState(initialSession?.sessionId ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [lastSubmittedAt, setLastSubmittedAt] = useState(0);
   const [durationSec, setDurationSec] = useState(0);
@@ -552,6 +569,10 @@ export function InterviewRoomView({
 
   useEffect(() => {
     if (setupOpen) return;
+    if (sessionId) {
+      startedAtRef.current ??= Date.now();
+      return;
+    }
     let active = true;
     void createMockSessionOnServer(position.id, interviewConfig as unknown as Record<string, unknown>)
       .then((result) => {
@@ -571,7 +592,7 @@ export function InterviewRoomView({
     return () => {
       active = false;
     };
-  }, [interviewConfig, position.id, setupOpen]);
+  }, [interviewConfig, position.id, sessionId, setupOpen]);
 
   useEffect(() => {
     if (setupOpen || !startedAtRef.current) return;
@@ -697,6 +718,39 @@ export function InterviewRoomView({
     return () => window.clearTimeout(timer);
   }, [answerDraft.editableText, answerDraft.lastFinalAt, interviewConfig.submitMode, lastSubmittedAt, submitAnswer]);
 
+  // Auto-generate cue card when new interviewer question appears
+  useEffect(() => {
+    const lastInterviewer = transcript.filter((m) => m.role === "interviewer").at(-1);
+    if (!lastInterviewer) return;
+    const hasCard = cueCards.some((c) => c.questionText === lastInterviewer.text);
+    if (hasCard || setupOpen || !sessionId) return;
+    const timer = window.setTimeout(() => {
+      const localCard = normalizeCard(generateCueCard(lastInterviewer.text, profile, position, workspace.questions, "mock"));
+      setCueCards((current) => [localCard, ...current.filter((item) => item.id !== localCard.id)]);
+      setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "正在连接后端模型，先展示本地练习提词卡。", evidenceTrace: [], latencyMs: 0 });
+      void streamCueCardFromServer({
+        questionText: lastInterviewer.text,
+        positionId: position.id,
+        source: "mock",
+        enableSearch: false,
+        recentHistory: transcript.slice(-4),
+      }).then((result) => {
+        startTransition(() => {
+          setCueCards((current) => [normalizeCard(result.card), ...current.filter((item) => item.id !== localCard.id)]);
+          setCueMeta({
+            backendStatus: result.backendStatus,
+            skillId: CUE_CARD_SKILL_ID,
+            fallbackReason: repairText(result.fallbackReason),
+            evidenceTrace: result.evidenceTrace.map((item) => ({ ...item, title: repairText(item.title), reason: repairText(item.reason) })),
+            latencyMs: result.latencyMs,
+          });
+        });
+      }).catch(() => {});
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [transcript, cueCards, setupOpen, sessionId, profile, position, workspace.questions]);
+
+
   const finish = () => {
     if (!isLoggedIn) {
       onRequireLogin();
@@ -724,7 +778,7 @@ export function InterviewRoomView({
   };
 
   if (setupOpen) {
-    return <MockSetupModal config={interviewConfig} onClose={() => setSetupOpen(false)} onStart={(next) => {
+    return <MockSetupModal config={interviewConfig} questionCount={totalQuestions} onClose={() => setSetupOpen(false)} onStart={(next) => {
       if (!isLoggedIn) {
         onRequireLogin();
         return;
@@ -737,7 +791,6 @@ export function InterviewRoomView({
   return (
     <>
       <section className="page page-mock desktop-page">
-        {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
         <section className="desktop-topbar mock-topbar mock-statusbar">
           <div className="desktop-topbar-main">
             <strong>{repairText(position.company)} · {repairText(position.title)}</strong>

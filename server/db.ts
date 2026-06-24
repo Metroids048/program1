@@ -361,6 +361,8 @@ function createSqliteDb(db: Database.Database): AppDb {
       db.prepare("delete from documents where source_type = ? and position_id = ?").run(sourceType, positionId);
     },
     searchRagChunks(query, positionId) {
+      const ftsQuery = normalizeFtsQuery(query);
+      if (!ftsQuery) return [];
       const rows = db
         .prepare(
           `
@@ -387,7 +389,7 @@ function createSqliteDb(db: Database.Database): AppDb {
           limit 20
         `,
         )
-        .all(normalizeFtsQuery(query), positionId ?? null, positionId ?? null);
+        .all(ftsQuery, positionId ?? null, positionId ?? null);
       return rows.map((row) => ({
         id: String((row as { id: string }).id),
         documentId: String((row as { document_id: string }).document_id),
@@ -786,12 +788,18 @@ export function toApiSnapshot(state: BackendState, activePositionId?: string): A
 }
 
 function normalizeFtsQuery(query: string): string {
-  return query
-    .trim()
-    .split(/\s+/)
-    .map((item) => item.replace(/["']/g, ""))
-    .filter(Boolean)
-    .join(" OR ");
+  const tokens = Array.from(
+    new Set(
+      (query.match(/[A-Za-z0-9][A-Za-z0-9+#./-]{0,}|[\u4e00-\u9fa5]{1,}/g) ?? [])
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.slice(0, 48)),
+    ),
+  );
+
+  if (tokens.length === 0) return "";
+
+  return tokens.map((item) => `"${item.replace(/"/g, "")}"`).join(" OR ");
 }
 
 function deriveFilePath(dbPath: string): string {

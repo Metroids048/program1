@@ -1,10 +1,9 @@
-import { ChevronDown, FileText, FileUp, FolderKanban, Plus, ScrollText, Sparkles } from "lucide-react";
+import { ChevronDown, Clock, FileText, FileUp, FolderKanban, Plus, ScrollText, Sparkles } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import { importResumeFile } from "../lib/resumeImport";
 import { makeId, nowIso } from "./shared";
-import type { InterviewQuestion, Position, PositionMaterial, WorkspaceState } from "../types";
-import { AuthGateCard } from "./auth/AuthGate";
+import type { InterviewQuestion, Position, PositionMaterial, UsageScope, WorkspaceState } from "../types";
 
 function extractKeywords(text: string, limit = 8): string[] {
   const matches = text.match(/[A-Za-z][A-Za-z0-9+#./-]{1,}|[\u4e00-\u9fa5]{2,}/g) ?? [];
@@ -31,6 +30,7 @@ function createMaterial(input: {
   title: string;
   detail: string;
   tags?: string[];
+  usageScopes?: UsageScope[];
 }): PositionMaterial {
   const timestamp = nowIso();
   const detail = repairText(input.detail);
@@ -44,15 +44,47 @@ function createMaterial(input: {
     keywords: extractKeywords(`${input.title}\n${detail}`),
     tags: input.tags ?? [],
     linkedQuestionIds: [],
+    usageScopes: input.usageScopes ?? ["live", "mock", "resume"],
+    ragStatus: "local_only",
     createdAt: timestamp,
     updatedAt: timestamp,
   };
 }
 
-function materialKindLabel(kind: PositionMaterial["kind"]) {
-  if (kind === "project") return "项目";
-  if (kind === "upload") return "上传";
-  return "记录";
+function sourceLabel(source: InterviewQuestion["source"]): string {
+  switch (source) {
+    case "manual": return "手动记录";
+    case "mock": return "模拟面试回流";
+    case "cueCard": return "实时助手回流";
+    case "diagnosis": return "JD诊断";
+    case "material": return "资料提取";
+    case "record_excerpt": return "面试记录提炼";
+    default: return source;
+  }
+}
+
+function usageScopeLabel(scope: UsageScope): string {
+  switch (scope) {
+    case "live": return "实时助手";
+    case "mock": return "模拟面试";
+    case "resume": return "简历优化";
+  }
+}
+
+function formatRelativeTime(iso: string): string {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "刚刚";
+    if (mins < 60) return `${mins} 分钟前`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} 小时前`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days} 天前`;
+    return new Date(iso).toLocaleDateString("zh-CN");
+  } catch {
+    return "";
+  }
 }
 
 export function QuestionsWorkspace({
@@ -68,44 +100,40 @@ export function QuestionsWorkspace({
   position: Position | undefined;
   onUpdateMaterials: (materials: PositionMaterial[]) => void;
   onUpdateQuestion: (questionId: string, patch: Partial<InterviewQuestion>) => void;
-  onAddQuestion: (question: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => void;
+  onAddQuestion: (question: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string; tags?: string[] }) => void;
   isLoggedIn: boolean;
   onRequireLogin: () => void;
 }) {
-  const [projectTitle, setProjectTitle] = useState("");
-  const [projectDetail, setProjectDetail] = useState("");
   const [newQuestion, setNewQuestion] = useState("");
-  const [newAnswer, setNewAnswer] = useState("");
   const [newNotes, setNewNotes] = useState("");
+  const [newTags, setNewTags] = useState("");
   const [category, setCategory] = useState("项目深挖");
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedQuestionId, setExpandedQuestionId] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
+  const [noteFilterTag, setNoteFilterTag] = useState("");
 
-  const materials = position?.materials ?? [];
-  const projectMaterials = materials.filter((item) => item.kind === "project");
-  const uploadMaterials = materials.filter((item) => item.kind === "upload");
-  const manualPriorityQuestions = (workspace?.questions ?? []).filter((item) => item.source === "manual" || item.priority);
-  const otherQuestions = (workspace?.questions ?? []).filter((item) => !(item.source === "manual" || item.priority));
+  const materials = useMemo(() => position?.materials ?? [], [position]);
+  const projectFiles = materials.filter((item) => item.kind === "project_file" || item.kind === "project" || item.kind === "upload");
+  const questionNotes = useMemo(() => workspace?.questions ?? [], [workspace]);
 
-  const grouped = useMemo(() => {
-    const questions = [...manualPriorityQuestions, ...otherQuestions];
-    return questions.reduce<Record<string, InterviewQuestion[]>>((acc, item) => {
-      const key = repairText(item.category) || "未分类";
-      acc[key] = [...(acc[key] ?? []), item];
-      return acc;
-    }, {});
-  }, [manualPriorityQuestions, otherQuestions]);
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    questionNotes.forEach((q) => (q.tags ?? []).forEach((t) => tags.add(t)));
+    return Array.from(tags);
+  }, [questionNotes]);
 
-  const groupEntries = Object.entries(grouped);
-  const toggleGroup = (group: string) => {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      return next;
-    });
-  };
+  const filteredNotes = noteFilterTag
+    ? questionNotes.filter((q) => (q.tags ?? []).includes(noteFilterTag))
+    : questionNotes;
+
+  const latestUpdate = useMemo(() => {
+    const timestamps = [
+      ...materials.map((m) => m.updatedAt),
+      ...questionNotes.map((q) => q.lastReviewedAt).filter(Boolean) as string[],
+    ];
+    if (!timestamps.length) return null;
+    return timestamps.sort().reverse()[0];
+  }, [materials, questionNotes]);
 
   const saveMaterial = (material: PositionMaterial) => {
     if (!isLoggedIn) {
@@ -113,22 +141,6 @@ export function QuestionsWorkspace({
       return;
     }
     onUpdateMaterials([material, ...materials]);
-  };
-
-  const submitProject = (event: FormEvent) => {
-    event.preventDefault();
-    if (!projectTitle.trim() || !projectDetail.trim()) return;
-    saveMaterial(
-      createMaterial({
-        kind: "project",
-        source: "manual",
-        title: projectTitle,
-        detail: projectDetail,
-        tags: ["项目资料"],
-      }),
-    );
-    setProjectTitle("");
-    setProjectDetail("");
   };
 
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -143,14 +155,15 @@ export function QuestionsWorkspace({
       const result = await importResumeFile(file);
       saveMaterial(
         createMaterial({
-          kind: "upload",
+          kind: "project_file",
           source: "upload",
           title: file.name.replace(/\.[^.]+$/, ""),
           detail: result.text,
-          tags: ["上传资料"],
+          tags: ["上传项目资料"],
+          usageScopes: ["live", "mock", "resume"],
         }),
       );
-      setUploadMessage(`已解析 ${file.name}，并保存为当前岗位的资料卡。`);
+      setUploadMessage(`已解析 ${file.name}，资料将进入实时助手、模拟面试和简历优化上下文。`);
     } catch {
       setUploadMessage("上传失败，当前支持 txt / markdown / pdf / docx。");
     } finally {
@@ -158,7 +171,7 @@ export function QuestionsWorkspace({
     }
   };
 
-  const submitQuestion = (event: FormEvent) => {
+  const submitNote = (event: FormEvent) => {
     event.preventDefault();
     if (!newQuestion.trim()) return;
     if (!isLoggedIn) {
@@ -169,12 +182,16 @@ export function QuestionsWorkspace({
       question: newQuestion.trim(),
       category,
       difficulty: "进阶",
-      answer: newAnswer.trim(),
       notes: newNotes.trim(),
+      tags: newTags
+        .split(/[,，\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      answer: "",
     });
     setNewQuestion("");
-    setNewAnswer("");
     setNewNotes("");
+    setNewTags("");
   };
 
   const removeMaterial = (materialId: string) => {
@@ -185,9 +202,9 @@ export function QuestionsWorkspace({
     <section className="page page-questions desktop-page">
       <header className="desktop-page-header">
         <div className="desktop-page-title">
-          <span className="page-eyebrow">问题库</span>
-          <h1>当前岗位的用户资料底座</h1>
-          <p>先看项目资料，再看上传资料，最后看你自己保存的问题。它们都会成为 JD 分析、实时助手和模拟追问的上下文输入。</p>
+          <span className="page-eyebrow">资料库</span>
+          <h1>当前岗位的知识资产</h1>
+          <p>项目资料和问题笔记统一进入 RAG 上下文，供实时助手、模拟面试和简历优化共用。</p>
         </div>
       </header>
 
@@ -198,192 +215,251 @@ export function QuestionsWorkspace({
           </div>
           <div>
             <h2>先在首页创建一个岗位</h2>
-            <p>面试资料按岗位归档。创建岗位后，这里会显示项目卡、上传资料和题目记录。</p>
+            <p>面试资料按岗位归档。创建岗位后，这里会显示项目资料和问题笔记。</p>
           </div>
         </div>
       ) : (
-        <div className="materials-workbench">
-          {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
-          <section className="surface-card">
-            <div className="surface-card-inner">
-              <div className="section-row-header">
-                <div>
-                  <span className="subtle-label">项目信息</span>
-                  <h2>项目资料卡</h2>
-                  <p>重点写项目背景、职责、动作、结果和可追问点，这是最优先给模型喂的岗位上下文。</p>
+        <>
+          {/* Overview Section — 资料概览 */}
+          <section className="surface-card knowledge-overview">
+            <div className="surface-card-inner knowledge-overview-inner">
+              <div className="knowledge-overview-stats">
+                <div className="knowledge-stat">
+                  <span className="knowledge-stat-value">{projectFiles.length}</span>
+                  <span className="knowledge-stat-label">项目资料</span>
+                </div>
+                <div className="knowledge-stat">
+                  <span className="knowledge-stat-value">{questionNotes.length}</span>
+                  <span className="knowledge-stat-label">问题笔记</span>
+                </div>
+                {latestUpdate ? (
+                  <div className="knowledge-stat">
+                    <span className="knowledge-stat-value"><Clock size={14} /></span>
+                    <span className="knowledge-stat-label">最近更新 {formatRelativeTime(latestUpdate)}</span>
+                  </div>
+                ) : null}
+              </div>
+              <div className="knowledge-overview-scopes">
+                <span className="subtle-label">影响模块</span>
+                <div className="scope-badges">
+                  {(["live", "mock", "resume"] as UsageScope[]).map((scope) => (
+                    <span key={scope} className="scope-badge">{usageScopeLabel(scope)}</span>
+                  ))}
                 </div>
               </div>
-
-              <form className="material-form" onSubmit={submitProject}>
-                <input className="input" value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} placeholder="项目名，例如：AI 面试助手增长实验" aria-label="项目名称" />
-                <textarea className="input textarea compact" value={projectDetail} onChange={(event) => setProjectDetail(event.target.value)} placeholder="写清楚背景、目标、行动、结果和你负责的部分。" aria-label="项目详情" />
-                <button className="button primary" type="submit" disabled={!projectTitle.trim() || !projectDetail.trim()}>
-                  <Plus size={16} />
-                  保存项目卡
-                </button>
-              </form>
-
-              <div className="material-card-grid">
-                {projectMaterials.length > 0 ? (
-                  projectMaterials.map((item) => <MaterialCard key={item.id} item={item} onRemove={removeMaterial} />)
-                ) : (
-                  <p className="muted-copy">还没有项目卡。先补一段最可能被深挖的项目，模拟面试会更贴近真实追问。</p>
-                )}
-              </div>
+              <label className="button primary knowledge-upload-cta">
+                <FileUp size={16} />
+                上传项目资料
+                <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传项目资料文件" onChange={onFile} />
+              </label>
             </div>
           </section>
 
+          {uploadMessage ? <div className="inline-message success">{uploadMessage}</div> : null}
+
+          {/* Project Files Section — 项目资料 */}
           <section className="surface-card">
             <div className="surface-card-inner">
               <div className="section-row-header">
                 <div>
-                  <span className="subtle-label">上传资料</span>
-                  <h2>文件解析为资料卡</h2>
-                  <p>上传的文本与项目卡分开展示，不再和题目列表混在同一视觉层。</p>
+                  <span className="subtle-label">项目资料</span>
+                  <h2>项目文件与解析</h2>
+                  <p>上传 .txt / .md / .pdf / .docx 项目文件，解析后自动进入实时助手、模拟面试和简历优化上下文。</p>
                 </div>
                 <label className="button secondary file-button">
                   <FileUp size={16} />
                   上传文件
-                  <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传面试资料文件" onChange={onFile} />
+                  <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传项目资料文件" onChange={onFile} />
                 </label>
               </div>
 
-              {uploadMessage ? <div className="inline-message success">{uploadMessage}</div> : null}
-
               <div className="material-card-grid">
-                {uploadMaterials.length > 0 ? (
-                  uploadMaterials.map((item) => <MaterialCard key={item.id} item={item} onRemove={removeMaterial} />)
+                {projectFiles.length > 0 ? (
+                  projectFiles.map((item) => (
+                    <MaterialCard key={item.id} item={item} onRemove={removeMaterial} />
+                  ))
                 ) : (
-                  <p className="muted-copy">还没有上传资料。可以上传 `.txt`、`.md`、`.pdf`、`.docx`，解析后会进入当前岗位。</p>
+                  <div className="empty-card compact">
+                    <div className="empty-card-icon"><FileText size={18} /></div>
+                    <div>
+                      <h2>还没有项目资料</h2>
+                      <p>上传项目相关文件，解析后会自动标记适用范围。</p>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
           </section>
 
-          <section className="surface-card material-question-section">
+          {/* Question Notes Section — 问题笔记 */}
+          <section className="surface-card">
             <div className="surface-card-inner">
               <div className="section-row-header">
                 <div>
-                  <span className="subtle-label">记录问题</span>
-                  <h2>用户问题库</h2>
-                  <p>这里优先展示你手动保存的问题和高优先级问题，后续可被题词卡、模拟追问和 JD 分析复用。</p>
+                  <span className="subtle-label">问题笔记</span>
+                  <h2>面试笔记流</h2>
+                  <p>手动记录、模拟面试回流、实时助手回流或面试记录提炼的问题，按时间排列，支持标签筛选。</p>
                 </div>
               </div>
 
-              <form className="question-form" onSubmit={submitQuestion}>
-                <select className="input" value={category} onChange={(event) => setCategory(event.target.value)} aria-label="问题分类">
-                  {["行为面", "项目深挖", "专业技能", "岗位动机", "压力题", "英文题"].map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-                <textarea className="input textarea" value={newQuestion} aria-label="新增问题" onChange={(event) => setNewQuestion(event.target.value)} placeholder="输入题目，例如：请详细介绍一段项目经历。" />
-                <textarea className="input textarea compact" value={newAnswer} aria-label="问题答案" onChange={(event) => setNewAnswer(event.target.value)} placeholder="参考答案，可选" />
-                <textarea className="input textarea compact" value={newNotes} aria-label="问题笔记" onChange={(event) => setNewNotes(event.target.value)} placeholder="笔记 / 追问提醒，可选" />
+              <form className="question-note-form" onSubmit={submitNote}>
+                <div className="question-note-form-row">
+                  <select className="input compact-select" value={category} onChange={(event) => setCategory(event.target.value)} aria-label="问题分类">
+                    {["行为面", "项目深挖", "专业技能", "岗位动机", "压力题", "英文题"].map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="input"
+                    value={newTags}
+                    onChange={(event) => setNewTags(event.target.value)}
+                    placeholder="标签（逗号分隔），如：STAR, 追问, 高频"
+                    aria-label="笔记标签"
+                  />
+                </div>
+                <textarea
+                  className="input textarea"
+                  value={newQuestion}
+                  aria-label="问题原文"
+                  onChange={(event) => setNewQuestion(event.target.value)}
+                  placeholder="问题原文，例如：请详细介绍一段项目经历。"
+                />
+                <textarea
+                  className="input textarea compact"
+                  value={newNotes}
+                  aria-label="备注与复盘"
+                  onChange={(event) => setNewNotes(event.target.value)}
+                  placeholder="我的备注 / 复盘 / 追问提醒"
+                />
                 <button className="button primary" type="submit" disabled={!newQuestion.trim()}>
                   <Plus size={16} />
-                  记录问题
+                  记录笔记
                 </button>
               </form>
 
-              {workspace && groupEntries.length > 0 ? (
-                <div className="question-groups compact-question-groups">
-                  {groupEntries.map(([group, items], groupIndex) => {
-                    const defaultCollapsed = groupIndex > 0 && !items.some((item) => item.priority || item.source === "manual");
-                    const collapsed = collapsedGroups.has(group) ? !defaultCollapsed : defaultCollapsed;
-                    const visibleItems = collapsed ? [] : items;
-                    return (
-                      <section key={group} className="question-group-block">
-                        <button type="button" className="question-group-header" onClick={() => toggleGroup(group)} aria-expanded={!collapsed}>
-                          <span>{collapsed ? "▶" : "▼"} {group}（{items.length}题）</span>
-                          <small>{items.some((item) => item.priority) ? "含重点题" : "常规题"}</small>
-                        </button>
-                        {visibleItems.map((item) => {
-                          const expanded = expandedQuestionId === item.id;
-                          return (
-                            <article key={item.id} className={expanded ? "question-bank-row expanded" : "question-bank-row"}>
-                              <button type="button" className="question-bank-row-head" onClick={() => setExpandedQuestionId((current) => (current === item.id ? "" : item.id))}>
-                                <strong>{repairText(item.question)}</strong>
-                                <span className="question-row-meta">
-                                  <span>{repairText(item.difficulty)}</span>
-                                  {item.priority ? <span>重点</span> : null}
-                                  <ChevronDown size={14} />
-                                </span>
-                              </button>
+              {allTags.length > 0 ? (
+                <div className="note-tag-filter">
+                  <button
+                    type="button"
+                    className={`tag-chip ${!noteFilterTag ? "active" : ""}`}
+                    onClick={() => setNoteFilterTag("")}
+                  >
+                    全部
+                  </button>
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={`tag-chip ${noteFilterTag === tag ? "active" : ""}`}
+                      onClick={() => setNoteFilterTag(noteFilterTag === tag ? "" : tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
-                              {expanded ? (
-                                <div className="question-bank-row-body">
-                                  <p>{repairText(item.reason)}</p>
-                                  <label className="field-label" htmlFor={`${item.id}-answer`}>
-                                    参考答案
-                                  </label>
-                                  <textarea
-                                    id={`${item.id}-answer`}
-                                    className="input textarea compact"
-                                    value={repairText(item.answer || "")}
-                                    aria-label={`${item.id} 答案`}
-                                    onChange={(event) => {
-                                      if (!isLoggedIn) {
-                                        onRequireLogin();
-                                        return;
-                                      }
-                                      onUpdateQuestion(item.id, { answer: event.target.value });
-                                    }}
-                                  />
-                                  <label className="field-label" htmlFor={`${item.id}-notes`}>
-                                    笔记 / 追问
-                                  </label>
-                                  <textarea
-                                    id={`${item.id}-notes`}
-                                    className="input textarea compact"
-                                    value={repairText(item.notes)}
-                                    aria-label={`${item.id} 笔记`}
-                                    onChange={(event) => {
-                                      if (!isLoggedIn) {
-                                        onRequireLogin();
-                                        return;
-                                      }
-                                      onUpdateQuestion(item.id, { notes: event.target.value });
-                                    }}
-                                  />
-                                </div>
-                              ) : null}
-                            </article>
-                          );
-                        })}
-                      </section>
+              {filteredNotes.length > 0 ? (
+                <div className="note-feed">
+                  {filteredNotes.map((item) => {
+                    const expanded = expandedQuestionId === item.id;
+                    return (
+                      <article key={item.id} className={expanded ? "note-card expanded" : "note-card"}>
+                        <button
+                          type="button"
+                          className="note-card-head"
+                          onClick={() => setExpandedQuestionId((current) => (current === item.id ? "" : item.id))}
+                        >
+                          <div className="note-card-primary">
+                            <strong>{repairText(item.question)}</strong>
+                            <span className="note-card-meta">
+                              <span className="note-source">{sourceLabel(item.source)}</span>
+                              <span>{repairText(item.category)}</span>
+                              <ChevronDown size={14} />
+                            </span>
+                          </div>
+                          {item.notes ? (
+                            <p className="note-card-preview">{repairText(item.notes).slice(0, 80)}{item.notes.length > 80 ? "..." : ""}</p>
+                          ) : null}
+                          {item.tags && item.tags.length > 0 ? (
+                            <div className="note-card-tags">
+                              {item.tags.map((tag) => (
+                                <span key={tag} className="tag-dot">{tag}</span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </button>
+                        {expanded ? (
+                          <div className="note-card-body">
+                            <div className="note-field">
+                              <span className="field-label">备注 / 复盘</span>
+                              <textarea
+                                className="input textarea compact"
+                                value={repairText(item.notes)}
+                                aria-label={`${item.id} 笔记`}
+                                onChange={(event) => {
+                                  if (!isLoggedIn) { onRequireLogin(); return; }
+                                  onUpdateQuestion(item.id, { notes: event.target.value });
+                                }}
+                              />
+                            </div>
+                            <details className="note-answer-details">
+                              <summary>参考回答 / 历史版本</summary>
+                              <textarea
+                                className="input textarea compact"
+                                value={repairText(item.answer || "")}
+                                aria-label={`${item.id} 参考回答`}
+                                onChange={(event) => {
+                                  if (!isLoggedIn) { onRequireLogin(); return; }
+                                  onUpdateQuestion(item.id, { answer: event.target.value });
+                                }}
+                              />
+                            </details>
+                            <div className="note-field">
+                              <span className="field-label">标签</span>
+                              <input
+                                className="input compact"
+                                value={(item.tags ?? []).join(", ")}
+                                aria-label={`${item.id} 标签`}
+                                placeholder="逗号分隔"
+                                onChange={(event) => {
+                                  if (!isLoggedIn) { onRequireLogin(); return; }
+                                  onUpdateQuestion(item.id, { tags: event.target.value.split(/[,，\s]+/).filter(Boolean) });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
                     );
                   })}
                 </div>
               ) : (
                 <div className="empty-card compact">
-                  <div className="empty-card-icon">
-                    <ScrollText size={18} />
-                  </div>
+                  <div className="empty-card-icon"><ScrollText size={18} /></div>
                   <div>
-                    <h2>还没有记录问题</h2>
-                    <p>可以从真实面试、模拟追问或手动输入开始沉淀。</p>
+                    <h2>还没有问题笔记</h2>
+                    <p>从真实面试、模拟追问或手动输入开始沉淀笔记。</p>
                   </div>
                 </div>
               )}
             </div>
           </section>
-        </div>
+        </>
       )}
     </section>
   );
 }
 
 function MaterialCard({ item, onRemove }: { item: PositionMaterial; onRemove: (materialId: string) => void }) {
-  const Icon = item.kind === "project" ? FolderKanban : item.kind === "upload" ? FileText : Sparkles;
+  const Icon = item.kind === "project_file" || item.kind === "project" ? FolderKanban : item.kind === "upload" ? FileText : Sparkles;
 
   return (
     <article className="material-card">
       <header>
         <span className="material-kind">
           <Icon size={14} />
-          {materialKindLabel(item.kind)}
+          {item.kind === "project_file" || item.kind === "project" ? "项目资料" : item.kind === "upload" ? "上传文件" : "笔记"}
         </span>
         <button className="mini-link" type="button" onClick={() => onRemove(item.id)}>
           移除
@@ -397,6 +473,21 @@ function MaterialCard({ item, onRemove }: { item: PositionMaterial; onRemove: (m
             <span key={keyword}>{keyword}</span>
           ))}
         </div>
+      ) : null}
+      {item.usageScopes && item.usageScopes.length > 0 ? (
+        <div className="material-usage">
+          <span className="subtle-label">适用范围</span>
+          <div className="scope-badges">
+            {item.usageScopes.map((scope) => (
+              <span key={scope} className="scope-badge">{usageScopeLabel(scope)}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {item.ragStatus && item.ragStatus !== "local_only" ? (
+        <span className={`rag-status rag-${item.ragStatus}`}>
+          {item.ragStatus === "indexed" ? "已索引" : item.ragStatus === "pending" ? "索引中" : "索引失败"}
+        </span>
       ) : null}
     </article>
   );

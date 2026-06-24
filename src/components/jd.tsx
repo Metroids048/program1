@@ -2,7 +2,6 @@ import { FileSearch, Sparkles } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import type { CandidateProfile, InterviewRecord, Position, WorkspaceState } from "../types";
-import { AuthGateCard } from "./auth/AuthGate";
 
 function compactItems(items: string[], fallback: string): string[] {
   const cleaned = items.map(repairText).filter(Boolean);
@@ -116,7 +115,6 @@ export function JdWorkspace({
 
       {workspace && position && analysis ? (
         <div className="jd-prep-layout">
-          {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
           <section className="surface-card jd-left-column">
             <div className="surface-card-inner">
               <div className="section-row-header">

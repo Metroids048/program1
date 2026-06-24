@@ -1,4 +1,4 @@
-import { FileText, SendHorizonal, Sparkles, Upload } from "lucide-react";
+import { FileText, PenLine, SendHorizonal, Sparkles, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import { generateProfileHighlightsOnServer, runResumeAiOnServer } from "../lib/apiClient";
@@ -7,7 +7,6 @@ import { loadDraftState, saveDraftState } from "../lib/store";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, Position } from "../types";
 import { buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
-import { AuthGateCard } from "./auth/AuthGate";
 
 type ResumeAction = "section" | "full" | "match";
 
@@ -119,11 +118,13 @@ export function ResumeWorkspacePage({
   const [fileMessage, setFileMessage] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [editingSectionId, setEditingSectionId] = useState<ResumeSectionId | null>(null);
   const [chatMessages, setChatMessages] = useState<ResumeChatMessage[]>([
     {
       id: "resume-chat-1",
       role: "assistant",
-      text: "这里是正常的 AI 简历对话区。你可以让我优化当前模块、优化整份简历，或按当前岗位做匹配分析，然后一键把建议应用到左侧编辑区。",
+      text: "上传简历后，我可以帮你逐模块优化、整份润色，或按岗位做匹配分析。建议结果可一键应用。",
     },
   ]);
 
@@ -146,7 +147,7 @@ export function ResumeWorkspacePage({
     try {
       const result = await importResumeFile(file);
       onUpdateResume(result.text);
-      setFileMessage(`已导入 ${file.name}${result.warning ? `，${result.warning}` : ""}，正在同步服务端简历快照。`);
+      setFileMessage("已导入 " + file.name + (result.warning ? "，" + result.warning : "") + "，正在同步服务端简历快照。");
     } catch {
       setFileMessage("导入失败，当前支持 txt / markdown / pdf / docx。");
     } finally {
@@ -154,7 +155,7 @@ export function ResumeWorkspacePage({
     }
   };
 
-  const buildFullResumeText = () => sections.map((section) => `${section.title}\n${sectionDrafts[section.id]}`).join("\n\n");
+  const buildFullResumeText = () => sections.map((section) => section.title + "\n" + sectionDrafts[section.id]).join("\n\n");
 
   const generateHighlights = async () => {
     if (!isLoggedIn) {
@@ -171,7 +172,7 @@ export function ResumeWorkspacePage({
       onSetHighlights(response.highlights);
       setDraftOverrides((current) => ({ ...current, highlights: response.highlights.join("\n") }));
       setSelectedSectionId("highlights");
-      setSaveMessage(response.meta.fallbackReason ? `已生成亮点，当前为降级结果：${response.meta.fallbackReason}` : "已生成亮点摘要并同步到后端。");
+      setSaveMessage(response.meta.fallbackReason ? "已生成亮点，当前为降级结果：" + response.meta.fallbackReason : "已生成亮点摘要并同步到后端。");
     } catch {
       const fallback = generateHighlightsLocal(profile);
       onSetHighlights(fallback);
@@ -188,8 +189,8 @@ export function ResumeWorkspacePage({
       onRequireLogin();
       return;
     }
-    const baseText = action === "section" ? selectedDraft : action === "full" ? sections.map((section) => `${section.title}\n${sectionDrafts[section.id]}`).join("\n\n") : selectedDraft;
-    const title = action === "section" ? `优化「${selectedSection.title}」` : action === "full" ? "优化整份简历" : `按岗位「${repairText(position?.title || "当前岗位")}」做匹配分析`;
+    const baseText = action === "section" ? selectedDraft : action === "full" ? sections.map((section) => section.title + "\n" + sectionDrafts[section.id]).join("\n\n") : selectedDraft;
+    const title = action === "section" ? "优化「" + selectedSection.title + "」" : action === "full" ? "优化整份简历" : "按岗位「" + repairText(position?.title || "当前岗位") + "」做匹配分析";
     setChatMessages((current) => [
       ...current,
       { id: makeId("resume-user"), role: "user", text: title },
@@ -254,7 +255,7 @@ export function ResumeWorkspacePage({
         action: "section",
         sectionId: selectedSectionId,
         sectionTitle: selectedSection.title,
-        currentText: `${selectedDraft}\n${text}`,
+        currentText: selectedDraft + "\n" + text,
         fullResumeText: buildFullResumeText(),
         userMessage: text,
       });
@@ -281,7 +282,7 @@ export function ResumeWorkspacePage({
           role: "assistant",
           text: "后端暂时没返回结果，我先给你一版本地练习模式建议。",
           sectionId: selectedSectionId,
-          suggestion: buildResumeSuggestion(selectedSection.title, `${selectedDraft}\n${text}`, profile),
+          suggestion: buildResumeSuggestion(selectedSection.title, selectedDraft + "\n" + text, profile),
           applyTarget: "section",
           metaNote: "本地练习模式",
         },
@@ -306,146 +307,153 @@ export function ResumeWorkspacePage({
 
   return (
     <section className="page page-resume desktop-page">
+      {/* Header: title left, upload + JD button right */}
       <header className="desktop-page-header">
         <div className="desktop-page-title">
           <span className="page-eyebrow">简历</span>
-          <h1>简历与 AI 对话</h1>
-          <p>左侧保留模块化编辑，中间看当前内容，右侧是标准 AI 聊天面板；保存动作以后端为准。</p>
+          <h1>简历优化</h1>
         </div>
         <div className="hero-actions">
-          <button className="button secondary" type="button" onClick={onOpenJd}>
-            查看 JD 分析
-          </button>
+          {position ? (
+            <button className="button secondary compact-button" type="button" onClick={onOpenJd}>
+              JD 分析
+            </button>
+          ) : null}
+          <label className="button secondary compact-button resume-upload-btn">
+            <Upload size={14} />
+            上传
+            <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} />
+          </label>
         </div>
       </header>
 
-      <div className="resume-layout focused-resume-layout">
-        {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
-        <aside className="surface-card resume-nav-column compact-nav-column">
-          <div className="surface-card-inner">
-            <div className="section-row-header">
-              <div>
-                <span className="subtle-label">模块导航</span>
-                <h2>当前简历结构</h2>
-              </div>
-            </div>
+      {fileMessage ? <div className="inline-message success">{fileMessage}</div> : null}
+      {saveMessage ? <div className="inline-message success">{saveMessage}</div> : null}
 
-            <div className="resume-nav-list">
-              {sections.map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={selectedSectionId === section.id ? "resume-nav-item active" : "resume-nav-item"}
-                  onClick={() => setSelectedSectionId(section.id)}
-                >
-                  <section.icon size={16} />
-                  <span>{section.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <label className="upload-dropzone compact">
-              <Upload size={18} />
-              <strong>上传简历</strong>
-              <p>支持 Word / PDF，导入后会刷新服务端简历快照。</p>
-              <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} />
-            </label>
-            {fileMessage ? <div className="inline-message success">{fileMessage}</div> : null}
-          </div>
-        </aside>
-
-        <section className="surface-card resume-editor-column">
-          <div className="surface-card-inner">
-            <div className="resume-profile-head">
-              <div className="resume-avatar">{(profile.displayName || profile.resume.name || "候").slice(0, 1)}</div>
-              <div>
-                <strong>{repairText(profile.displayName || profile.resume.name || "候选人")}</strong>
-                <p>
-                  {repairText(profile.resume.targetRole || "目标岗位待补充")}
-                  {position ? ` · 当前岗位：${repairText(position.title)}` : ""}
-                </p>
-              </div>
-            </div>
-
-            <div className="section-row-header">
-              <div>
-                <span className="subtle-label">{selectedSection.label}</span>
-                <h2>{selectedSection.title}</h2>
-              </div>
-              <div className="hero-actions">
-                {selectedSectionId === "highlights" ? (
-                  <button className="button secondary" type="button" onClick={() => void generateHighlights()} disabled={isGenerating}>
-                    AI 生成亮点
-                  </button>
-                ) : null}
-                <button className="button secondary" type="button" onClick={() => void runAction("section")}>
-                  优化当前区块
-                </button>
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => {
-                    if (!isLoggedIn) {
-                      onRequireLogin();
-                      return;
-                    }
-                    applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
-                    setSaveMessage(`已保存「${selectedSection.title}」到后端。`);
-                  }}
-                >
-                  保存到后端
-                </button>
-              </div>
-            </div>
-            {saveMessage ? <div className="inline-message success">{saveMessage}</div> : null}
-
-            <textarea
-              className="input textarea tall"
-              value={selectedDraft}
-              aria-label={`${selectedSection.title} 编辑`}
-              onChange={(event) => setDraftOverrides((current) => ({ ...current, [selectedSectionId]: event.target.value }))}
-            />
-
-            <div className="resume-module-summary-list">
-              {sections.map((section) => (
-                <button key={section.id} type="button" className={selectedSectionId === section.id ? "resume-module-summary active" : "resume-module-summary"} onClick={() => setSelectedSectionId(section.id)}>
-                  <strong>{section.title}</strong>
-                  <p>{repairText(sectionDrafts[section.id]).slice(0, 60) || "等待补充内容"}</p>
-                </button>
-              ))}
+      {/* Main two-column layout */}
+      <div className="resume-main-layout">
+        {/* Left: ALL resume sections displayed as cards */}
+        <div className="resume-content-area">
+          {/* Profile head */}
+          <div className="resume-profile-head">
+            <div className="resume-avatar">{(profile.displayName || profile.resume.name || "候").slice(0, 1)}</div>
+            <div>
+              <strong>{repairText(profile.displayName || profile.resume.name || "候选人")}</strong>
+              <p>
+                {repairText(profile.resume.targetRole || "目标岗位待补充")}
+                {position ? " · " + repairText(position.title) : ""}
+              </p>
             </div>
           </div>
-        </section>
 
-        <aside className="surface-card resume-ai-column chat-ai-column">
-          <div className="surface-card-inner resume-chat-shell">
-            <div className="resume-chat-header">
+          {/* All section cards — always visible */}
+          <div className="resume-section-cards">
+            {sections.map((section) => {
+              const isEditing = editingSectionId === section.id;
+              const content = sectionDrafts[section.id];
+              const hasContent = content?.trim().length > 0;
+
+              return (
+                <article key={section.id} className={"resume-section-card" + (isEditing ? " editing" : "")}>
+                  <header className="resume-section-card-header">
+                    <div>
+                      <span className="subtle-label">{section.label}</span>
+                      <h2>{section.title}</h2>
+                    </div>
+                    <div className="hero-actions">
+                      {section.id === "highlights" ? (
+                        <button className="button secondary compact-button" type="button" onClick={() => void generateHighlights()} disabled={isGenerating}>
+                          <Sparkles size={12} />
+                          AI 生成
+                        </button>
+                      ) : null}
+                      {isEditing ? (
+                        <>
+                          <button className="button secondary compact-button" type="button" onClick={() => setEditingSectionId(null)}>
+                            <X size={12} />
+                            取消
+                          </button>
+                          <button className="button primary compact-button" type="button" onClick={() => {
+                            applySectionSave(section.id, sectionDrafts[section.id], profile, onUpdateEvidence, onSetHighlights);
+                            setSaveMessage("已保存「" + section.title + "」。");
+                            setEditingSectionId(null);
+                          }}>
+                            保存
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="button secondary compact-button" type="button" onClick={() => setEditingSectionId(section.id)}>
+                            <PenLine size={12} />
+                            编辑
+                          </button>
+                          <button className="button secondary compact-button" type="button" onClick={() => {
+                            setSelectedSectionId(section.id);
+                            void runAction("section");
+                          }} disabled={isGenerating}>
+                            <Sparkles size={12} />
+                            优化
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </header>
+
+                  {isEditing ? (
+                    <textarea
+                      className="input textarea tall"
+                      value={sectionDrafts[section.id]}
+                      aria-label={section.title + " 编辑"}
+                      onChange={(event) => setDraftOverrides((current) => ({ ...current, [section.id]: event.target.value }))}
+                    />
+                  ) : (
+                    <div className="resume-section-preview">
+                      {hasContent ? (
+                        <pre>{content}</pre>
+                      ) : (
+                        <p className="resume-section-empty">暂无内容，上传简历自动填充或点击编辑手动填写。</p>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+
+          {/* Quick actions at bottom */}
+          <div className="resume-quick-actions">
+            <button className="button secondary compact-button" type="button" onClick={() => void runAction("full")} disabled={isGenerating}>
+              <FileText size={14} />
+              优化整份简历
+            </button>
+            {position ? (
+              <button className="button secondary compact-button" type="button" onClick={() => void runAction("match")} disabled={isGenerating}>
+                <Sparkles size={14} />
+                岗位匹配分析
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Right: AI chat panel */}
+        <aside className={"surface-card resume-ai-panel" + (aiPanelOpen ? " open" : "")}>
+          <div className="surface-card-inner resume-ai-panel-inner">
+            <div className="resume-ai-panel-header">
               <div>
                 <span className="subtle-label">AI 对话</span>
-                <h2>正常聊天面板</h2>
-                <p>
-                  当前上下文：{selectedSection.title}
-                  {position ? ` · ${repairText(position.title)}` : ""}
-                </p>
+                <h2>简历优化</h2>
               </div>
-            </div>
-
-            <div className="resume-chat-actions">
-              <button className="button secondary compact-button" type="button" onClick={() => void runAction("section")}>
-                <Sparkles size={14} />
-                优化当前区块
-              </button>
-              <button className="button secondary compact-button" type="button" onClick={() => void runAction("full")}>
-                <FileText size={14} />
-                优化整份简历
-              </button>
-              <button className="button secondary compact-button" type="button" onClick={() => void runAction("match")}>
-                <Sparkles size={14} />
-                按岗位做匹配分析
+              <button
+                className="mini-link resume-ai-close-desktop"
+                type="button"
+                onClick={() => setAiPanelOpen(false)}
+                aria-label="关闭 AI 面板"
+              >
+                <X size={14} />
               </button>
             </div>
 
-            <div className="chat-thread resume-chat-thread standard-chat-thread">
+            <div className="chat-thread resume-chat-thread">
               {chatMessages.map((message) => (
                 <article key={message.id} className={message.role === "assistant" ? "chat-bubble assistant" : "chat-bubble user"}>
                   <p>{message.text}</p>
@@ -454,8 +462,8 @@ export function ResumeWorkspacePage({
                   {message.suggestion ? (
                     <div className="suggestion-box">
                       <pre>{message.suggestion}</pre>
-                      <button className="button primary" type="button" onClick={() => applySuggestion(message)}>
-                        {message.applyTarget === "full" ? "应用到整份编辑区" : "应用到当前区块"}
+                      <button className="button primary compact-button" type="button" onClick={() => applySuggestion(message)}>
+                        {message.applyTarget === "full" ? "应用到整份简历" : "应用"}
                       </button>
                     </div>
                   ) : null}
@@ -463,21 +471,79 @@ export function ResumeWorkspacePage({
               ))}
             </div>
 
-            <form className="chat-composer resume-chat-composer fixed-composer" onSubmit={(event) => void sendChat(event)}>
+            <form className="chat-composer resume-chat-composer" onSubmit={(event) => void sendChat(event)}>
               <textarea
                 value={chatInput}
                 aria-label="简历优化需求"
                 onChange={(event) => setChatInput(event.target.value)}
-                placeholder="例如：把这段项目经历改得更像产品岗，少空话，多结果。"
+                placeholder="描述你想如何优化简历..."
+                rows={2}
               />
               <button className="button primary" type="submit" disabled={!chatInput.trim() || isGenerating}>
                 <SendHorizonal size={16} />
-                {isGenerating ? "生成中..." : "发送"}
               </button>
             </form>
           </div>
         </aside>
       </div>
+
+      {/* Mobile AI drawer */}
+      <div className={"resume-ai-drawer-backdrop" + (aiPanelOpen ? " open" : "")} role="presentation" onClick={() => setAiPanelOpen(false)}>
+        <aside
+          className={"resume-ai-drawer" + (aiPanelOpen ? " open" : "")}
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI 简历优化对话"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="resume-ai-panel-header">
+            <div>
+              <span className="subtle-label">AI 对话</span>
+              <h2>简历优化</h2>
+            </div>
+            <button className="mini-link" type="button" onClick={() => setAiPanelOpen(false)}>关闭</button>
+          </div>
+          <div className="chat-thread resume-chat-thread" style={{ maxHeight: "30dvh" }}>
+            {chatMessages.map((message) => (
+              <article key={message.id} className={message.role === "assistant" ? "chat-bubble assistant" : "chat-bubble user"}>
+                <p>{message.text}</p>
+                {message.metaNote ? <div className="inline-message">{message.metaNote}</div> : null}
+                {message.suggestion ? (
+                  <div className="suggestion-box">
+                    <pre>{message.suggestion}</pre>
+                    <button className="button primary compact-button" type="button" onClick={() => applySuggestion(message)}>
+                      {message.applyTarget === "full" ? "应用到整份简历" : "应用"}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+          <form className="chat-composer" onSubmit={(event) => void sendChat(event)}>
+            <textarea
+              value={chatInput}
+              aria-label="简历优化需求"
+              onChange={(event) => setChatInput(event.target.value)}
+              placeholder="描述你想如何优化简历..."
+              rows={2}
+            />
+            <button className="button primary" type="submit" disabled={!chatInput.trim() || isGenerating}>
+              <SendHorizonal size={16} />
+            </button>
+          </form>
+        </aside>
+      </div>
+
+      {/* Mobile FAB for AI */}
+      <button
+        className="button primary resume-ai-toggle-mobile"
+        type="button"
+        onClick={() => setAiPanelOpen((v) => !v)}
+        aria-label={aiPanelOpen ? "收起 AI 对话" : "打开 AI 对话"}
+      >
+        <Sparkles size={16} />
+        {aiPanelOpen ? "收起" : "AI 优化"}
+      </button>
     </section>
   );
 }

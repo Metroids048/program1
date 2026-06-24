@@ -1,4 +1,4 @@
-import {
+﻿import {
   AnswerDraft,
   AnswerCueCard,
   AppState,
@@ -851,17 +851,56 @@ export function recomputeProfile(resumeText: string, previous?: CandidateProfile
   return { ...next, evidenceLibrary: merged, highlights: previous.highlights };
 }
 
+
+export function normalizeMaterial(material: PositionMaterial): PositionMaterial {
+  return {
+    ...material,
+    kind: material.kind ?? "project",
+    source: material.source ?? "manual",
+    usageScopes: Array.isArray(material.usageScopes) && material.usageScopes.length > 0
+      ? material.usageScopes
+      : ["live", "mock", "resume"],
+    ragStatus: material.ragStatus ?? "local_only",
+    parsedText: material.parsedText ?? undefined,
+    originRecordId: material.originRecordId ?? undefined,
+    linkedQuestionIds: Array.isArray(material.linkedQuestionIds) ? material.linkedQuestionIds : [],
+    tags: Array.isArray(material.tags) ? material.tags : [],
+    keywords: Array.isArray(material.keywords) ? material.keywords : [],
+  };
+}
 export function normalizePosition(position: Position, profile: CandidateProfile): Position {
-  const job = position.job ?? analyzeJob(position.jobText);
+  const jobText = typeof position.jobText === "string" ? position.jobText : "";
+  const job = position.job ?? analyzeJob(jobText);
   const questions = Array.isArray(position.questions) ? position.questions : generateQuestions(withEvidenceLibrary(profile), job, 28);
   const matchReport = position.matchReport ?? createMatchReport(profile.resume, job, profile.resumeText);
-  const materials = Array.isArray(position.materials) ? position.materials : [];
+  const materials = (Array.isArray(position.materials) ? position.materials : []).map(normalizeMaterial);
+  const answers = Array.isArray(position.answers) ? position.answers : generateAnswerDrafts(questions, withEvidenceLibrary(profile), job, profile.evidenceLibrary);
+  const mockTurns = Array.isArray(position.mockTurns) ? position.mockTurns.filter((turn) => questions.some((question) => question.id === turn.questionId)) : [];
+  const report = position.report ?? buildInterviewReport(mockTurns, questions, matchReport);
+  const timestamp = nowIso();
   return {
     ...position,
+    title: typeof position.title === "string" && position.title.trim() ? position.title : job.title,
+    company: typeof position.company === "string" && position.company.trim() ? position.company : job.company,
+    jobText,
+    job,
+    matchReport,
+    questions,
+    answers,
+    mockTurns,
+    report,
+    selectedQuestionId:
+      typeof position.selectedQuestionId === "string" && questions.some((question) => question.id === position.selectedQuestionId)
+        ? position.selectedQuestionId
+        : questions[0]?.id ?? "",
     intake: createIntakeState(job, position.jobText, position.intake),
     materials,
     interviewPreferences: { ...DEFAULT_INTERVIEW_PREFERENCES, ...(position.interviewPreferences ?? {}) },
     analysisContext: position.analysisContext ?? createAnalysisContext(profile, job, matchReport, questions, materials),
+    status: position.status ?? "draft",
+    notes: typeof position.notes === "string" ? position.notes : "",
+    createdAt: position.createdAt ?? timestamp,
+    updatedAt: position.updatedAt ?? timestamp,
   };
 }
 
@@ -891,7 +930,7 @@ export function createPosition(jobText: string, profile: CandidateProfile, init?
     materials,
     interviewPreferences: { ...DEFAULT_INTERVIEW_PREFERENCES, ...(init?.interviewPreferences ?? {}) },
     analysisContext: createAnalysisContext(profile, job, matchReport, questions, materials),
-    status: init?.status ?? "planning",
+    status: init?.status ?? "draft",
     notes: init?.notes ?? "",
     createdAt: init?.createdAt ?? timestamp,
     updatedAt: timestamp,

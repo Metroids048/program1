@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
 import { HomeDashboard } from "./components/home";
 import { DEFAULT_CONFIG, type InterviewConfig, makeId, nowIso } from "./components/shared";
 import { useAuth } from "./lib/auth";
 import {
+  createMockSessionOnServer,
   fetchStateSnapshot,
   saveRecordOnServer,
   updatePositionMaterialsOnServer,
@@ -16,12 +17,13 @@ import { apiFetch } from "./lib/authClient";
 import { repairAppState, repairText } from "./lib/copy";
 import { buildInterviewReport, createInitialAppState, saveQuestionFromCueCard, toWorkspace } from "./lib/interviewEngine";
 import { navigateTo, parseRoute } from "./lib/router";
-import { clearCachedWorkspace, loadServerSnapshotCache, saveServerSnapshotCache } from "./lib/store";
+import { clearCachedWorkspace, loadServerSnapshotCache, normalizeImportedState, saveServerSnapshotCache } from "./lib/store";
 import type {
   AnswerCueCard,
   AppState,
   CandidateProfile,
   ConversationMessage,
+  ConversationSession,
   EvidenceItem,
   InterviewAiMeta,
   InterviewQuestion,
@@ -36,6 +38,9 @@ import type {
   UserJourneyState,
 } from "./types";
 import { LiveAssistantDashboard, InterviewRoomView } from "./components/live";
+import { JobsPage } from "./components/jobs";
+import { ConversationPage } from "./components/conversation";
+import { MockSetupPage } from "./components/mock-setup";
 import { AccountModal, RecordsView } from "./components/records";
 import { AuthPage } from "./components/auth/AuthPage";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./components/auth/RecoveryPages";
@@ -59,23 +64,21 @@ type ServerSnapshot = {
 
 function toAppStateFromSnapshot(snapshot: ServerSnapshot, current?: AppState): AppState {
   const fallback = current ?? createInitialAppState();
-  const positions = Array.isArray(snapshot.positions) ? snapshot.positions : [];
-  const records = Array.isArray(snapshot.records) ? snapshot.records : [];
-  const next = repairAppState({
+  const normalized = normalizeImportedState({
     profile: snapshot.profile ?? fallback.profile,
-    positions,
-    activePositionId: positions.some((position) => position.id === snapshot.activePositionId)
+    positions: Array.isArray(snapshot.positions) ? snapshot.positions : [],
+    activePositionId: Array.isArray(snapshot.positions) && snapshot.positions.some((position) => position.id === snapshot.activePositionId)
       ? snapshot.activePositionId
-      : positions[0]?.id ?? "",
-    interviewRecords: records,
+      : (Array.isArray(snapshot.positions) ? snapshot.positions[0]?.id : "") ?? "",
+    interviewRecords: Array.isArray(snapshot.records) ? snapshot.records : [],
     activeRecordId:
-      current?.interviewRecords.some((record) => records.some((nextRecord) => nextRecord.id === record.id && record.id === current.activeRecordId))
+      current?.interviewRecords.some((record) => (Array.isArray(snapshot.records) ? snapshot.records : []).some((nextRecord) => nextRecord.id === record.id && record.id === current.activeRecordId))
         ? current.activeRecordId
-        : records[0]?.id ?? "",
+        : (Array.isArray(snapshot.records) ? snapshot.records[0]?.id : "") ?? "",
     aiMode: true,
     journeyState: snapshot.journeyState ?? current?.journeyState ?? "guest",
   });
-  return next;
+  return repairAppState(normalized);
 }
 
 function replacePosition(items: Position[], nextPosition: Position): Position[] {
@@ -86,6 +89,27 @@ function replacePosition(items: Position[], nextPosition: Position): Position[] 
 function replaceRecord(items: InterviewRecord[], nextRecord: InterviewRecord): InterviewRecord[] {
   const exists = items.some((item) => item.id === nextRecord.id);
   return exists ? items.map((item) => (item.id === nextRecord.id ? nextRecord : item)) : [nextRecord, ...items];
+}
+
+function toConversationSessionFromPosition(position: Position): ConversationSession | null {
+  const intake = position.intake;
+  if (!intake?.sessionId) return null;
+  return {
+    id: intake.sessionId,
+    linkedPositionId: position.id,
+    status: intake.reviewStatus === "confirmed" ? "saved" : "draft",
+    messages: intake.messages,
+    extractedFields: [...intake.inferredFields, ...intake.confirmedFields],
+    jdDraft: position.jobText || intake.rawJdText,
+    configDraft: {
+      interviewerRole: position.interviewPreferences.interviewerRole,
+      difficulty: position.interviewPreferences.difficulty,
+      style: position.interviewPreferences.style,
+      durationMinutes: 90,
+      questionCount: Math.max(3, Math.min(8, position.questions.length || 8)),
+    },
+    updatedAt: position.updatedAt,
+  };
 }
 
 export function App() {
@@ -105,12 +129,23 @@ export function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [loginGatePath, setLoginGatePath] = useState<string | null>(null);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
+  const [pendingMockRoute, setPendingMockRoute] = useState<{
+    routeSessionId: string;
+    serverSessionId: string;
+    positionId: string;
+    config: InterviewConfig;
+    question: string;
+    questionSource?: string;
+    conversationHistory: ConversationMessage[];
+    backendStatus: "success" | "fallback" | "error";
+    fallbackReason?: string;
+  } | null>(null);
   const redirectedRef = useRef(false);
 
   useEffect(() => {
     if (authLoading || !snapshotHydrated) return;
     const currentRoute = parseRoute(routePath);
-    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "legalTerms", "legalPrivacy", "termsOfService", "privacyPolicy", "notFound", "serverError"]);
+    const publicRoutes = new Set(["home", "jobs", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "legalTerms", "legalPrivacy", "termsOfService", "privacyPolicy", "notFound", "serverError"]);
     if (isLoggedIn && appState.journeyState === "onboarding" && currentRoute.name !== "onboarding" && !publicRoutes.has(currentRoute.name)) {
       if (redirectedRef.current) return;
       redirectedRef.current = true;
@@ -120,14 +155,6 @@ export function App() {
     }
     redirectedRef.current = false;
   }, [isLoggedIn, authLoading, appState.journeyState, routePath, snapshotHydrated]);
-
-  // When user logs in, transition journeyState from guest to onboarding
-  useEffect(() => {
-    if (!authLoading && snapshotHydrated && isLoggedIn && appState.journeyState === "guest" && appState.positions.length === 0 && appState.interviewRecords.length === 0 && !appState.profile.resumeText.trim()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAppState((current) => repairAppState({ ...current, journeyState: "ready" }));
-    }
-  }, [isLoggedIn, authLoading, appState.journeyState, appState.positions.length, appState.interviewRecords.length, appState.profile.resumeText, snapshotHydrated]);
 
   useEffect(() => {
     let active = true;
@@ -175,16 +202,44 @@ export function App() {
   }, []);
 
   const { profile, positions, activePositionId, interviewRecords, activeRecordId } = appState;
+  const effectiveJourneyState =
+    !authLoading &&
+    snapshotHydrated &&
+    isLoggedIn &&
+    appState.journeyState === "guest" &&
+    appState.positions.length === 0 &&
+    appState.interviewRecords.length === 0 &&
+    !appState.profile.resumeText.trim()
+      ? "ready"
+      : appState.journeyState;
+  const conversationSessions = useMemo(
+    () =>
+      appState.positions
+        .map((position) => toConversationSessionFromPosition(position))
+        .filter((item): item is ConversationSession => Boolean(item)),
+    [appState.positions],
+  );
   const activePosition = positions.find((position) => position.id === activePositionId) ?? positions[0];
   const activeWorkspace = activePosition ? toWorkspace(profile, activePosition) : null;
   const route = parseRoute(routePath);
   const activeNav: PrimaryRouteName =
     route.name === "recordDetail" ? "records" :
+    route.name === "livePosition" ? "live" :
+    route.name === "mockSetup" || route.name === "mockRoom" || route.name === "mock" ? "mock" :
+    route.name === "positionDetail" || route.name === "jobs" || route.name === "conversation" ? "home" :
     route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" || route.name === "termsOfService" || route.name === "privacyPolicy" || route.name === "notFound" || route.name === "serverError" ? "home" :
     route.name === "account" ? "account" :
     route.name;
   const routeRecordId = route.name === "recordDetail" ? route.recordId : "";
   const selectedRecordId = routeRecordId || activeRecordId;
+  const routePositionId =
+    route.name === "livePosition" || route.name === "mockSetup" || route.name === "positionDetail"
+      ? route.positionId
+      : "";
+  const routeConversationId = route.name === "conversation" ? route.sessionId : "";
+  const resolvedPosition = routePositionId ? (positions.find((position) => position.id === routePositionId) ?? activePosition) : activePosition;
+  const activeConversation = routeConversationId ? conversationSessions.find((session) => session.id === routeConversationId) : undefined;
+  const pendingMockSession = route.name === "mockRoom" && pendingMockRoute?.routeSessionId === route.sessionId ? pendingMockRoute : null;
 
   const openRoute = (path: string, options?: { replace?: boolean }) => {
     navigateTo(path, options);
@@ -209,6 +264,13 @@ export function App() {
 
   const syncSnapshot = (snapshot: ServerSnapshot) => {
     setAppState((current) => toAppStateFromSnapshot(snapshot, current));
+  };
+
+  const selectPosition = (positionId: string) => {
+    patchState((current) => ({
+      ...current,
+      activePositionId: current.positions.some((position) => position.id === positionId) ? positionId : current.activePositionId,
+    }));
   };
 
   const createOrUpdatePosition = (jobText: string, options?: { positionId?: string; confirmedFields?: Array<{ key: string; value: string; source?: string }>; messages?: Array<{ role: "assistant" | "user"; text: string }> }) => {
@@ -297,7 +359,7 @@ export function App() {
       .catch(() => undefined);
   };
 
-  const addQuestion = (payload: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => {
+  const addQuestion = (payload: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string; tags?: string[] }) => {
     if (!activePosition) return;
     const question: InterviewQuestion = {
       id: makeId("q-manual"),
@@ -312,7 +374,7 @@ export function App() {
       answer: repairText(payload.answer),
       cueCardIds: [],
       lastReviewedAt: nowIso(),
-      tags: ["用户保存"],
+      tags: Array.from(new Set(["用户保存", ...(payload.tags ?? []).map((item) => repairText(item)).filter(Boolean)])),
     };
     void updatePositionQuestionsOnServer(activePosition.id, [question, ...activePosition.questions])
       .then(({ position }) => {
@@ -325,9 +387,10 @@ export function App() {
   };
 
   const addQuestionFromCueCard = (card: AnswerCueCard) => {
-    if (!activePosition) return;
+    const positionForQuestion = resolvedPosition ?? activePosition;
+    if (!positionForQuestion) return;
     const question = saveQuestionFromCueCard(card);
-    void updatePositionQuestionsOnServer(activePosition.id, [question, ...activePosition.questions])
+    void updatePositionQuestionsOnServer(positionForQuestion.id, [question, ...positionForQuestion.questions])
       .then(({ position }) => {
         patchState((current) => ({
           ...current,
@@ -361,16 +424,17 @@ export function App() {
     conversationHistory?: ConversationMessage[];
     aiMeta?: InterviewAiMeta;
   }) => {
-    if (!activePosition) return;
+    const positionForRecord = resolvedPosition ?? activePosition;
+    if (!positionForRecord) return;
     const turns = payload.turn
-      ? [...activePosition.mockTurns.filter((item) => item.questionId !== payload.turn?.questionId), payload.turn]
-      : activePosition.mockTurns;
-    const report = payload.report ?? buildInterviewReport(turns, activePosition.questions, activePosition.matchReport);
+      ? [...positionForRecord.mockTurns.filter((item) => item.questionId !== payload.turn?.questionId), payload.turn]
+      : positionForRecord.mockTurns;
+    const report = payload.report ?? buildInterviewReport(turns, positionForRecord.questions, positionForRecord.matchReport);
     const baseRecord = payload.serverRecordId ? interviewRecords.find((item) => item.id === payload.serverRecordId) : undefined;
     const record: InterviewRecord = {
       ...(baseRecord ?? {}),
       id: baseRecord?.id ?? makeId("record"),
-      positionId: activePosition.id,
+      positionId: positionForRecord.id,
       mode: payload.mode,
       title: payload.title,
       createdAt: baseRecord?.createdAt ?? nowIso(),
@@ -389,7 +453,7 @@ export function App() {
       activeRecordId: record.id,
       interviewRecords: replaceRecord(current.interviewRecords, record),
       positions: current.positions.map((position) =>
-        position.id === activePosition.id ? { ...position, mockTurns: turns, report, updatedAt: nowIso() } : position,
+        position.id === positionForRecord.id ? { ...position, mockTurns: turns, report, updatedAt: nowIso() } : position,
       ),
     }));
 
@@ -408,14 +472,74 @@ export function App() {
   const clearAll = () => {
     clearCachedWorkspace();
     setAppState(repairAppState(createInitialAppState()));
+    setPendingMockRoute(null);
     openRoute("/", { replace: true });
     setAccountOpen(false);
   };
 
+  const startMockFromSetup = (config: InterviewConfig) => {
+    const positionForMock = resolvedPosition ?? activePosition;
+    if (!positionForMock) return;
+    selectPosition(positionForMock.id);
+    patchState((current) => ({
+      ...current,
+      positions: current.positions.map((position) =>
+        position.id === positionForMock.id
+          ? {
+              ...position,
+              interviewPreferences: {
+                ...position.interviewPreferences,
+                interviewerRole: config.interviewerRole,
+                difficulty: config.difficulty,
+                interviewerGender: config.interviewerGender,
+                submitMode: config.submitMode,
+                style: config.style,
+              },
+              intake: {
+                ...position.intake,
+                configuredInterview: true,
+              },
+              status: position.status === "practiced" ? position.status : "configured",
+              updatedAt: nowIso(),
+            }
+          : position,
+      ),
+    }));
+    void createMockSessionOnServer(positionForMock.id, config as unknown as Record<string, unknown>)
+      .then((result) => {
+        const routeSessionId = makeId("mock-route");
+        setInterviewConfig(config);
+        setPendingMockRoute({
+          routeSessionId,
+          serverSessionId: result.sessionId,
+          positionId: positionForMock.id,
+          config,
+          question: result.question,
+          questionSource: result.questionSource,
+          conversationHistory: result.conversationHistory ?? [],
+          backendStatus: result.backendStatus ?? "fallback",
+          fallbackReason: result.meta?.fallbackReason,
+        });
+        openRoute(`/mock/room/${routeSessionId}`);
+      })
+      .catch(() => {
+        setInterviewConfig(config);
+        setPendingMockRoute(null);
+        openRoute("/mock");
+      });
+  };
+
   const startConfiguredMock = (config = interviewConfig) => {
     setInterviewConfig(config);
+    if (activePosition && (activePosition.intake?.configuredInterview || activePosition.status === "configured" || activePosition.status === "practiced")) {
+      openRoute(`/mock/room/${activePosition.id}`);
+      return;
+    }
     openRoute("/mock");
   };
+
+  const positionForRoute = resolvedPosition;
+  const workspaceForRoute = positionForRoute ? toWorkspace(profile, positionForRoute) : null;
 
   return (
     <AppShell
@@ -452,7 +576,7 @@ export function App() {
           patchState((current) => ({
             ...current,
             journeyState: "ready",
-            positions: current.positions.some((p) => p.id === position.id) ? current.positions : [position, ...current.positions],
+            positions: current.positions.some((item) => item.id === position.id) ? current.positions : [position, ...current.positions],
             activePositionId: current.activePositionId || position.id,
           }));
         } else {
@@ -460,7 +584,7 @@ export function App() {
         }
       }} />}
 
-      {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
+      {route.name === "account" && <AccountPage journeyState={effectiveJourneyState} />}
 
       {route.name === "legalTerms" && <LegalPage type="terms" />}
 
@@ -486,30 +610,76 @@ export function App() {
         />
       )}
 
-      {route.name === "live" && (activeWorkspace && activePosition ? (
+      {(route.name === "jobs" || route.name === "positionDetail") && (
+        <JobsPage
+          positions={positions}
+          activePositionId={activePositionId}
+          onSubmitJd={createOrUpdatePosition}
+          onSelectPosition={selectPosition}
+        />
+      )}
+
+      {route.name === "conversation" && (
+        activeConversation ? (
+          <ConversationPage
+            session={activeConversation}
+            position={positionForRoute}
+            onGoMock={() => {
+              if (!activeConversation.linkedPositionId) return;
+              const linkedPosition = positions.find((position) => position.id === activeConversation.linkedPositionId);
+              selectPosition(activeConversation.linkedPositionId);
+              openRoute(
+                linkedPosition?.intake?.configuredInterview || linkedPosition?.status === "configured" || linkedPosition?.status === "practiced"
+                  ? `/mock/room/${activeConversation.linkedPositionId}`
+                  : `/mock/setup/${activeConversation.linkedPositionId}`,
+              );
+            }}
+          />
+        ) : (
+          <section className="page"><div className="empty-card"><div className="empty-card-icon"><BriefcaseBusiness size={20} /></div><h2>岗位对话草稿暂未同步</h2><p>当前对话会话不存在或尚未生成，你可以先回到岗位台继续整理当前岗位。</p><button className="button primary" type="button" onClick={() => openRoute("/jobs")}>回到岗位台</button></div></section>
+        )
+      )}
+
+      {(route.name === "live" || route.name === "livePosition") && (workspaceForRoute && positionForRoute ? (
         <LiveAssistantDashboard
-          workspace={activeWorkspace}
+          workspace={workspaceForRoute}
           profile={profile}
-          position={activePosition}
+          position={positionForRoute}
           onSaveRecord={saveInterviewRecord}
           onSaveQuestion={addQuestionFromCueCard}
           isLoggedIn={isLoggedIn}
-          onRequireLogin={() => requireLoginFor("/live")}
+          onRequireLogin={() => requireLoginFor(route.name === "livePosition" ? `/live/${positionForRoute.id}` : "/live")}
         />
       ) : (
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><BriefcaseBusiness size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入实时助手。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>
       ))}
 
-      {route.name === "mock" && (activeWorkspace && activePosition ? (
+      {route.name === "mockSetup" && positionForRoute && (
+        <MockSetupPage
+          position={positionForRoute}
+          onStart={startMockFromSetup}
+        />
+      )}
+
+      {(route.name === "mock" || route.name === "mockRoom") && (workspaceForRoute && positionForRoute ? (
         <InterviewRoomView
-          workspace={activeWorkspace}
+          workspace={workspaceForRoute}
           profile={profile}
-          position={activePosition}
+          position={positionForRoute}
           onSaveRecord={saveInterviewRecord}
           onSaveQuestion={addQuestionFromCueCard}
           config={interviewConfig}
+          initialSession={pendingMockSession ? {
+            sessionId: pendingMockSession.serverSessionId,
+            question: pendingMockSession.question,
+            questionSource: pendingMockSession.questionSource,
+            conversationHistory: pendingMockSession.conversationHistory,
+            backendStatus: pendingMockSession.backendStatus,
+            fallbackReason: pendingMockSession.fallbackReason,
+          } : undefined}
+          skipSetup={route.name === "mockRoom"}
           isLoggedIn={isLoggedIn}
-          onRequireLogin={() => requireLoginFor("/mock")}
+          onRequireLogin={() => requireLoginFor(route.name === "mockRoom" ? `/mock/room/${route.sessionId}` : "/mock")}
         />
       ) : (
         <section className="page"><div className="empty-card"><div className="empty-card-icon"><Mic size={20} /></div><h2>还没有岗位卡</h2><p>先在首页粘贴 JD 创建岗位，再进入模拟面试。</p><button className="button primary" type="button" onClick={() => openRoute("/")}>去岗位台</button></div></section>

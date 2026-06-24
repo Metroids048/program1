@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import Fastify, { type FastifyInstance } from "fastify";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,14 +99,18 @@ const MaterialsBody = z.object({
   materials: z.array(
     z.object({
       id: z.string(),
-      kind: z.enum(["project", "upload", "note"]),
-      source: z.enum(["manual", "upload", "derived"]),
+      kind: z.enum(["project", "upload", "note", "project_file", "question_note", "record_excerpt"]),
+      source: z.enum(["manual", "upload", "derived", "mock_backflow", "live_backflow", "record_extract"]),
       title: z.string(),
       detail: z.string(),
+      parsedText: z.string().optional(),
       summary: z.string(),
       keywords: z.array(z.string()),
       tags: z.array(z.string()),
       linkedQuestionIds: z.array(z.string()),
+      usageScopes: z.array(z.enum(["live", "mock", "resume"])),
+      originRecordId: z.string().optional(),
+      ragStatus: z.enum(["pending", "indexed", "failed", "local_only"]),
       createdAt: z.string(),
       updatedAt: z.string(),
     }),
@@ -631,6 +635,85 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     };
   });
 
+
+  // === Conversation Sessions ===
+  const ConversationBody = z.object({
+    linkedPositionId: z.string().optional(),
+    jdDraft: z.string().optional(),
+  });
+
+  app.post("/api/conversations", async (request) => {
+    const body = ConversationBody.parse(request.body);
+    const id = makeId("conv");
+    const now = nowIso();
+    if (db.db) {
+      db.db.prepare(
+        "insert into conversation_sessions (id, linked_position_id, status, messages_json, extracted_fields_json, jd_draft, config_draft_json, updated_at) values (?, ?, 'draft', '[]', '[]', ?, '{}', ?)"
+      ).run(id, body.linkedPositionId ?? null, body.jdDraft ?? "", now);
+    }
+    return { id, status: "draft", updatedAt: now };
+  });
+
+  app.get<{ Params: { id: string } }>("/api/conversations/:id", async (request, reply) => {
+    if (!db.db) return reply.code(503).send({ error: "DB_UNAVAILABLE" });
+    const row = db.db.prepare("select * from conversation_sessions where id = ?").get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: "NOT_FOUND" });
+    return {
+      id: row.id,
+      linkedPositionId: row.linked_position_id,
+      status: row.status,
+      messages: JSON.parse(String(row.messages_json ?? "[]")),
+      extractedFields: JSON.parse(String(row.extracted_fields_json ?? "[]")),
+      jdDraft: row.jd_draft,
+      configDraft: JSON.parse(String(row.config_draft_json ?? "{}")),
+      updatedAt: row.updated_at,
+    };
+  });
+
+  const AddMessageBody = z.object({
+    role: z.enum(["assistant", "user"]),
+    text: z.string().min(1),
+  });
+
+  app.post<{ Params: { id: string } }>("/api/conversations/:id/messages", async (request, reply) => {
+    if (!db.db) return reply.code(503).send({ error: "DB_UNAVAILABLE" });
+    const body = AddMessageBody.parse(request.body);
+    const row = db.db.prepare("select messages_json from conversation_sessions where id = ?").get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: "NOT_FOUND" });
+    const messages = JSON.parse(String(row.messages_json ?? "[]"));
+    messages.push({ id: makeId("msg"), role: body.role, text: body.text, createdAt: nowIso() });
+    db.db.prepare("update conversation_sessions set messages_json = ?, updated_at = ? where id = ?").run(JSON.stringify(messages), nowIso(), request.params.id);
+    return { ok: true };
+  });
+
+  // === Interview Sessions ===
+  app.post("/api/interview-sessions", async (request, reply) => {
+    if (!db.db) return reply.code(503).send({ error: "DB_UNAVAILABLE" });
+    const body = request.body as { positionId?: string; mode?: string; configSnapshot?: Record<string, unknown> };
+    if (!body.positionId) return reply.code(400).send({ error: "MISSING_POSITION_ID" });
+    const id = makeId("ivs");
+    const now = nowIso();
+    db.db.prepare(
+      "insert into interview_sessions (id, position_id, mode, config_snapshot_json, helper_panel_state, backend_status, transcript_json, created_at, updated_at) values (?, ?, ?, ?, 'cueCard', 'connected', '[]', ?, ?)"
+    ).run(id, body.positionId, body.mode ?? "mock", JSON.stringify(body.configSnapshot ?? {}), now, now);
+    return { id, status: "created" };
+  });
+
+  app.get<{ Params: { id: string } }>("/api/interview-sessions/:id", async (request, reply) => {
+    if (!db.db) return reply.code(503).send({ error: "DB_UNAVAILABLE" });
+    const row = db.db.prepare("select * from interview_sessions where id = ?").get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: "NOT_FOUND" });
+    return {
+      id: row.id,
+      positionId: row.position_id,
+      mode: row.mode,
+      configSnapshot: JSON.parse(String(row.config_snapshot_json ?? "{}")),
+      currentQuestion: null,
+      helperPanelState: row.helper_panel_state,
+      backendStatus: row.backend_status,
+      transcript: JSON.parse(String(row.transcript_json ?? "[]")),
+    };
+  });
   app.addHook("onClose", async () => {
     db.db?.close();
   });

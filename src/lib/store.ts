@@ -1,4 +1,4 @@
-import { AppState, InterviewQuestion, InterviewRecord, MockTurn, UserJourneyState, WorkspaceState } from "../types";
+﻿import { AppState, InterviewQuestion, InterviewRecord, MockTurn, UserJourneyState, WorkspaceState } from "../types";
 import { repairAppState } from "./copy";
 import { apiFetch } from "./authClient";
 import { buildInterviewReport, createInitialAppState, createPosition, createProfile, normalizePosition } from "./interviewEngine";
@@ -72,7 +72,7 @@ function deriveJourneyState(state: AppState): UserJourneyState {
   return "preparing";
 }
 
-function normalizeImportedState(state: AppState): AppState {
+export function normalizeImportedState(state: AppState): AppState {
   const profile = {
     ...state.profile,
     evidenceLibrary: Array.isArray(state.profile.evidenceLibrary) ? state.profile.evidenceLibrary : state.profile.resume.evidence,
@@ -84,7 +84,7 @@ function normalizeImportedState(state: AppState): AppState {
         ...position,
         questions: position.questions.map(normalizeQuestion),
         notes: typeof position.notes === "string" ? position.notes : "",
-        status: position.status ?? "planning",
+        status: position.status ?? "draft",
         createdAt: position.createdAt ?? new Date().toISOString(),
         updatedAt: position.updatedAt ?? new Date().toISOString(),
       },

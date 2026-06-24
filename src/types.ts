@@ -15,8 +15,10 @@ export type ApplicationStatus = "planning" | "applied" | "interviewing" | "offer
 export type QuestionCategory = string;
 export type QuestionDifficulty = string;
 export type EvidenceType = string;
-export type MaterialKind = "project" | "upload" | "note";
-export type MaterialSource = "manual" | "upload" | "derived";
+export type MaterialKind = "project" | "upload" | "note" | "project_file" | "question_note" | "record_excerpt";
+export type MaterialSource = "manual" | "upload" | "derived" | "mock_backflow" | "live_backflow" | "record_extract";
+export type UsageScope = "live" | "mock" | "resume";
+export type RagStatus = "pending" | "indexed" | "failed" | "local_only";
 export type InterviewStyle = "gentle" | "strict" | "pressure";
 export type InterviewerRole = "HR" | "上级" | "CEO" | "CTO" | "业务负责人";
 export type InterviewDifficulty = "正常" | "压力面" | "地狱面";
@@ -55,6 +57,7 @@ export interface PositionIntakeMessage {
 }
 
 export interface PositionIntakeState {
+  sessionId?: string;
   messages: PositionIntakeMessage[];
   rawJdText: string;
   inferredFields: PositionIntakeFieldValue[];
@@ -72,10 +75,14 @@ export interface PositionMaterial {
   source: MaterialSource;
   title: string;
   detail: string;
+  parsedText?: string;
   summary: string;
   keywords: string[];
   tags: string[];
   linkedQuestionIds: string[];
+  usageScopes: UsageScope[];
+  originRecordId?: string;
+  ragStatus: RagStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,13 +144,14 @@ export interface InterviewQuestion {
   reason: string;
   evidenceIds: string[];
   difficulty: QuestionDifficulty;
-  source: "diagnosis" | "manual" | "mock" | "material" | "cueCard";
+  source: "diagnosis" | "manual" | "mock" | "material" | "cueCard" | "record_excerpt";
   priority: boolean;
   notes: string;
   answer?: string;
   lastReviewedAt?: string;
   cueCardIds?: string[];
   tags?: string[];
+  linkedAssetIds?: string[];
 }
 
 export interface AnswerDraft {
@@ -329,11 +337,48 @@ export interface Position {
   materials: PositionMaterial[];
   interviewPreferences: InterviewPreferences;
   analysisContext: PositionAnalysisContext;
-  status: ApplicationStatus;
+  status: PositionStatus;
   notes: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export type PositionStatus = "draft" | "saved" | "configured" | "practiced";
+
+export interface ConversationSession {
+  id: string;
+  linkedPositionId?: string;
+  status: "draft" | "saved" | "archived";
+  messages: PositionIntakeMessage[];
+  extractedFields: PositionIntakeFieldValue[];
+  jdDraft: string;
+  configDraft: {
+    interviewerRole?: InterviewerRole;
+    difficulty?: InterviewDifficulty;
+    style?: InterviewStyle;
+    questionCount?: number;
+    durationMinutes?: number;
+  };
+  updatedAt: string;
+}
+
+export interface InterviewSession {
+  id: string;
+  positionId: string;
+  mode: "live" | "mock";
+  configSnapshot: {
+    interviewerRole: InterviewerRole;
+    difficulty: InterviewDifficulty;
+    style: InterviewStyle;
+    questionCount: number;
+    durationMinutes: number;
+  };
+  currentQuestion?: InterviewQuestion;
+  helperPanelState: "cueCard" | "evidence" | "questions" | "transcript";
+  backendStatus: "connected" | "fallback" | "disconnected";
+  transcript: ConversationMessage[];
+}
+
 
 export interface AppState {
   profile: CandidateProfile;

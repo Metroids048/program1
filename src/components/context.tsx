@@ -34,12 +34,12 @@ export function ContextWorkspace({
       <EditorHeader
         icon={FileText}
         title="上下文资料"
-        description="这里准备 JD、简历证据和问题库。它们是实时助手的弹药库，不是独立工作台。"
+        description="这里准备 JD、简历证据和资料库。它们是实时助手的弹药库，不是独立工作台。"
         action={<button className="button primary" onClick={onLive}>回到实时助手</button>}
       />
       <div className="context-tabs" role="tablist" aria-label="上下文资料">
         <button className={tab === "jd" ? "active" : ""} onClick={() => setTab("jd")}>JD 与岗位卡</button>
-        <button className={tab === "questions" ? "active" : ""} onClick={() => setTab("questions")} disabled={!workspace}>问题库</button>
+        <button className={tab === "questions" ? "active" : ""} onClick={() => setTab("questions")} disabled={!workspace}>资料库</button>
         <button className={tab === "resume" ? "active" : ""} onClick={() => setTab("resume")}>简历证据</button>
       </div>
       {tab === "jd" && (
@@ -124,7 +124,7 @@ function ContextJdTab({
         <section className="context-jd-card">
           <span>候选素材</span>
           <strong>{profile.evidenceLibrary.length} 条简历证据</strong>
-          <p>JD、简历证据和问题库会在实时助手与模拟面试中按需调用，不再占用主流程页面。</p>
+          <p>JD、简历证据和资料库会在实时助手与模拟面试中按需调用，不再占用主流程页面。</p>
         </section>
         <section className="context-jd-card">
           <span>快速入口</span>
@@ -251,7 +251,7 @@ export function QuestionBankView({ workspace, onUpdateQuestion, onAddQuestion, o
   };
   return (
     <section className="page-section">
-      <EditorHeader icon={BookOpenCheck} title="问题库" description="诊断题、手动题、实时助手和模拟面试里的追问都在这里复习和沉淀。" action={<div className="section-action"><button className="button secondary" onClick={onMock}>用这些题模拟</button><button className="button primary" onClick={onLive}>进入实时助手</button></div>} />
+      <EditorHeader icon={BookOpenCheck} title="资料库" description="诊断题、手动题、实时助手和模拟面试里的追问都在这里复习和沉淀。" action={<div className="section-action"><button className="button secondary" onClick={onMock}>用这些题模拟</button><button className="button primary" onClick={onLive}>进入实时助手</button></div>} />
       <form className="question-add-row" onSubmit={submit}><select className="status-select" value={category} onChange={(event) => setCategory(event.target.value as InterviewQuestion["category"])}>{categories.map((item) => <option key={item}>{item}</option>)}</select><input className="text-input" value={newQuestion} aria-label="新增问题" onChange={(event) => setNewQuestion(event.target.value)} placeholder="手动添加一个复盘题..." /><button className="button secondary" disabled={!newQuestion.trim()}><Plus size={16} />添加</button></form>
       <div className="question-card-grid">{workspace.questions.map((question) => <article key={question.id} className={question.priority ? "question-card priority" : "question-card"}><header><span>{question.category}</span><label><input type="checkbox" checked={question.priority} onChange={(event) => onUpdateQuestion(question.id, { priority: event.target.checked })} />重点</label></header><textarea className="question-edit" value={question.question} aria-label={`${question.id} 题目`} onChange={(event) => onUpdateQuestion(question.id, { question: event.target.value })} /><p>{question.reason}</p><textarea className="question-notes" value={question.notes} aria-label={`${question.id} 复盘笔记`} onChange={(event) => onUpdateQuestion(question.id, { notes: event.target.value })} placeholder="记录准备要点、题词卡要点、面试后复盘..." /></article>)}</div>
     </section>

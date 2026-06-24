@@ -1,6 +1,12 @@
 # Execution Rules — program1-main
 
 > 与全局 `workflow-gate`、`ai-delivery-anti-patterns` 叠加；冲突时 repo `AGENTS.md` 优先。
+> 
+> **新增强制加载清单（2026-06-24）**：
+> - 跨文件修改前 → 必读 `feature-regression-guard.md`（受保护功能清单）
+> - 修改共享类型/工具函数前 → 必执行 `change-impact-analysis.md` 流程
+> - 切换 Agent 工具时 → 必走 `全局配置/multi-agent-collaboration.md` 交接协议
+> - 任务分级 → 参考 `全局配置/vibe-coding-engineering-standards.md` L0-L4 标准
 
 ## 模糊输入 → 必须提问（硬门禁）
 
@@ -26,6 +32,14 @@
 - 必须写数据 owner 与接口契约（见 `DESIGN.md`）
 - P5 自检 → P6 verify；无 fresh 证据不得 claim done
 
+## 功能删除门禁（NEW）
+
+修改或删除任何代码块前：
+1. 对照 `feature-regression-guard.md` 确认是否涉及 A/B/C 级受保护功能
+2. A 级（P0）→ **停止，显式请求用户确认**
+3. B 级（P1）→ 警告用户并请求确认
+4. 禁止将 `*-full.tsx` 替换为 `*-stub.tsx`
+
 ## 产品专属禁止
 
 - 删弱 JD 工作台、问题库等上下文底座
@@ -38,4 +52,5 @@
 
 - 先 E2E 用户故事（见 `project-memory.md` 7 步）
 - 再 `AGENTS.md` UI/语音闸口
-- 最后 `npm run verify`
+- 再 `npm run verify`
+- **NEW: 跨文件修改后 → 对照 `feature-regression-guard.md` 抽查 3 个 A 级功能**

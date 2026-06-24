@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { InterviewRecord } from "./types";
 import { createPosition, createProfile } from "./lib/interviewEngine";
-import { serializeAppState } from "./lib/store";
+import { APP_STORAGE_KEY, serializeAppState } from "./lib/store";
 import { saveUiPrefs } from "./lib/store";
 
 let authState: {
@@ -182,15 +182,15 @@ describe("App", () => {
     renderApp();
     const main = within(screen.getByRole("main"));
 
-    expect(main.getByRole("heading", { level: 1, name: "把岗位或问题放进来，马上开始准备" })).toBeInTheDocument();
-    expect(main.getByRole("heading", { level: 2, name: "大对话框首页" })).toBeInTheDocument();
-    expect(main.getByLabelText("首页主输入")).toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 1, name: "完善岗位，开始准备" })).toBeInTheDocument();
+    expect(main.getByLabelText("输入岗位信息或JD内容")).toBeInTheDocument();
     expect(main.queryByText("真实 JD intake")).not.toBeInTheDocument();
 
-    await user.type(main.getByLabelText("首页主输入"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
-    await user.click(main.getByRole("button", { name: "保存当前岗位" }));
-    await waitFor(() => expect(screen.getByText("腾讯 · 高级产品经理")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "进入模拟面试" }));
+    await user.type(main.getByLabelText("输入岗位信息或JD内容"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
+    await user.click(main.getByRole("button", { name: "开始对话" }));
+    // Position chip should appear after submission
+    await waitFor(() => expect(screen.getByText("腾讯")).toBeInTheDocument());
+    await user.click(main.getByRole("button", { name: "模拟面试" }));
     expect(window.location.pathname).toBe("/mock");
   });
 
@@ -209,14 +209,115 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp("/");
 
-    await screen.findByRole("heading", { name: "把岗位或问题放进来，马上开始准备" });
-    expect(screen.getByText("页面可以先看；点击进入、生成或保存时会引导你登录。")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "完善岗位，开始准备" });
 
-    await user.click(screen.getByRole("button", { name: "进入实时助手" }));
+    // Click "实时助手" in the homepage quick actions, not the sidebar
+    const main = within(screen.getByRole("main"));
+    await user.click(main.getByRole("button", { name: "实时助手" }));
     expect(await screen.findByRole("dialog", { name: "登录后继续" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "去登录" }));
     await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
     expect(new URLSearchParams(window.location.search).get("returnTo")).toBe("/live");
+  });
+
+  it("survives startup when browser cache still contains an old app snapshot", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateResponse());
+      return mockJsonResponse(mockStateResponse());
+    });
+
+    window.localStorage.setItem(
+      APP_STORAGE_KEY,
+      JSON.stringify({
+        profile: {
+          displayName: "测试用户",
+          resumeText: "测试简历",
+          resume: { name: "", targetRole: "", summary: "", evidence: [], skills: [], metrics: [], risks: [] },
+          evidenceLibrary: [],
+          highlights: [],
+        },
+        positions: [
+          {
+            id: "pos-legacy",
+            title: "AI 产品经理",
+            company: "腾讯",
+            jobText: "岗位：AI 产品经理",
+            questions: [],
+            notes: "",
+            status: "draft",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        activePositionId: "pos-legacy",
+        interviewRecords: [],
+        activeRecordId: "",
+        aiMode: true,
+        journeyState: "ready",
+      }),
+    );
+
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "完善岗位，开始准备" })).toBeInTheDocument();
+    expect(screen.queryByText("页面暂时出了点问题")).not.toBeInTheDocument();
+  });
+
+  it("survives startup when server state still returns a legacy position shape", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) {
+        return mockJsonResponse({
+          profile: createProfile("测试候选人\nAI 产品"),
+          positions: [
+            {
+              id: "pos-server-legacy",
+              title: "AI 产品经理",
+              company: "腾讯",
+              jobText: "岗位：AI 产品经理",
+              questions: [],
+              notes: "",
+              status: "draft",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          activePositionId: "pos-server-legacy",
+          records: [],
+          journeyState: "ready",
+        });
+      }
+      return mockJsonResponse(mockStateResponse());
+    });
+
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "完善岗位，开始准备" })).toBeInTheDocument();
+    expect(screen.queryByText("页面暂时出了点问题")).not.toBeInTheDocument();
+  });
+
+  it("survives startup when a persisted position is missing intake", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) {
+        const snapshot = mockStateWithPosition();
+        return mockJsonResponse({
+          ...snapshot,
+          positions: snapshot.positions.map((position) => {
+            const legacyPosition = { ...position } as Record<string, unknown>;
+            delete legacyPosition.intake;
+            return legacyPosition;
+          }),
+        });
+      }
+      return mockJsonResponse(mockStateResponse());
+    });
+
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "完善岗位，开始准备" })).toBeInTheDocument();
+    expect(screen.queryByText("页面暂时出了点问题")).not.toBeInTheDocument();
   });
 
   it("keeps live speech text after stop, lets the user edit, and generates a cue card", async () => {
@@ -433,13 +534,15 @@ describe("App", () => {
     await screen.findByLabelText("主导航");
     expect(document.querySelector(".shell-sidebar.expanded")).not.toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "实时助手" }));
+    // Scope to sidebar nav to avoid ambiguity with homepage quick-action buttons
+    const nav = screen.getByLabelText("主导航");
+    await user.click(within(nav).getByRole("button", { name: "实时助手" }));
     expect(document.querySelector(".shell-sidebar.expanded")).not.toBeNull();
 
     await user.click(screen.getByRole("button", { name: "收起侧边栏" }));
     expect(document.querySelector(".shell-sidebar.collapsed")).not.toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "模拟面试" }));
+    await user.click(within(nav).getByRole("button", { name: "模拟面试" }));
     expect(document.querySelector(".shell-sidebar.collapsed")).not.toBeNull();
   });
 

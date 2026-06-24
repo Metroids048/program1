@@ -975,7 +975,19 @@ export class AiOrchestrator {
     const started = Date.now();
     const state = this.loadState();
     const position = this.getJdContext(positionId);
-    const question = position.questions.find((item) => item.id === questionId) ?? position.questions[0];
+    const fallbackQuestion = position.questions[0] ?? {
+      id: "mock-fallback-question",
+      category: "项目深挖",
+      question: transcript.find((item) => item.role === "interviewer")?.text || "请介绍一段和当前岗位最相关的项目经历。",
+      reason: "当前岗位暂无题库，使用当前面试上下文生成本地兜底问题。",
+      evidenceIds: [],
+      difficulty: "进阶",
+      source: "manual" as const,
+      priority: true,
+      notes: "",
+      tags: ["本地兜底"],
+    };
+    const question = position.questions.find((item) => item.id === questionId) ?? fallbackQuestion;
     const draft = position.answers.find((item) => item.questionId === question.id);
     const turn = evaluateMockTurn(question, answer, draft);
     const turns = [...position.mockTurns, turn];

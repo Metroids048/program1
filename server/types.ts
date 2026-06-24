@@ -1,4 +1,7 @@
 import type {
+  ConversationSession,
+  InterviewSession,
+  PositionStatus,
   AnswerCueCard,
   AppState,
   CandidateProfile,
@@ -15,7 +18,7 @@ import type {
   UserJourneyState,
 } from "../src/types";
 
-export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, InterviewAiMeta, InterviewQuestion, InterviewRecord, LifecycleTask, MockDecision, MockMessage, OnboardingPayload, Position, SpeechMetrics, UserJourneyState };
+export type { AnswerCueCard, AppState, CandidateProfile, ConversationMessage, ConversationSession, InterviewAiMeta, InterviewQuestion, InterviewRecord, InterviewSession, LifecycleTask, MockDecision, MockMessage, OnboardingPayload, Position, PositionStatus, SpeechMetrics, UserJourneyState };
 
 export interface TranscriptTurn {
   id: string;

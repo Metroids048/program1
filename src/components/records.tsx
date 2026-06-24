@@ -31,6 +31,7 @@ export function RecordsView({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveNote,
 }: {
   records: InterviewRecord[];
   positions: Position[];
@@ -40,6 +41,7 @@ export function RecordsView({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveNote?: (recordId: string, questionText: string) => void;
 }) {
   const [mode, setMode] = useState<RecordsFilterMode>("all");
   const [positionId, setPositionId] = useState("all");
@@ -106,7 +108,7 @@ export function RecordsView({
 
       <section className="records-report-pane">
         {activeRecord ? (
-          <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} />
+          <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveNote={onSaveNote} />
         ) : (
           <div className="records-empty-shell">
             <EmptyState title="还没有面试记录" detail="完成一次实时助手或模拟练习后自动保存。" />
@@ -127,6 +129,7 @@ export function RecordReportView({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveNote,
 }: {
   record?: InterviewRecord;
   position?: Position;
@@ -134,6 +137,7 @@ export function RecordReportView({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveNote?: (recordId: string, questionText: string) => void;
 }) {
   if (!record) {
     return (
@@ -147,7 +151,7 @@ export function RecordReportView({
 
   return (
     <section className="page page-record-detail desktop-page">
-      <RecordReportContent record={record} position={position} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} />
+      <RecordReportContent record={record} position={position} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveNote={onSaveNote} />
     </section>
   );
 }
@@ -159,6 +163,7 @@ function RecordReportContent({
   onOpenQuestions,
   onOpenResume,
   onOpenJd,
+  onSaveNote,
 }: {
   record: InterviewRecord;
   position?: Position;
@@ -166,6 +171,7 @@ function RecordReportContent({
   onOpenQuestions: () => void;
   onOpenResume: () => void;
   onOpenJd: () => void;
+  onSaveNote?: (recordId: string, questionText: string) => void;
 }) {
   const [showMore, setShowMore] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -199,6 +205,35 @@ function RecordReportContent({
           { label: "追问次数", value: String(Math.max(0, interviewerTurns.length - 1)) },
         ]}
       />
+
+      {position && position.materials.length > 0 ? (
+        <section className="surface-card record-hit-materials">
+          <div className="surface-card-inner">
+            <div className="section-row-header">
+              <div>
+                <span className="subtle-label">资料命中</span>
+                <h2>本次面试涉及的知识资产</h2>
+                <p>这些项目资料和笔记在面试中被引用或关联。</p>
+              </div>
+            </div>
+            <div className="material-card-grid">
+              {position.materials.slice(0, 4).map((m) => (
+                <article key={m.id} className="material-card">
+                  <h3>{m.title}</h3>
+                  <p>{m.summary.slice(0, 80)}</p>
+                  {m.usageScopes && m.usageScopes.length > 0 ? (
+                    <div className="material-keywords">
+                      {m.usageScopes.map((s) => (
+                        <span key={s}>{s === "live" ? "实时助手" : s === "mock" ? "模拟面试" : "简历优化"}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="record-report-grid">
         <section className="surface-card">
@@ -249,8 +284,20 @@ function RecordReportContent({
                 </button>
               ) : null}
               <div className="record-next-actions">
+                {onSaveNote ? (
+                  <button
+                    className="button primary compact-button"
+                    type="button"
+                    onClick={() => {
+                      const firstQuestion = interviewerTurns[0];
+                      if (firstQuestion) onSaveNote(record.id, firstQuestion.text);
+                    }}
+                  >
+                    一键沉淀为问题笔记
+                  </button>
+                ) : null}
                 <button className="button secondary compact-button" type="button" onClick={onOpenQuestions}>
-                  去资料与题库沉淀问题
+                  去资料库沉淀问题
                 </button>
                 <button className="button secondary compact-button" type="button" onClick={onOpenResume}>
                   去简历补证据
