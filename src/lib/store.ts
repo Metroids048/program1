@@ -39,6 +39,13 @@ function normalizeRecord(record: InterviewRecord): InterviewRecord {
     transcript: Array.isArray(record.transcript) ? record.transcript : [],
     questionIds: Array.isArray(record.questionIds) ? record.questionIds : [],
     speechMetrics: Array.isArray(record.speechMetrics) ? record.speechMetrics : [],
+    questionResults: Array.isArray(record.questionResults)
+      ? record.questionResults.map((item) => ({
+          ...item,
+          evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds : [],
+          cueCardIds: Array.isArray(item.cueCardIds) ? item.cueCardIds : [],
+        }))
+      : undefined,
     report: {
       ...record.report,
       source: record.report?.source ?? "local",

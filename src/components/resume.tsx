@@ -7,7 +7,6 @@ import { loadDraftState, saveDraftState } from "../lib/store";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, Position } from "../types";
 import { buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
-import { AuthGateCard } from "./auth/AuthGate";
 
 type ResumeAction = "section" | "full" | "match";
 
@@ -98,7 +97,6 @@ export function ResumeWorkspacePage({
   onUpdateResume,
   onUpdateEvidence,
   onSetHighlights,
-  onOpenJd,
   isLoggedIn,
   onRequireLogin,
 }: {
@@ -107,7 +105,6 @@ export function ResumeWorkspacePage({
   onUpdateResume: (resumeText: string) => void;
   onUpdateEvidence: (items: EvidenceItem[]) => void;
   onSetHighlights: (highlights: string[]) => void;
-  onOpenJd: () => void;
   isLoggedIn: boolean;
   onRequireLogin: () => void;
 }) {
@@ -123,13 +120,15 @@ export function ResumeWorkspacePage({
     {
       id: "resume-chat-1",
       role: "assistant",
-      text: "这里是正常的 AI 简历对话区。你可以让我优化当前模块、优化整份简历，或按当前岗位做匹配分析，然后一键把建议应用到左侧编辑区。",
+      text: "你好，我可以帮你优化简历内容，或按当前岗位做匹配分析。试试点击上方按钮，或直接告诉我你想怎么改。",
     },
   ]);
 
   const selectedSection = sections.find((section) => section.id === selectedSectionId) ?? sections[0];
   const sectionDrafts = { ...initialDrafts, ...draftOverrides } as Record<ResumeSectionId, string>;
   const selectedDraft = sectionDrafts[selectedSectionId];
+  const evidenceKeywords = Array.from(new Set(profile.evidenceLibrary.flatMap((item) => item.keywords ?? []).filter(Boolean))).slice(0, 8);
+  const skillKeywords = profile.resume.skills.filter(Boolean).slice(0, 6);
 
   useEffect(() => {
     saveDraftState({ ...loadDraftState(), resumeChatInput: chatInput });
@@ -309,51 +308,28 @@ export function ResumeWorkspacePage({
       <header className="desktop-page-header">
         <div className="desktop-page-title">
           <span className="page-eyebrow">简历</span>
-          <h1>简历与 AI 对话</h1>
-          <p>左侧保留模块化编辑，中间看当前内容，右侧是标准 AI 聊天面板；保存动作以后端为准。</p>
+          <h1>我的简历</h1>
+          <p>AI 实时优化你的简历，按岗位做匹配分析</p>
         </div>
         <div className="hero-actions">
-          <button className="button secondary" type="button" onClick={onOpenJd}>
-            查看 JD 分析
-          </button>
+          <label className="button secondary file-button">
+            <Upload size={16} />
+            上传简历
+            <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} />
+          </label>
         </div>
       </header>
+      {!isLoggedIn ? (
+        <div className="login-banner" role="alert">
+          <span>登录后可保存简历并同步数据</span>
+          <button className="btn-login-sm" type="button" onClick={onRequireLogin}>
+            去登录
+          </button>
+        </div>
+      ) : null}
+      {fileMessage ? <div className="inline-message success">{fileMessage}</div> : null}
 
       <div className="resume-layout focused-resume-layout">
-        {!isLoggedIn ? <AuthGateCard onLogin={onRequireLogin} /> : null}
-        <aside className="surface-card resume-nav-column compact-nav-column">
-          <div className="surface-card-inner">
-            <div className="section-row-header">
-              <div>
-                <span className="subtle-label">模块导航</span>
-                <h2>当前简历结构</h2>
-              </div>
-            </div>
-
-            <div className="resume-nav-list">
-              {sections.map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={selectedSectionId === section.id ? "resume-nav-item active" : "resume-nav-item"}
-                  onClick={() => setSelectedSectionId(section.id)}
-                >
-                  <section.icon size={16} />
-                  <span>{section.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <label className="upload-dropzone compact">
-              <Upload size={18} />
-              <strong>上传简历</strong>
-              <p>支持 Word / PDF，导入后会刷新服务端简历快照。</p>
-              <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} />
-            </label>
-            {fileMessage ? <div className="inline-message success">{fileMessage}</div> : null}
-          </div>
-        </aside>
-
         <section className="surface-card resume-editor-column">
           <div className="surface-card-inner">
             <div className="resume-profile-head">
@@ -366,6 +342,27 @@ export function ResumeWorkspacePage({
                 </p>
               </div>
             </div>
+
+            {profile.evidenceLibrary.length > 0 ? (
+              <section className="evidence-preview">
+                <div className="evidence-preview-header">
+                  <span className="evidence-preview-title">AI 已识别的经历证据</span>
+                  <span className="evidence-count">{profile.evidenceLibrary.length} 条</span>
+                </div>
+                <div className="evidence-tags">
+                  {profile.evidenceLibrary.slice(0, 8).map((item) => <span key={item.id} className="evidence-tag">{repairText(item.title)}</span>)}
+                </div>
+                {evidenceKeywords.length > 0 || skillKeywords.length > 0 ? (
+                  <div className="evidence-keywords">
+                    <span className="evidence-kw-label">命中关键词：</span>
+                    {[...evidenceKeywords, ...skillKeywords.filter((item) => !evidenceKeywords.includes(item))].slice(0, 10).map((item) => (
+                      <span key={item} className="evidence-kw-tag">{repairText(item)}</span>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="evidence-hint">这些内容会作为实时助手和模拟面试的证据底座。遗漏的经历可以继续编辑当前模块并保存。</p>
+              </section>
+            ) : null}
 
             <div className="section-row-header">
               <div>
@@ -421,27 +418,37 @@ export function ResumeWorkspacePage({
           <div className="surface-card-inner resume-chat-shell">
             <div className="resume-chat-header">
               <div>
-                <span className="subtle-label">AI 对话</span>
-                <h2>正常聊天面板</h2>
-                <p>
-                  当前上下文：{selectedSection.title}
-                  {position ? ` · ${repairText(position.title)}` : ""}
-                </p>
+                <span className="subtle-label">AI 助手</span>
+                <h2>简历优化</h2>
               </div>
             </div>
 
             <div className="resume-chat-actions">
+              <button
+                className="btn-ai-action btn-ai-action--primary"
+                type="button"
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    onRequireLogin();
+                    return;
+                  }
+                  applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
+                  setSaveMessage(`已保存「${selectedSection.title}」到后端。`);
+                }}
+              >
+                保存到后端
+              </button>
               <button className="button secondary compact-button" type="button" onClick={() => void runAction("section")}>
                 <Sparkles size={14} />
                 优化当前区块
               </button>
               <button className="button secondary compact-button" type="button" onClick={() => void runAction("full")}>
                 <FileText size={14} />
-                优化整份简历
+                优化整份
               </button>
               <button className="button secondary compact-button" type="button" onClick={() => void runAction("match")}>
                 <Sparkles size={14} />
-                按岗位做匹配分析
+                匹配分析
               </button>
             </div>
 

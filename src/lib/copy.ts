@@ -95,6 +95,13 @@ function repairRecord(record: InterviewRecord): InterviewRecord {
     title: repairText(record.title),
     summary: repairText(record.summary),
     transcript: record.transcript.map((item) => ({ ...item, text: repairText(item.text) })),
+    questionResults: record.questionResults?.map((item) => ({
+      ...item,
+      questionText: repairText(item.questionText),
+      answer: repairText(item.answer),
+      feedback: repairText(item.feedback),
+      followUp: repairText(item.followUp),
+    })),
     cueCards: record.cueCards.map((card) => ({
       ...card,
       questionText: repairText(card.questionText),

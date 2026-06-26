@@ -19,10 +19,6 @@ export type AppRoute =
   | { name: "verifyEmail"; path: "/verify-email"; token?: string }
   | { name: "onboarding"; path: "/onboarding" }
   | { name: "account"; path: "/account" }
-  | { name: "legalTerms"; path: "/legal/terms" }
-  | { name: "legalPrivacy"; path: "/legal/privacy" }
-  | { name: "termsOfService"; path: "/terms-of-service" }
-  | { name: "privacyPolicy"; path: "/privacy-policy" }
   | { name: "notFound"; path: "/404" }
   | { name: "serverError"; path: "/500" };
 
@@ -58,10 +54,6 @@ export function parseRoute(pathname: string): AppRoute {
   if (pathname === "/verify-email") return { name: "verifyEmail", path: "/verify-email", token: search.get("token") ?? undefined };
   if (pathname === "/onboarding") return { name: "onboarding", path: "/onboarding" };
   if (pathname === "/account") return { name: "account", path: "/account" };
-  if (pathname === "/legal/terms") return { name: "legalTerms", path: "/legal/terms" };
-  if (pathname === "/legal/privacy") return { name: "legalPrivacy", path: "/legal/privacy" };
-  if (pathname === "/terms-of-service") return { name: "termsOfService", path: "/terms-of-service" };
-  if (pathname === "/privacy-policy") return { name: "privacyPolicy", path: "/privacy-policy" };
   if (pathname === "/404") return { name: "notFound", path: "/404" };
   if (pathname === "/500") return { name: "serverError", path: "/500" };
   if (pathname.startsWith("/records/")) {

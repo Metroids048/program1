@@ -3,7 +3,6 @@ import type { AppDb } from "./db";
 import type { RagChunk, RagDocument, RagSourceType, RetrievalRun } from "./types";
 import { makeId, nowIso } from "./utils";
 
-const DEFAULT_OWNER_KEY = "local-single-user";
 const CHUNK_TARGET = 420;
 const CHUNK_OVERLAP = 60;
 const MAX_RETRIEVAL = 5;
@@ -26,11 +25,12 @@ export interface RagRuntime {
   retrieve(query: string, options?: { positionId?: string; limit?: number }): { items: RetrievedChunk[]; run: RetrievalRun };
 }
 
-export function createRagRuntime(db: AppDb): RagRuntime {
+export function createRagRuntime(db: AppDb, resolveOwnerKey: () => string, resolveUserId: () => string | undefined): RagRuntime {
   return {
     reindexProfile(profile) {
       const now = nowIso();
       const document = createDocument({
+        ownerKey: resolveOwnerKey(),
         positionId: "",
         sourceType: "resume",
         sourceId: "profile:resume",
@@ -46,6 +46,7 @@ export function createRagRuntime(db: AppDb): RagRuntime {
     reindexPosition(position) {
       const now = nowIso();
       const document = createDocument({
+        ownerKey: resolveOwnerKey(),
         positionId: position.id,
         sourceType: "jd",
         sourceId: position.id,
@@ -65,6 +66,7 @@ export function createRagRuntime(db: AppDb): RagRuntime {
       questions.forEach((question, index) => {
         const now = nowIso();
         const document = createDocument({
+          ownerKey: resolveOwnerKey(),
           positionId,
           sourceType: "question",
           sourceId: question.id,
@@ -83,6 +85,7 @@ export function createRagRuntime(db: AppDb): RagRuntime {
       materials.forEach((material, index) => {
         const now = nowIso();
         const document = createDocument({
+          ownerKey: resolveOwnerKey(),
           positionId,
           sourceType: "material",
           sourceId: material.id,
@@ -99,6 +102,7 @@ export function createRagRuntime(db: AppDb): RagRuntime {
     reindexRecord(record) {
       const now = nowIso();
       const document = createDocument({
+        ownerKey: resolveOwnerKey(),
         positionId: record.positionId,
         sourceType: "record",
         sourceId: record.id,
@@ -113,24 +117,25 @@ export function createRagRuntime(db: AppDb): RagRuntime {
     },
     retrieve(query, options) {
       const started = Date.now();
-      const raw = db.searchRagChunks(query, options?.positionId);
+      const raw = db.searchRagChunks(query, options?.positionId, resolveOwnerKey());
       const reranked = rerankChunks(raw, options?.positionId).slice(0, options?.limit ?? MAX_RETRIEVAL);
       const run: RetrievalRun = {
         id: makeId("retrieval"),
         query,
         positionId: options?.positionId,
-        ownerKey: DEFAULT_OWNER_KEY,
+        ownerKey: resolveOwnerKey(),
         chunkIds: reranked.map((item) => item.id),
         latencyMs: Date.now() - started,
         createdAt: nowIso(),
       };
-      db.saveRetrievalRun(run);
+      db.saveRetrievalRun(run, resolveUserId());
       return { items: reranked, run };
     },
   };
 }
 
 function createDocument(input: {
+  ownerKey: string;
   positionId?: string;
   sourceType: RagSourceType;
   sourceId: string;
@@ -147,7 +152,7 @@ function createDocument(input: {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     sourceSubType: input.sourceSubType,
-    ownerKey: DEFAULT_OWNER_KEY,
+    ownerKey: input.ownerKey,
     title: input.title,
     summary: input.summary,
     content: input.content,

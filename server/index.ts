@@ -1,6 +1,7 @@
 import "dotenv/config";
 import Fastify, { type FastifyInstance } from "fastify";
-import { resolve } from "node:path";
+import { existsSync, createReadStream } from "node:fs";
+import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { createDb, toApiSnapshot } from "./db";
@@ -156,6 +157,45 @@ const ProfileHighlightsBody = z.object({
   displayName: z.string().optional(),
   positionId: z.string().optional(),
 });
+
+const SERVER_DIR = resolve(fileURLToPath(import.meta.url), "..");
+const DIST_DIR = resolve(SERVER_DIR, "..", "dist");
+const DIST_INDEX = resolve(DIST_DIR, "index.html");
+
+function contentTypeFor(path: string): string {
+  const ext = extname(path).toLowerCase();
+  switch (ext) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "application/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function createGuestState(): BackendState {
+  const initial = createInitialAppState();
+  return {
+    profile: initial.profile,
+    positions: initial.positions,
+    records: [],
+    journeyState: "guest",
+  };
+}
 
 export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } = {}): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -350,7 +390,10 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     model: orchestrator.model,
   }));
 
-  app.get("/api/state", async (request) => toApiSnapshot(db.getState(request.session?.userId)));
+  app.get("/api/state", async (request) => {
+    const state = request.session?.userId ? db.getState(request.session.userId) : createGuestState();
+    return toApiSnapshot(state);
+  });
 
   app.post("/api/positions/intake", async (request) => {
     const body = IntakeBody.parse(request.body);
@@ -442,6 +485,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.get<{ Params: { id: string } }>("/api/positions/:id/mock-session", async (request, reply) => {
+    requireAuth(request);
     const session = orchestrator.getLatestActiveMockSession(request.params.id);
     if (!session) {
       return reply.code(404).send({ error: "MOCK_SESSION_NOT_FOUND" });
@@ -450,6 +494,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.delete<{ Params: { id: string } }>("/api/positions/:id", async (request, reply) => {
+    requireAuth(request);
     try {
       const state = orchestrator.removePosition(request.params.id);
       return toApiSnapshot(state);
@@ -589,9 +634,10 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/records", async (request) => {
+    requireAuth(request);
     const record = request.body as InterviewRecord;
     orchestrator.saveInterviewRecord(record);
-    return { record, records: db.listRecords() };
+    return { record, records: db.listRecords(request.session?.userId) };
   });
 
   app.post("/api/resume/ai", async (request) => {
@@ -607,6 +653,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/rag/reindex", async (request) => {
+    requireAuth(request);
     const state = db.getState(request.session?.userId);
     state.positions.forEach((position) => {
       orchestrator.updatePositionMaterials(position.id, position.materials);
@@ -622,13 +669,13 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     return { ok: true };
   });
 
-  app.get("/api/records", async () => {
-    return { records: db.listRecords() };
+  app.get("/api/records", async (request) => {
+    return { records: db.listRecords(request.session?.userId) };
   });
 
   app.get<{ Params: { id: string } }>("/api/records/:id", async (request, reply) => {
-    requireAuth(request);
-    const record = db.getRecord(request.params.id);
+    const session = requireAuth(request);
+    const record = db.getRecord(request.params.id, session.userId);
     if (!record) return reply.code(404).send({ error: "RECORD_NOT_FOUND" });
     return { record };
   });
@@ -640,13 +687,14 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/export", async (request) => {
-    const state = db.getState(request.session?.userId);
+    const state = request.session?.userId ? db.getState(request.session.userId) : createGuestState();
     return toClientAppState(state, {
       activePositionId: state.positions[0]?.id,
     });
   });
 
   app.post("/api/import", async (request, reply) => {
+    const session = requireAuth(request);
     const body = request.body as Partial<AppState>;
     if (!body.profile || !Array.isArray(body.positions)) {
       return reply.code(400).send({ error: "INVALID_IMPORT" });
@@ -657,8 +705,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       records: Array.isArray(body.interviewRecords) ? body.interviewRecords : [],
       journeyState: "ready",
     };
-    db.saveState(state, request.session?.userId);
-    state.records.forEach((record) => db.saveRecord(record));
+    db.saveState(state, session.userId);
+    state.records.forEach((record) => db.saveRecord(record, session.userId));
     const nextState = toClientAppState(state, {
       activePositionId: body.activePositionId,
       activeRecordId: body.activeRecordId,
@@ -680,6 +728,19 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   app.addHook("onClose", async () => {
     db.db?.close();
   });
+
+  if (existsSync(DIST_INDEX)) {
+    app.get("/*", async (request, reply) => {
+      if (request.url.startsWith("/api/")) {
+        return reply.code(404).send({ error: "NOT_FOUND" });
+      }
+      const pathname = request.url === "/" ? "/index.html" : request.url;
+      const assetPath = resolve(DIST_DIR, `.${pathname}`);
+      const safePath = assetPath.startsWith(DIST_DIR) && existsSync(assetPath) ? assetPath : DIST_INDEX;
+      reply.header("Content-Type", contentTypeFor(safePath));
+      return reply.send(createReadStream(safePath));
+    });
+  }
 
   return app;
 }

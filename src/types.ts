@@ -201,6 +201,17 @@ export interface MockTurn {
   speechMetrics?: SpeechMetrics;
 }
 
+export interface InterviewQuestionResult {
+  questionId: string;
+  questionText: string;
+  answer: string;
+  score?: number;
+  feedback?: string;
+  evidenceIds: string[];
+  cueCardIds: string[];
+  followUp?: string;
+}
+
 export interface AnswerCueCard {
   id: string;
   questionText: string;
@@ -226,6 +237,7 @@ export interface InterviewRecord {
   speechMetrics: SpeechMetrics[];
   report: InterviewReport;
   summary: string;
+  questionResults?: InterviewQuestionResult[];
   conversationHistory?: ConversationMessage[];
   aiMeta?: InterviewAiMeta;
 }

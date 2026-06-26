@@ -108,7 +108,7 @@ export class AiOrchestrator {
     private readonly llm: LlmClient,
     private readonly searchTool: SearchTool,
   ) {
-    this.rag = createRagRuntime(this.db);
+    this.rag = createRagRuntime(this.db, () => this.ownerKey(), () => this.currentUserId);
   }
 
   setUserId(userId: string | undefined) {
@@ -121,6 +121,10 @@ export class AiOrchestrator {
 
   private persistState(state: BackendState): void {
     this.db.saveState(state, this.currentUserId);
+  }
+
+  private ownerKey(): string {
+    return this.currentUserId ? `user:${this.currentUserId}` : "guest:preview";
   }
 
   get model(): string {
@@ -322,7 +326,7 @@ export class AiOrchestrator {
     const state = this.loadState();
     const positions = state.positions.filter((position) => position.id !== positionId);
     const records = state.records.filter((record) => record.positionId !== positionId);
-    this.db.deletePositionArtifacts(positionId);
+    this.db.deletePositionArtifacts(positionId, this.currentUserId, this.ownerKey());
     const next: BackendState = {
       ...state,
       positions,
@@ -333,17 +337,17 @@ export class AiOrchestrator {
   }
 
   getLatestActiveMockSession(positionId: string) {
-    return this.db.getLatestActiveMockSession(positionId);
+    return this.db.getLatestActiveMockSession(positionId, this.currentUserId);
   }
 
   completeMockSession(sessionId: string): void {
-    const current = this.db.getMockSession(sessionId);
+    const current = this.db.getMockSession(sessionId, this.currentUserId);
     if (!current) return;
     this.db.saveMockSession({
       ...current,
       completedAt: nowIso(),
       updatedAt: nowIso(),
-    });
+    }, this.currentUserId);
   }
 
   analyzeProfile(resumeText: string): BackendState {
@@ -457,6 +461,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: meta.fallbackReason,
       }),
+      this.currentUserId,
     );
     return { highlights, meta };
   }
@@ -517,6 +522,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: meta.fallbackReason,
       }),
+      this.currentUserId,
     );
     return { reply, missingFields, suggestedPrompts, meta };
   }
@@ -566,7 +572,7 @@ export class AiOrchestrator {
       searchUsed: true,
       fallbackReason: result.status === "success" ? "" : SEARCH_FALLBACK_REASON,
     });
-    this.db.savePromptRun(promptRun);
+    this.db.savePromptRun(promptRun, this.currentUserId);
     return { facts, risks, promptRun };
   }
 
@@ -592,7 +598,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: "",
       });
-      this.db.savePromptRun(promptRun);
+      this.db.savePromptRun(promptRun, this.currentUserId);
       return {
         card: cached,
         searchResults: [],
@@ -677,7 +683,7 @@ export class AiOrchestrator {
       searchUsed: shouldSearch && searchResults.length > 0,
       fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
     });
-    this.db.savePromptRun(promptRun);
+    this.db.savePromptRun(promptRun, this.currentUserId);
     return {
       card,
       searchResults,
@@ -761,7 +767,7 @@ export class AiOrchestrator {
       searchUsed: false,
       fallbackReason: result.status === "success" ? "" : "重构失败，已保留原卡内容。",
     });
-    this.db.savePromptRun(promptRun);
+    this.db.savePromptRun(promptRun, this.currentUserId);
     return {
       card,
       promptRun,
@@ -841,6 +847,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: meta.fallbackReason,
       }),
+      this.currentUserId,
     );
     return {
       reply: result.data.reply?.trim() || fallback.reply || "",
@@ -922,6 +929,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: result.status === "success" ? "" : "模型未配置、响应失败或 JSON 不符合结构，已使用本地追问规则。",
       }),
+      this.currentUserId,
     );
     return {
       question: result.data.question || fallback.question,
@@ -943,7 +951,7 @@ export class AiOrchestrator {
     const started = Date.now();
     const state = this.loadState();
     const position = this.getJdContext(positionId);
-    const existingSession = this.db.getLatestActiveMockSession(position.id);
+    const existingSession = this.db.getLatestActiveMockSession(position.id, this.currentUserId);
     if (existingSession?.conversationHistory?.length) {
       const latestQuestion = [...existingSession.conversationHistory].reverse().find((item) => item.role === "interviewer");
       return {
@@ -1016,7 +1024,7 @@ export class AiOrchestrator {
       updatedAt: nowIso(),
       completedAt: undefined,
       aiMeta: { ...toInterviewAiMeta(meta, this.llm.model), decisionType: "next", internalNote: result.status === "success" ? result.data.reason : "local first question" },
-    });
+    }, this.currentUserId);
     this.db.savePromptRun(
       buildPromptRun({
         skillId,
@@ -1031,6 +1039,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: meta.fallbackReason,
       }),
+      this.currentUserId,
     );
     return {
       sessionId,
@@ -1051,7 +1060,7 @@ export class AiOrchestrator {
     const turns = [...position.mockTurns, turn];
     const prompt = prompts.mockDecision;
     const skillId = skills.followupDecider.id;
-    const currentSession = sessionId ? this.db.getMockSession(sessionId) : undefined;
+    const currentSession = sessionId ? this.db.getMockSession(sessionId, this.currentUserId) : undefined;
     const history = normalizeConversationHistory(currentSession?.conversationHistory, transcript);
     const withAnswer = [...history, toConversationMessage({ role: "candidate", text: answer }, "user")];
     const retrieval = this.rag.retrieve(`${question.question}\n${answer}\n${transcript.map((item) => item.text).join("\n")}`, { positionId: position.id });
@@ -1122,6 +1131,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: meta.fallbackReason,
       }),
+      this.currentUserId,
     );
     const report = buildInterviewReport(turns, position.questions, position.matchReport);
     // 本地报告立即返回；LLM 报告可在记录保存时异步增强
@@ -1143,11 +1153,23 @@ export class AiOrchestrator {
       speechMetrics: [],
       report: structuredReport as unknown as typeof structuredReport & { source: string },
       summary: decision.instantFeedback || `模拟面试记录已保存，综合分 ${structuredReport.overallScore}/100。`,
+      questionResults: [
+        {
+          questionId: question.id,
+          questionText: question.question,
+          answer,
+          score: turn.score,
+          feedback: turn.feedback,
+          evidenceIds: question.evidenceIds,
+          cueCardIds: [],
+          followUp: decision.question,
+        },
+      ],
       conversationHistory: nextHistory,
       aiMeta: { ...toInterviewAiMeta(meta, this.llm.model), decisionType: decision.type, internalNote: decision.internalNote },
     };
     const nextState = upsertPosition(this.loadState(), { ...position, mockTurns: turns, report, updatedAt: nowIso() });
-    this.db.saveRecord(record);
+    this.db.saveRecord(record, this.currentUserId);
     this.persistState({
       ...nextState,
       records: [record, ...nextState.records.filter((item) => item.id !== record.id)],
@@ -1162,13 +1184,13 @@ export class AiOrchestrator {
       updatedAt: nowIso(),
       completedAt: undefined,
       aiMeta: record.aiMeta,
-    });
+    }, this.currentUserId);
     return { record, followUp: decision.question, decision, meta, conversationHistory: nextHistory };
   }
 
   saveInterviewRecord(record: InterviewRecord): void {
     const state = this.loadState();
-    this.db.saveRecord(record);
+    this.db.saveRecord(record, this.currentUserId);
     this.persistState({
       ...state,
       records: [record, ...state.records.filter((item) => item.id !== record.id)],
@@ -1241,6 +1263,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
       }),
+      this.currentUserId,
     );
     return normalized;
   }
@@ -1304,6 +1327,7 @@ export class AiOrchestrator {
         searchUsed: false,
         fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
       }),
+      this.currentUserId,
     );
     return report;
   }

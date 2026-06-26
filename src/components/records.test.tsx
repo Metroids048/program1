@@ -95,6 +95,7 @@ describe("records view", () => {
 
     await user.click(screen.getByRole("button", { name: "查看完整 Transcript ›" }));
     expect(screen.getAllByText("我负责题词卡、RAG 召回与回归验证。").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "下次练习建议" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "一键沉淀到问题记录" }));
 
@@ -135,5 +136,29 @@ describe("records view", () => {
     expect(onOpenQuestions).toHaveBeenCalledTimes(1);
     expect(onOpenResume).toHaveBeenCalledTimes(1);
     expect(onOpenJd).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows filter-empty copy when current filters have no matching records", async () => {
+    const user = userEvent.setup();
+    const { position, records } = buildRecordsFixture();
+
+    render(
+      <RecordsView
+        records={records}
+        positions={[position]}
+        activeRecordId={records[0].id}
+        onOpen={vi.fn()}
+        onMock={vi.fn()}
+        onOpenQuestions={vi.fn()}
+        onOpenResume={vi.fn()}
+        onOpenJd={vi.fn()}
+        onSaveQuestionNote={vi.fn()}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("按模式筛选"), "live");
+    expect(screen.getByText("暂无符合条件的记录")).toBeInTheDocument();
+    expect(screen.getByText("当前筛选条件下没有记录，可以切换类型或选择全部岗位。")).toBeInTheDocument();
+    expect(screen.getAllByText("暂无符合条件的记录")).toHaveLength(1);
   });
 });

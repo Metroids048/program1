@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { createProfile } from "../lib/interviewEngine";
 import { applyFullResumeSuggestionToDrafts } from "./resume";
+import { ResumeWorkspacePage } from "./resume";
 
 describe("resume full apply", () => {
   it("maps structured full-resume suggestions back into matching sections", () => {
@@ -57,5 +60,34 @@ describe("resume full apply", () => {
 
     expect(next.highlights).toContain("先写结论");
     expect(next.projects).toBe(drafts.projects);
+  });
+
+  it("shows evidence preview on the main resume workspace", () => {
+    const profile = createProfile(
+      [
+        "测试候选人",
+        "AI 产品经理",
+        "项目经历",
+        "校园增长项目",
+        "- 负责增长策略和数据闭环，首单转化率从 12% 提升到 19%。",
+        "技能与工具",
+        "SQL、A/B 实验、增长漏斗分析。",
+      ].join("\n"),
+    );
+
+    render(
+      <ResumeWorkspacePage
+        profile={profile}
+        onUpdateResume={vi.fn()}
+        onUpdateEvidence={vi.fn()}
+        onSetHighlights={vi.fn()}
+        isLoggedIn
+        onRequireLogin={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("AI 已识别的经历证据")).toBeInTheDocument();
+    expect(screen.getByText(`${profile.evidenceLibrary.length} 条`)).toBeInTheDocument();
+    expect(screen.getByText("命中关键词：")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
-import { ArrowRight, BriefcaseBusiness, ClipboardList, MessageCircle, Mic, Trash2 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { ArrowRight, BriefcaseBusiness, MessageCircle, Mic, Trash2, Upload } from "lucide-react";
+import { FormEvent, useState } from "react";
 import { repairText } from "../lib/copy";
 import { loadDraftState, saveDraftState } from "../lib/store";
 import type { Position } from "../types";
@@ -18,11 +18,40 @@ function positionSummary(position: Position) {
   return "岗位信息已保存，可继续完善或开始练习。";
 }
 
+function OptionGroup<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="setup-option-group">
+      <span className="setup-label">{label}</span>
+      <div className="setup-option-pills" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={value === option.value ? "setup-option-pill active" : "setup-option-pill"}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function HomeDashboard({
   positions,
   activePositionId,
   onSubmitJd,
-  onOpenPosition,
   onOpenCreatedPosition,
   onOpenMockList,
   onOpenLive,
@@ -48,7 +77,6 @@ export function HomeDashboard({
 }) {
   const activePosition = positions.find((item) => item.id === activePositionId) ?? positions[0];
   const [input, setInput] = useState(() => loadDraftState().homeInput ?? "");
-  const recentPositions = useMemo(() => positions.slice(0, 4), [positions]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -79,8 +107,8 @@ export function HomeDashboard({
             <span className="page-eyebrow">面试准备</span>
             <QuotaBadge />
           </div>
-          <h1>把岗位放进来，继续进入岗位完善对话</h1>
-          <p>首页只保留主输入和最小岗位上下文。提交岗位后直接进入完善对话，已有岗位卡则进入完整详情页。</p>
+          <h1>告诉 AI 你想面试的岗位</h1>
+          <p>粘贴 JD、输入岗位名称，或从下方选择一个常见场景开始准备。</p>
         </header>
 
         <div className="home-product-shell">
@@ -88,9 +116,9 @@ export function HomeDashboard({
             <div className="surface-card-inner">
               <div className="section-row-header">
                 <div>
-                  <span className="subtle-label">主输入区</span>
-                  <h2>输入岗位或 JD</h2>
-                  <p>粘贴真实 JD、面试邀约或岗位背景，系统会先保存岗位，再进入岗位完善对话。</p>
+                  <span className="subtle-label">岗位输入</span>
+                  <h2>从一段 JD 开始</h2>
+                  <p>只需要先放入真实岗位信息，后续再补面试官、轮次和资料。</p>
                 </div>
               </div>
 
@@ -103,6 +131,10 @@ export function HomeDashboard({
                   placeholder="例如：腾讯 AI 产品经理实习，业务负责人一面，45 分钟，有完整 JD。"
                 />
                 <div className="home-intake-actions">
+                  <button className="button ghost home-attach-button" type="button" onClick={() => updateInput(`${input}${input ? "\n" : ""}我会补充自定义 JD。`)}>
+                    <Upload size={14} />
+                    上传自定义 JD
+                  </button>
                   <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim()}>
                     保存并继续完善
                     <ArrowRight size={14} />
@@ -131,7 +163,6 @@ export function HomeDashboard({
                 <div>
                   <span className="subtle-label">当前岗位</span>
                   <h2>{activePosition ? `${repairText(activePosition.company) || "公司待确认"} · ${repairText(activePosition.title) || "岗位待确认"}` : "还没有岗位卡"}</h2>
-                  <p>实时助手保持独立入口；模拟面试会先进入岗位选择列表。</p>
                 </div>
               </div>
 
@@ -168,38 +199,6 @@ export function HomeDashboard({
             </div>
           </section>
         </div>
-
-        <section className="home-position-strip">
-          <div className="section-row-header">
-            <div>
-              <span className="subtle-label">岗位卡</span>
-              <h2>最近岗位</h2>
-            </div>
-          </div>
-          {recentPositions.length > 0 ? (
-            <div className="home-position-grid">
-              {recentPositions.map((position) => (
-                <button key={position.id} type="button" className="home-position-card" onClick={() => onOpenPosition(position.id)}>
-                  <div className="home-position-head">
-                    <span className="home-position-icon"><BriefcaseBusiness size={16} /></span>
-                    <strong>{repairText(position.company) || "公司待确认"}</strong>
-                  </div>
-                  <p className="home-position-title">{repairText(position.title) || "岗位待确认"}</p>
-                  <span className="home-position-status">{summarizePositionStatus(position)}</span>
-                  <p className="home-position-summary">{positionSummary(position)}</p>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-card compact">
-              <div className="empty-card-icon"><ClipboardList size={18} /></div>
-              <div>
-                <h2>还没有岗位卡</h2>
-                <p>先在上方输入岗位或 JD，系统会创建岗位卡并带你进入完善对话。</p>
-              </div>
-            </div>
-          )}
-        </section>
       </div>
     </section>
   );
@@ -485,65 +484,72 @@ export function MockSetupPage({
           </div>
         </header>
 
-        <div className="mock-setup-grid refined-mock-setup-grid">
-          <section className="surface-card setup-card">
-            <div className="surface-card-inner">
-              <h2>岗位摘要</h2>
-              <div className="setup-field"><span className="setup-label">公司</span><strong>{repairText(position.company) || "待确认"}</strong></div>
-              <div className="setup-field"><span className="setup-label">岗位</span><strong>{repairText(position.title) || "待确认"}</strong></div>
-              <div className="setup-field"><span className="setup-label">准备重点</span><p className="jd-excerpt">{position.analysisContext.priorityFocus.slice(0, 3).join("；") || "暂无重点摘要"}</p></div>
-              <div className="setup-field"><span className="setup-label">练习状态</span><strong>{position.mockTurns.length > 0 ? "有历史练习，可继续" : "首次进入配置"}</strong></div>
+        <div className="mock-config-page">
+          <section className="mock-config-summary">
+            <div className="mock-config-company">{repairText(position.company) || "公司待确认"} · {repairText(position.title) || "岗位待确认"}</div>
+            <div className="mock-config-hints">
+              <span className="mock-config-hints-label">准备重点</span>
+              <p className="mock-config-hints-text">{position.analysisContext.priorityFocus.slice(0, 3).join("；") || "暂无重点摘要，进入面试后会根据简历和岗位继续追问。"}</p>
             </div>
           </section>
 
-          <section className="surface-card setup-card">
+          <section className="surface-card setup-card mock-config-form-card">
             <div className="surface-card-inner">
-              <h2>面试参数</h2>
+              <h2 className="mock-config-form-title">面试参数</h2>
 
-              <label className="setup-field">
-                <span className="setup-label">面试官角色</span>
-                <select className="setup-select" value={config.interviewerRole} onChange={(event) => setConfig((current) => ({ ...current, interviewerRole: event.target.value as InterviewConfig["interviewerRole"] }))}>
-                  <option value="HR">HR</option>
-                  <option value="上级">上级</option>
-                  <option value="业务负责人">业务负责人</option>
-                  <option value="CTO">CTO</option>
-                  <option value="CEO">CEO</option>
-                </select>
-              </label>
+              <OptionGroup
+                label="面试官角色"
+                value={config.interviewerRole}
+                options={[
+                  { value: "HR", label: "HR" },
+                  { value: "上级", label: "上级" },
+                  { value: "业务负责人", label: "业务负责人" },
+                  { value: "CTO", label: "CTO" },
+                  { value: "CEO", label: "CEO" },
+                ]}
+                onChange={(interviewerRole) => setConfig((current) => ({ ...current, interviewerRole }))}
+              />
 
-              <label className="setup-field">
-                <span className="setup-label">难度</span>
-                <select className="setup-select" value={config.difficulty} onChange={(event) => setConfig((current) => ({ ...current, difficulty: event.target.value as InterviewConfig["difficulty"] }))}>
-                  <option value="正常">正常</option>
-                  <option value="压力面">压力面</option>
-                  <option value="地狱面">地狱面</option>
-                </select>
-              </label>
+              <OptionGroup
+                label="难度"
+                value={config.difficulty}
+                options={[
+                  { value: "正常", label: "友好面" },
+                  { value: "压力面", label: "压力面" },
+                  { value: "地狱面", label: "强压面" },
+                ]}
+                onChange={(difficulty) => setConfig((current) => ({ ...current, difficulty }))}
+              />
 
-              <label className="setup-field">
-                <span className="setup-label">风格</span>
-                <select className="setup-select" value={config.style} onChange={(event) => setConfig((current) => ({ ...current, style: event.target.value as InterviewConfig["style"] }))}>
-                  <option value="gentle">温和鼓励型</option>
-                  <option value="strict">专业严格型</option>
-                  <option value="pressure">压力测试型</option>
-                </select>
-              </label>
+              <OptionGroup
+                label="风格"
+                value={config.style}
+                options={[
+                  { value: "gentle", label: "温和鼓励" },
+                  { value: "strict", label: "专业严格" },
+                  { value: "pressure", label: "连续追问" },
+                ]}
+                onChange={(style) => setConfig((current) => ({ ...current, style }))}
+              />
 
-              <label className="setup-field">
-                <span className="setup-label">性别</span>
-                <select className="setup-select" value={config.interviewerGender} onChange={(event) => setConfig((current) => ({ ...current, interviewerGender: event.target.value as InterviewConfig["interviewerGender"] }))}>
-                  <option value="女">女</option>
-                  <option value="男">男</option>
-                </select>
-              </label>
+              <details className="mock-config-advanced">
+                <summary>更多设置</summary>
+                <label className="setup-field">
+                  <span className="setup-label">面试官性别</span>
+                  <select className="setup-select" value={config.interviewerGender} onChange={(event) => setConfig((current) => ({ ...current, interviewerGender: event.target.value as InterviewConfig["interviewerGender"] }))}>
+                    <option value="女">女</option>
+                    <option value="男">男</option>
+                  </select>
+                </label>
 
-              <label className="setup-field">
-                <span className="setup-label">提交方式</span>
-                <select className="setup-select" value={config.submitMode} onChange={(event) => setConfig((current) => ({ ...current, submitMode: event.target.value as InterviewConfig["submitMode"] }))}>
-                  <option value="manual">手动确认</option>
-                  <option value="auto">自动提交</option>
-                </select>
-              </label>
+                <label className="setup-field">
+                  <span className="setup-label">提交方式</span>
+                  <select className="setup-select" value={config.submitMode} onChange={(event) => setConfig((current) => ({ ...current, submitMode: event.target.value as InterviewConfig["submitMode"] }))}>
+                    <option value="manual">手动确认</option>
+                    <option value="auto">自动提交</option>
+                  </select>
+                </label>
+              </details>
             </div>
           </section>
         </div>

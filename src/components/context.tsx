@@ -162,6 +162,8 @@ export function ResumeWorkspace({
   const [chatMessages, setChatMessages] = useState<ResumeChatMessage[]>([{ id: "resume-ai-1", role: "assistant", text: "选择左侧任意简历模块，我可以帮你润色、改成更业务化，或者按当前 JD 生成面试表达。" }]);
   const [fileMessage, setFileMessage] = useState("");
   const selectedSection = sections.find((section) => section.id === selectedSectionId) ?? sections[0];
+  const evidenceKeywords = Array.from(new Set(profile.evidenceLibrary.flatMap((item) => item.keywords).filter(Boolean))).slice(0, 8);
+  const skillKeywords = profile.resume.skills.filter(Boolean).slice(0, 6);
 
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -222,6 +224,26 @@ export function ResumeWorkspace({
       </aside>
       <main className="resume-document">
         <div className="resume-profile-card"><div className="resume-avatar">{(profile.displayName || profile.resume.name || "候").slice(0, 1)}</div><div><h1>{profile.displayName || profile.resume.name || "候选人"}</h1><p>{profile.resume.targetRole} · {profile.resume.skills.slice(0, 5).join(" / ")}</p></div></div>
+        {profile.evidenceLibrary.length > 0 ? (
+          <section className="evidence-preview">
+            <div className="evidence-preview-header">
+              <span className="evidence-preview-title">AI 已识别的经历证据</span>
+              <span className="evidence-count">{profile.evidenceLibrary.length} 条</span>
+            </div>
+            <div className="evidence-tags">
+              {profile.evidenceLibrary.map((item) => <span key={item.id} className="evidence-tag">{item.title}</span>)}
+            </div>
+            {(evidenceKeywords.length > 0 || skillKeywords.length > 0) ? (
+              <div className="evidence-keywords">
+                <span className="evidence-kw-label">命中关键词：</span>
+                {[...evidenceKeywords, ...skillKeywords.filter((item) => !evidenceKeywords.includes(item))].slice(0, 10).map((item) => (
+                  <span key={item} className="evidence-kw-tag">{item}</span>
+                ))}
+              </div>
+            ) : null}
+            <p className="evidence-hint">这些内容会作为实时助手和模拟面试的证据底座。如有遗漏，可继续编辑当前模块并保存到简历素材。</p>
+          </section>
+        ) : null}
         {fileMessage && <div className={fileMessage.startsWith("导入失败") ? "inline-message error" : "inline-message success"}>{fileMessage}</div>}
         <section className="resume-edit-card">
           <header><div><span>{selectedSection.label}</span><h2>{selectedSection.title}</h2></div><div className="resume-card-actions"><button className="button secondary" onClick={optimizeSection}>AI 优化</button><button className="button primary" onClick={saveSection}>保存到简历素材</button></div></header>

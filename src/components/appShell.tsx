@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
@@ -12,10 +13,10 @@ import {
   ScrollText,
   UserRound,
 } from "lucide-react";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { loadUiPrefs, saveUiPrefs } from "../lib/store";
 
-export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account" | "legalTerms" | "legalPrivacy";
+export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account";
 
 type NavItem = {
   id: PrimaryRouteName;
@@ -33,11 +34,8 @@ const PRIMARY_NAV: NavItem[] = [
   { id: "records", label: "面试记录", icon: ClipboardList },
 ];
 
-const NAV_GROUPS: Array<{ title?: string; items: NavItem[] }> = [
-  { title: "面试准备主线", items: PRIMARY_NAV.slice(0, 3) },
-  { title: "资料库", items: PRIMARY_NAV.slice(3, 6) },
-  { items: PRIMARY_NAV.slice(6) },
-];
+const MAIN_NAV = PRIMARY_NAV.slice(0, 3);
+const LIBRARY_NAV = PRIMARY_NAV.slice(3);
 
 const MOBILE_NAV_BREAKPOINT = 760;
 
@@ -115,11 +113,40 @@ export function AppShell({
 
       <>
         <nav className="shell-nav" aria-label="主导航">
-          {NAV_GROUPS.map((group, groupIndex) => (
-            <Fragment key={group.title ?? `group-${groupIndex}`}>
-              {groupIndex > 0 ? <div className="shell-nav-divider" aria-hidden="true" /> : null}
-              {group.title && (expanded || isMobile) ? <span className="shell-nav-group-label">{group.title}</span> : null}
-              {group.items.map((item) => {
+          <span className="shell-nav-group-label">{expanded || isMobile ? "主线功能" : ""}</span>
+          {MAIN_NAV.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === activeNav;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={active ? "shell-nav-item active" : "shell-nav-item"}
+                aria-current={active ? "page" : undefined}
+                aria-label={item.label}
+                title={item.label}
+                onClick={() => {
+                  onNavigate(item.id);
+                  closeMobileDrawer();
+                }}
+              >
+                <span className="shell-nav-icon">
+                  <Icon size={18} />
+                </span>
+                {expanded || isMobile ? <span className="shell-nav-label">{item.label}</span> : null}
+              </button>
+            );
+          })}
+
+          <details className="shell-nav-library" open={LIBRARY_NAV.some((item) => item.id === activeNav)}>
+            <summary className="shell-nav-library-summary">
+              <span className="shell-nav-icon">
+                <BookOpen size={18} />
+              </span>
+              {expanded || isMobile ? <span className="shell-nav-label">资料库</span> : null}
+            </summary>
+            <div className="shell-nav-library-list">
+              {LIBRARY_NAV.map((item) => {
                 const Icon = item.icon;
                 const active = item.id === activeNav;
                 return (
@@ -142,8 +169,8 @@ export function AppShell({
                   </button>
                 );
               })}
-            </Fragment>
-          ))}
+            </div>
+          </details>
         </nav>
 
         {isLoggedIn ? (
@@ -220,6 +247,20 @@ export function AppShell({
         </>
       ) : (
         <aside className={`shell-sidebar${expanded ? " expanded" : " collapsed"}`}>{sidebar}</aside>
+      )}
+
+      {/* 桌面端侧边栏悬浮展开时的遮罩层 */}
+      {!isMobile && expanded && (
+        <div
+          className="sidebar-overlay-v3"
+          role="presentation"
+          onClick={() =>
+            setDesktopPrefs(() => ({
+              desktopSidebarExpanded: false,
+              desktopSidebarTouched: true,
+            }))
+          }
+        />
       )}
 
       <main className="main main-v3" id="main-content">

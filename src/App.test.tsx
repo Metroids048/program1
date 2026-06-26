@@ -160,7 +160,12 @@ describe("App", () => {
     renderApp();
     const nav = within(screen.getByLabelText("主导航"));
 
-    ["首页", "实时助手", "模拟面试", "JD分析", "问题记录", "我的简历", "面试记录"].forEach((name) => {
+    ["首页", "实时助手", "模拟面试"].forEach((name) => {
+      expect(nav.getByRole("button", { name })).toBeInTheDocument();
+    });
+    expect(nav.getByText("资料库")).toBeInTheDocument();
+    (nav.getByText("资料库").closest("details") as HTMLDetailsElement).open = true;
+    ["JD分析", "问题记录", "我的简历", "面试记录"].forEach((name) => {
       expect(nav.getByRole("button", { name })).toBeInTheDocument();
     });
     expect(nav.queryByRole("button", { name: "上下文资料" })).not.toBeInTheDocument();
@@ -187,8 +192,8 @@ describe("App", () => {
     renderApp();
     const main = within(screen.getByRole("main"));
 
-    expect(main.getByRole("heading", { level: 1, name: "把岗位放进来，继续进入岗位完善对话" })).toBeInTheDocument();
-    expect(main.getByRole("heading", { level: 2, name: "输入岗位或 JD" })).toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 1, name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 2, name: "从一段 JD 开始" })).toBeInTheDocument();
     expect(main.getByLabelText("首页主输入")).toBeInTheDocument();
 
     await user.type(main.getByLabelText("首页主输入"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
@@ -212,7 +217,7 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp("/");
 
-    await screen.findByRole("heading", { name: "把岗位放进来，继续进入岗位完善对话" });
+    await screen.findByRole("heading", { name: "告诉 AI 你想面试的岗位" });
     expect(screen.getByText("页面可以先看；点击进入、生成、保存、上传或开始练习时再登录。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "进入实时助手" }));
@@ -222,7 +227,7 @@ describe("App", () => {
     expect(new URLSearchParams(window.location.search).get("returnTo")).toBe("/live");
   });
 
-  it("covers the supporting routes for auth, onboarding, legal, account and status pages", async () => {
+  it("covers the supporting routes for auth, onboarding, account and status pages", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -266,14 +271,6 @@ describe("App", () => {
     expect(await screen.findByText("账户信息")).toBeInTheDocument();
 
     resetDom();
-    renderApp("/legal/terms");
-    expect(await screen.findByRole("heading", { name: "用户协议" })).toBeInTheDocument();
-
-    resetDom();
-    renderApp("/legal/privacy");
-    expect(await screen.findByRole("heading", { name: "隐私政策" })).toBeInTheDocument();
-
-    resetDom();
     renderApp("/404");
     expect(await screen.findByRole("heading", { name: "这个页面不存在" })).toBeInTheDocument();
 
@@ -311,11 +308,11 @@ describe("App", () => {
 
     resetDom();
     renderApp("/resume");
-    expect(await screen.findByRole("heading", { name: "简历与 AI 对话" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "我的简历" })).toBeInTheDocument();
 
     resetDom();
     renderApp("/records");
-    expect(await screen.findByRole("heading", { name: "模拟练习记录" })).toBeInTheDocument();
+    expect(await screen.findByText("还没有面试记录")).toBeInTheDocument();
   });
 
   it("keeps live speech text after stop, lets the user edit, and generates a cue card", async () => {
@@ -348,8 +345,9 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getAllByText("提词卡").length).toBeGreaterThan(0));
     expect(screen.getAllByText(/模型/).length).toBeGreaterThan(0);
-    expect(screen.getByText("风险提醒")).toBeInTheDocument();
+    expect(screen.getByText("注意")).toBeInTheDocument();
     expect(screen.getByText("追问预测")).toBeInTheDocument();
+    expect(screen.getByText("开场句")).toBeInTheDocument();
     expect(screen.getByText("已识别，可继续编辑")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "结束" }));
@@ -582,6 +580,23 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /生成提词卡/ }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "记录到面试资料" })).toBeInTheDocument());
+  });
+
+  it("shows a limited-support speech warning for non-Chrome speech environments", async () => {
+    installSpeechRecognitionMock();
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 Firefox/126.0",
+    });
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
+      return mockJsonResponse(mockStateWithPosition());
+    });
+
+    renderApp("/live");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("建议使用 Chrome 或 Edge");
   });
 
   it("does not choose education as the first mock question for a front-end role when project evidence exists", () => {

@@ -1,5 +1,635 @@
 [
   {
+    "id": "mail-mqurbb1l-2phs69",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=1a3594896fa40a3aefa83106c07789a7fe887ff6305e2567",
+      "expiresAt": "2026-06-26T10:56:53.289Z"
+    },
+    "userId": "user-mqurbb16-hpzyqm",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:56:53.289Z",
+    "sentAt": "2026-06-26T09:56:53.289Z"
+  },
+  {
+    "id": "mail-mqurbb1c-g2p2hg",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=2f6a80ea3dbe01215567b9344ef22716a3afbe12994aa4f8",
+      "expiresAt": "2026-06-27T09:56:53.280Z"
+    },
+    "userId": "user-mqurbb16-hpzyqm",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:56:53.280Z",
+    "sentAt": "2026-06-26T09:56:53.280Z"
+  },
+  {
+    "id": "mail-mqurbawx-y5b3hj",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=2402154ed05f94ca253df6682734c320274766afae3a4c4b",
+      "expiresAt": "2026-06-27T09:56:53.121Z"
+    },
+    "userId": "user-mqurbawr-5e34s5",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:56:53.121Z",
+    "sentAt": "2026-06-26T09:56:53.121Z"
+  },
+  {
+    "id": "mail-mqur99ka-m0zirp",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=4b2f9f50750cec3b95e9a9ab1180d069bd1eef0b34d6837c",
+      "expiresAt": "2026-06-26T10:55:18.058Z"
+    },
+    "userId": "user-mqur99js-93h2uv",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:55:18.058Z",
+    "sentAt": "2026-06-26T09:55:18.058Z"
+  },
+  {
+    "id": "mail-mqur99jz-zzx09z",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=0b569485a02f9745ff13711d44f0d587ff9e31a586e669b7",
+      "expiresAt": "2026-06-27T09:55:18.047Z"
+    },
+    "userId": "user-mqur99js-93h2uv",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:55:18.047Z",
+    "sentAt": "2026-06-26T09:55:18.047Z"
+  },
+  {
+    "id": "mail-mqur99g7-2nl8lv",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=b81b5f3a854830494484233119e06a3ebaf00a0e86b167cb",
+      "expiresAt": "2026-06-27T09:55:17.911Z"
+    },
+    "userId": "user-mqur99g1-2ep9x1",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:55:17.911Z",
+    "sentAt": "2026-06-26T09:55:17.911Z"
+  },
+  {
+    "id": "mail-mqur7lje-iyayeg",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=cc45db3cd095c98d4c822cd35e75f6c9ed09a3bdc046f37a",
+      "expiresAt": "2026-06-26T10:54:00.266Z"
+    },
+    "userId": "user-mqur7liw-hbx4jv",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:54:00.266Z",
+    "sentAt": "2026-06-26T09:54:00.266Z"
+  },
+  {
+    "id": "mail-mqur7lj2-oggeus",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=d47c6984a1d3b59ac79ae239503596e1765bed0c602aa4c4",
+      "expiresAt": "2026-06-27T09:54:00.253Z"
+    },
+    "userId": "user-mqur7liw-hbx4jv",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:54:00.254Z",
+    "sentAt": "2026-06-26T09:54:00.254Z"
+  },
+  {
+    "id": "mail-mqur7lfb-sdd02i",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=d2ee038583add3631d1d7c753c694463cbf95648b8f42ac6",
+      "expiresAt": "2026-06-27T09:54:00.118Z"
+    },
+    "userId": "user-mqur7lf3-t8n935",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:54:00.119Z",
+    "sentAt": "2026-06-26T09:54:00.119Z"
+  },
+  {
+    "id": "mail-mqur6esn-hzykig",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=efe4e6378e430b55401451d53aa08f6075cfcc889f186469",
+      "expiresAt": "2026-06-26T10:53:04.871Z"
+    },
+    "userId": "user-mqur6es7-g0l32z",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:53:04.871Z",
+    "sentAt": "2026-06-26T09:53:04.871Z"
+  },
+  {
+    "id": "mail-mqur6esd-1np7pf",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=4632a22faced6fb5fa05d369a41a40d1721f42625935361d",
+      "expiresAt": "2026-06-27T09:53:04.861Z"
+    },
+    "userId": "user-mqur6es7-g0l32z",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:53:04.861Z",
+    "sentAt": "2026-06-26T09:53:04.861Z"
+  },
+  {
+    "id": "mail-mqur6eod-4saazc",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=1058b63f6840f48edf42de6a2e61f564959dab8a665eedff",
+      "expiresAt": "2026-06-27T09:53:04.716Z"
+    },
+    "userId": "user-mqur6eo5-31zlpl",
+    "status": "sent",
+    "createdAt": "2026-06-26T09:53:04.717Z",
+    "sentAt": "2026-06-26T09:53:04.717Z"
+  },
+  {
+    "id": "mail-mqumju63-ikdawt",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=bec920310d71ce3acfa3536f8ce12e2ebedf71ddfb338ab1",
+      "expiresAt": "2026-06-26T08:43:33.242Z"
+    },
+    "userId": "user-mqumju53-2z44e1",
+    "status": "sent",
+    "createdAt": "2026-06-26T07:43:33.243Z",
+    "sentAt": "2026-06-26T07:43:33.243Z"
+  },
+  {
+    "id": "mail-mqumju5f-w4wrxi",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=e38fe1ac18f1e1c6affaa1fe0104c96461b4b77294216db4",
+      "expiresAt": "2026-06-27T07:43:33.218Z"
+    },
+    "userId": "user-mqumju53-2z44e1",
+    "status": "sent",
+    "createdAt": "2026-06-26T07:43:33.219Z",
+    "sentAt": "2026-06-26T07:43:33.219Z"
+  },
+  {
+    "id": "mail-mqumjtxy-bctolv",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=df26b23886a774b4478828e926ce15fbe57ad9efd0aa6c7f",
+      "expiresAt": "2026-06-27T07:43:32.949Z"
+    },
+    "userId": "user-mqumjtxf-lyvu0a",
+    "status": "sent",
+    "createdAt": "2026-06-26T07:43:32.950Z",
+    "sentAt": "2026-06-26T07:43:32.950Z"
+  },
+  {
+    "id": "mail-mqud6arg-otfm5b",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=3f5bb6c3238d076843e0f27805c86d0f2a8306bc7a7af83a",
+      "expiresAt": "2026-06-26T04:21:05.019Z"
+    },
+    "userId": "user-mqud6ar4-n2irp6",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:21:05.020Z",
+    "sentAt": "2026-06-26T03:21:05.020Z"
+  },
+  {
+    "id": "mail-mqud6ar8-j6523v",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=cd25b58884b2499b0dcceab0a18f659bfdc404e66cfcafa1",
+      "expiresAt": "2026-06-27T03:21:05.012Z"
+    },
+    "userId": "user-mqud6ar4-n2irp6",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:21:05.012Z",
+    "sentAt": "2026-06-26T03:21:05.012Z"
+  },
+  {
+    "id": "mail-mqud6ao8-2ca4b9",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=a924777a179f37dd074e7e0af33728c968436656655acba1",
+      "expiresAt": "2026-06-27T03:21:04.904Z"
+    },
+    "userId": "user-mqud6ao3-n3rc4h",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:21:04.904Z",
+    "sentAt": "2026-06-26T03:21:04.904Z"
+  },
+  {
+    "id": "mail-mqud588t-psded9",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=6245b5a7b2fe754d5199d9cb2b045dc1a5ea739346c91cd6",
+      "expiresAt": "2026-06-26T04:20:15.101Z"
+    },
+    "userId": "user-mqud588c-64fcw2",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:20:15.101Z",
+    "sentAt": "2026-06-26T03:20:15.101Z"
+  },
+  {
+    "id": "mail-mqud588i-xh3fgb",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=c832899c0d26a55eae26cd34a858c505c0c07b3985dae3f7",
+      "expiresAt": "2026-06-27T03:20:15.089Z"
+    },
+    "userId": "user-mqud588c-64fcw2",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:20:15.090Z",
+    "sentAt": "2026-06-26T03:20:15.090Z"
+  },
+  {
+    "id": "mail-mqud583y-qe0f74",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=dc0a5927e151549c28f87f4c9c142903a02693bcc65d3e9b",
+      "expiresAt": "2026-06-27T03:20:14.925Z"
+    },
+    "userId": "user-mqud583q-8wrn8i",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:20:14.926Z",
+    "sentAt": "2026-06-26T03:20:14.926Z"
+  },
+  {
+    "id": "mail-mqucytnt-0gh940",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=ba79620a1862b7ee25c0f8b3d39e0675b7c19768c7388e62",
+      "expiresAt": "2026-06-26T04:15:16.265Z"
+    },
+    "userId": "user-mqucytnc-h671ci",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:15:16.265Z",
+    "sentAt": "2026-06-26T03:15:16.265Z"
+  },
+  {
+    "id": "mail-mqucytnh-2rgr0d",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=cb3ae029547c4e38f22d1629f33a36f9f85f9fb5f71fb797",
+      "expiresAt": "2026-06-27T03:15:16.252Z"
+    },
+    "userId": "user-mqucytnc-h671ci",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:15:16.253Z",
+    "sentAt": "2026-06-26T03:15:16.253Z"
+  },
+  {
+    "id": "mail-mqucyti3-7vfuaw",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=efbd740742dc6fa72b65a941b57c442206981900f34fa547",
+      "expiresAt": "2026-06-27T03:15:16.058Z"
+    },
+    "userId": "user-mqucythu-nqyf1q",
+    "status": "sent",
+    "createdAt": "2026-06-26T03:15:16.059Z",
+    "sentAt": "2026-06-26T03:15:16.059Z"
+  },
+  {
+    "id": "mail-mqubzbjq-58gl7u",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=3056f9f6a66658eda3effc43fbdb82f7ec05014030741db9",
+      "expiresAt": "2026-06-26T03:47:39.830Z"
+    },
+    "userId": "user-mqubzbjb-foz6a8",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:47:39.830Z",
+    "sentAt": "2026-06-26T02:47:39.830Z"
+  },
+  {
+    "id": "mail-mqubzbjf-dcrtgc",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=92f9377b3c9c7b9891268a8b3c660f7f8822d3978155db54",
+      "expiresAt": "2026-06-27T02:47:39.819Z"
+    },
+    "userId": "user-mqubzbjb-foz6a8",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:47:39.819Z",
+    "sentAt": "2026-06-26T02:47:39.819Z"
+  },
+  {
+    "id": "mail-mqubzbg1-tlc8pk",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=74620720a4780dfcd84593e597c58a1a336122ff709c22db",
+      "expiresAt": "2026-06-27T02:47:39.697Z"
+    },
+    "userId": "user-mqubzbft-dikegw",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:47:39.697Z",
+    "sentAt": "2026-06-26T02:47:39.697Z"
+  },
+  {
+    "id": "mail-mqublv7z-gaxgrc",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=f54b7ba4c43ad3f6482f126994f2a0f6fa722d37e1ed922f",
+      "expiresAt": "2026-06-26T03:37:12.142Z"
+    },
+    "userId": "user-mqublv7e-j5hh2v",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:37:12.143Z",
+    "sentAt": "2026-06-26T02:37:12.143Z"
+  },
+  {
+    "id": "mail-mqublv7m-mhtn0k",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=600e8609a7faf25f1efd39a278a62de8fea1a7b643b51e57",
+      "expiresAt": "2026-06-27T02:37:12.130Z"
+    },
+    "userId": "user-mqublv7e-j5hh2v",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:37:12.130Z",
+    "sentAt": "2026-06-26T02:37:12.130Z"
+  },
+  {
+    "id": "mail-mqublv1a-ywduji",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=d48ebd13ec98d1e34db3a5f15ed1da5f18b799624b82e562",
+      "expiresAt": "2026-06-27T02:37:11.901Z"
+    },
+    "userId": "user-mqublv0x-smn71d",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:37:11.902Z",
+    "sentAt": "2026-06-26T02:37:11.902Z"
+  },
+  {
+    "id": "mail-mquar2bz-uumkez",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=3f2085403003f0de2cce0d8cb09169aba9d47e9e38598235",
+      "expiresAt": "2026-06-26T03:13:15.022Z"
+    },
+    "userId": "user-mquar2bc-v7kgjg",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:13:15.023Z",
+    "sentAt": "2026-06-26T02:13:15.023Z"
+  },
+  {
+    "id": "mail-mquar2bk-lzpzum",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=e2148f22dd80e7c030ac86ed2ef8475ea42496941d8f714c",
+      "expiresAt": "2026-06-27T02:13:15.007Z"
+    },
+    "userId": "user-mquar2bc-v7kgjg",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:13:15.008Z",
+    "sentAt": "2026-06-26T02:13:15.008Z"
+  },
+  {
+    "id": "mail-mquar268-1z1aja",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=6412dd8ab1a53e68adcc0677edefdf93e3314e294c6707d9",
+      "expiresAt": "2026-06-27T02:13:14.815Z"
+    },
+    "userId": "user-mquar25y-idd7z3",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:13:14.816Z",
+    "sentAt": "2026-06-26T02:13:14.816Z"
+  },
+  {
+    "id": "mail-mquac781-iv0ehs",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=38e6c10a328df05af799c0b6ef9f06ecf9eba447f0698f2c",
+      "expiresAt": "2026-06-26T03:01:41.520Z"
+    },
+    "userId": "user-mquac76x-8deuct",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:01:41.521Z",
+    "sentAt": "2026-06-26T02:01:41.521Z"
+  },
+  {
+    "id": "mail-mquac77a-yln2ab",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=62fa908912106601bb4e0afed4b046fe72533afab109ff4a",
+      "expiresAt": "2026-06-27T02:01:41.494Z"
+    },
+    "userId": "user-mquac76x-8deuct",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:01:41.494Z",
+    "sentAt": "2026-06-26T02:01:41.494Z"
+  },
+  {
+    "id": "mail-mquac6yt-r2wqvz",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=fff8ef1840a4f6602b3562099371a0ee0d83fc3e1671550e",
+      "expiresAt": "2026-06-27T02:01:41.187Z"
+    },
+    "userId": "user-mquac6yc-mnb7qb",
+    "status": "sent",
+    "createdAt": "2026-06-26T02:01:41.188Z",
+    "sentAt": "2026-06-26T02:01:41.188Z"
+  },
+  {
+    "id": "mail-mqsvqv08-5yf6up",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=78485a174b61a1da20c523933fcda7df63f8ffed1aa54a68",
+      "expiresAt": "2026-06-25T03:25:25.111Z"
+    },
+    "userId": "user-mqsvquzi-yoz52v",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:25:25.112Z",
+    "sentAt": "2026-06-25T02:25:25.112Z"
+  },
+  {
+    "id": "mail-mqsvquzq-xiibsh",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=aba399cb951081a491a8d881938536cb5e23cd26c9297586",
+      "expiresAt": "2026-06-26T02:25:25.094Z"
+    },
+    "userId": "user-mqsvquzi-yoz52v",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:25:25.094Z",
+    "sentAt": "2026-06-25T02:25:25.094Z"
+  },
+  {
+    "id": "mail-mqsvquu0-tvsr4h",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=aa1e39ed3b51407f9c62daa71f45190ae89ce2017b21a48e",
+      "expiresAt": "2026-06-26T02:25:24.888Z"
+    },
+    "userId": "user-mqsvqutn-tlb2dk",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:25:24.888Z",
+    "sentAt": "2026-06-25T02:25:24.888Z"
+  },
+  {
+    "id": "mail-mqsvh9ra-tey0aa",
+    "to": "reset@example.com",
+    "subject": "重置你的 AI 求职台密码",
+    "template": "resetPassword",
+    "variables": {
+      "displayName": "候选人",
+      "resetUrl": "http://127.0.0.1:5173/reset-password?token=1b548a3cde4fff1854337968882a33ff1dc127c364958438",
+      "expiresAt": "2026-06-25T03:17:57.669Z"
+    },
+    "userId": "user-mqsvh9qg-u1ivv9",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:17:57.670Z",
+    "sentAt": "2026-06-25T02:17:57.670Z"
+  },
+  {
+    "id": "mail-mqsvh9qr-f5pfcu",
+    "to": "reset@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=2bacfdca32000156b6f5c5ffe128c68324f72f29fd95c0c5",
+      "expiresAt": "2026-06-26T02:17:57.650Z"
+    },
+    "userId": "user-mqsvh9qg-u1ivv9",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:17:57.651Z",
+    "sentAt": "2026-06-25T02:17:57.651Z"
+  },
+  {
+    "id": "mail-mqsvh9ka-v535e5",
+    "to": "verify@example.com",
+    "subject": "请验证你的邮箱",
+    "template": "verifyEmail",
+    "variables": {
+      "displayName": "候选人",
+      "verifyUrl": "http://127.0.0.1:5173/verify-email?token=5d2b9e22d2df4124d1e30bc56277e2a82a9b1e819e26da49",
+      "expiresAt": "2026-06-26T02:17:57.417Z"
+    },
+    "userId": "user-mqsvh9jw-87v4sq",
+    "status": "sent",
+    "createdAt": "2026-06-25T02:17:57.418Z",
+    "sentAt": "2026-06-25T02:17:57.418Z"
+  },
+  {
     "id": "mail-mqs7zjey-jxemwn",
     "to": "reset@example.com",
     "subject": "重置你的 AI 求职台密码",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BriefcaseBusiness, ArrowRight } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { navigateTo } from "../../lib/router";
 import { migrateGuestDataToServer } from "../../lib/store";
@@ -7,33 +7,53 @@ import { Seo } from "../system/Seo";
 
 type Mode = "login" | "register";
 
+type AuthResponse = {
+  user: {
+    userId: string;
+    phone: string | null;
+    email?: string | null;
+    emailVerifiedAt?: string | null;
+    displayName: string;
+    notificationPrefs?: {
+      marketing?: boolean;
+      product?: boolean;
+      security?: boolean;
+    };
+  };
+  tokens: {
+    accessToken: string;
+    expiresAt: string;
+  };
+  error?: string;
+};
+
 export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo?: string }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [phone, setPhone] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { setAuth } = useAuth();
   const resolvedReturnTo = returnTo || "/";
 
   const submit = async () => {
-    if (!/^1[3-9]\d{9}$/.test(phone)) { setError("请输入有效的手机号"); return; }
-    if (!password || password.length < 8) { setError("请输入至少 8 位密码"); return; }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setError("请输入有效的手机号");
+      return;
+    }
+    if (!password || password.length < 8) {
+      setError("请输入至少 8 位密码");
+      return;
+    }
 
     setError("");
     setLoading(true);
     try {
       const endpoint = mode === "register" ? "/api/auth/register" : "/api/auth/login";
-      const body: Record<string, string | boolean> = { phone, password };
-      if (mode === "register") {
-        if (!consentAccepted) {
-          setError("请先同意用户协议与隐私政策");
-          return;
-        }
-        if (displayName.trim()) body.displayName = displayName.trim();
-        Object.assign(body, { consentAccepted });
+      const body: Record<string, string> = { phone, password };
+      if (mode === "register" && displayName.trim()) {
+        body.displayName = displayName.trim();
       }
 
       const res = await fetch(endpoint, {
@@ -41,21 +61,26 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as Partial<AuthResponse> & { error?: string };
 
       if (!res.ok) {
-        if (data.error === "PHONE_ALREADY_REGISTERED") setError("该手机号已注册，请直接登录");
-        else if (data.error === "CONSENT_REQUIRED") setError("请先同意用户协议与隐私政策");
-        else if (data.error === "INVALID_CREDENTIALS") setError("手机号或密码错误");
-        else setError(data.error || "操作失败");
+        if (data.error === "PHONE_ALREADY_REGISTERED") {
+          setError("该手机号已注册，请直接登录");
+        } else if (data.error === "INVALID_CREDENTIALS") {
+          setError("手机号或密码错误");
+        } else {
+          setError(data.error || "操作失败");
+        }
         return;
       }
 
-      // Save session
-      setAuth(data.user, data.tokens);
+      if (!data.user || !data.tokens) {
+        setError("登录结果不完整，请稍后再试");
+        return;
+      }
 
-      // Migrate guest data
-      if (data.tokens?.accessToken) {
+      setAuth(data.user, data.tokens);
+      if (data.tokens.accessToken) {
         void migrateGuestDataToServer(data.tokens.accessToken);
       }
 
@@ -76,7 +101,7 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
     <div className="auth-page">
       <Seo
         title={mode === "register" ? "注册 | AI 求职台" : "登录 | AI 求职台"}
-        description={mode === "register" ? "创建 AI 求职台账户，开始面试准备。" : "登录 AI 求职台，同步你的岗位、简历和练习记录。"}
+        description={mode === "register" ? "创建 AI 求职台账号，继续你的面试准备。" : "登录 AI 求职台，同步你的岗位、简历和练习记录。"}
       />
       <div className="auth-card">
         <div className="auth-header">
@@ -85,7 +110,7 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
           </span>
           <h1 className="auth-title">AI 求职台</h1>
           <p className="auth-subtitle">
-            {mode === "register" ? "创建账户后即可继续当前操作" : "登录后继续你的面试准备与记录保存"}
+            {mode === "register" ? "注册后继续保存你的岗位、简历和练习进度" : "登录后继续你的面试准备与记录同步"}
           </p>
         </div>
 
@@ -115,7 +140,10 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
               maxLength={11}
               placeholder="请输入手机号"
               value={phone}
-              onChange={(e) => { setPhone(e.target.value); setError(""); }}
+              onChange={(event) => {
+                setPhone(event.target.value);
+                setError("");
+              }}
             />
           </label>
 
@@ -126,37 +154,30 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
               type="password"
               placeholder="至少 8 位"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setError("");
+              }}
             />
           </label>
 
-          {mode === "register" && (
-            <>
-              <label className="auth-field">
-                <span className="auth-label">昵称 <span className="auth-optional">(选填)</span></span>
-                <input
-                  className="auth-input"
-                  type="text"
-                  maxLength={32}
-                  placeholder="你的称呼"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                />
-              </label>
+          {mode === "register" ? (
+            <label className="auth-field">
+              <span className="auth-label">
+                昵称 <span className="auth-optional">(选填)</span>
+              </span>
+              <input
+                className="auth-input"
+                type="text"
+                maxLength={32}
+                placeholder="你的称呼"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+              />
+            </label>
+          ) : null}
 
-              <label className="auth-checkbox">
-                <input type="checkbox" checked={consentAccepted} onChange={(e) => setConsentAccepted(e.target.checked)} />
-                <span>
-                  我已阅读并同意
-                  <button type="button" className="auth-link inline" onClick={() => navigateTo("/terms-of-service")}>用户协议</button>
-                  和
-                  <button type="button" className="auth-link inline" onClick={() => navigateTo("/privacy-policy")}>隐私政策</button>
-                </span>
-              </label>
-            </>
-          )}
-
-          {error && <p className="auth-error">{error}</p>}
+          {error ? <p className="auth-error">{error}</p> : null}
 
           <button
             type="button"
@@ -165,13 +186,13 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
             onClick={submit}
           >
             {loading ? "处理中..." : mode === "register" ? "注册并开始使用" : "登录"}
-            {!loading && <ArrowRight size={16} />}
+            {!loading ? <ArrowRight size={16} /> : null}
           </button>
 
           <p className="auth-footer-text">
-            登录后继续原操作
+            登录后继续原来的浏览进度
             <button type="button" className="auth-link" onClick={() => navigateTo(resolvedReturnTo, { replace: true })}>
-              直接进入首页
+              先回当前页面
             </button>
           </p>
         </div>

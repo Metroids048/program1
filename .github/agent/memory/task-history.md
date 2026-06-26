@@ -1,5 +1,50 @@
 # Task History
 
+## [TASK-2026-06-26-plain-language-confirmation-rule]
+
+- Date: 2026-06-26
+- Type: process
+- Summary: 按用户要求，将“大幅度改动或与已有内容冲突时，必须用通俗易懂的非技术语言先问用户确认”的规则写入项目 `AGENTS.md`、项目执行规则、项目记忆、全局 agent master、Claude/Codex 全局入口。
+- Files:
+  - `AGENTS.md`
+  - `.github/agent/memory/RULES.md`
+  - `.github/agent/memory/project-memory.md`
+  - `C:\Users\win\.ai-workspace\memory\global-agent-master.md`
+  - `C:\Users\win\.claude\AGENTS.md`
+  - `C:\Users\win\.codex\AGENTS.md`
+- Verified:
+  - 文本检查确认规则已写入上述本地规则文件
+- Notes:
+  - 这是流程规则更新，不涉及产品代码和运行时行为
+
+## [TASK-2026-06-26-prompt-g-product-polish]
+
+- Date: 2026-06-26
+- Type: feature/fix
+- Summary: 按 Prompt G 补完计划完成“先稳再美”收口：修复 mock answer 因 FTS5 查询非法字符导致的 500 与 Windows 测试资源释放问题，新增 `InterviewRecord.questionResults` 可选兼容字段与派生写入，补齐 CI 主链路；同时把 G1-G4 UI 接到首页、导航、模拟配置和 `/resume` 主简历页，并收敛记录页筛选空态。
+- Files:
+  - `server/db.ts`
+  - `server/index.test.ts`
+  - `server/orchestrator.ts`
+  - `src/types.ts`
+  - `src/App.tsx`
+  - `src/components/appShell.tsx`
+  - `src/components/positions.tsx`
+  - `src/components/resume.tsx`
+  - `src/components/records.tsx`
+  - `src/lib/store.ts`
+  - `src/lib/copy.ts`
+  - `src/styles.css`
+  - `.github/workflows/ci.yml`
+- Verified:
+  - `npm run test:server`：27 tests passed
+  - `npm run test:app`：5 test files / 32 tests passed
+  - `npm run verify`：lint/typecheck/test/build 全链路通过，14 test files / 81 tests passed
+- Notes:
+  - Codex 无渲染层验收；未调用 Browser/IAB/Chrome/Computer Use
+  - `lint` 仍保留既有 `react-refresh/only-export-components` warnings，build 仍保留 Vite chunk size warning
+  - 本轮 `questionResults` 仅做可选字段与派生数据，不做 schema 级迁移
+
 ## [TASK-2026-06-24-disaster-iteration-recovery]
 
 - Date: 2026-06-24

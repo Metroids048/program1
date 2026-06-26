@@ -222,9 +222,6 @@ export function createAuthService(db: AppDb, mailer: MailService) {
     hashPassword,
 
     async register(input: RegisterInput): Promise<{ user: User; tokens: AuthTokens }> {
-      if (!input.consentAccepted) {
-        throw Object.assign(new Error("CONSENT_REQUIRED"), { statusCode: 400 });
-      }
       const existing = internalGetUserByPhone(input.phone);
       if (existing) {
         throw Object.assign(new Error("PHONE_ALREADY_REGISTERED"), { statusCode: 409 });
@@ -239,8 +236,6 @@ export function createAuthService(db: AppDb, mailer: MailService) {
         createdAt: nowIso(),
       });
       if (db.db) {
-        db.db.prepare("insert into consent_records(id, user_id, consent_type, consent_version, accepted_at, detail) values (?, ?, ?, ?, ?, ?)")
-          .run(makeId("consent"), user.id, "signup_terms_privacy", "v1", nowIso(), JSON.stringify({ phone: user.phone }));
         db.db.prepare("insert into audit_events(id, user_id, action, detail, created_at) values (?, ?, ?, ?, ?)")
           .run(makeId("audit"), user.id, "register", JSON.stringify({ phone: user.phone }), nowIso());
       }

@@ -7,7 +7,6 @@ const RegisterBody = z.object({
   phone: z.string().regex(/^1[3-9]\d{9}$/, "无效的手机号"),
   password: z.string().min(8, "密码至少 8 位").max(64),
   displayName: z.string().max(32).optional(),
-  consentAccepted: z.boolean(),
 });
 
 const LoginBody = z.object({

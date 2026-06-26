@@ -48,6 +48,20 @@ export function isSpeechRecognitionSupported(): boolean {
   return getRecognitionCtor() !== undefined;
 }
 
+export function getSpeechRecognitionSupport(): { supported: boolean; fullySupported: boolean } {
+  if (typeof window === "undefined") {
+    return { supported: false, fullySupported: false };
+  }
+  const supported = isSpeechRecognitionSupported();
+  const ua = window.navigator.userAgent;
+  const isChrome = /Chrome/i.test(ua) && !/Edg/i.test(ua);
+  const isEdge = /Edg/i.test(ua);
+  return {
+    supported,
+    fullySupported: supported && (isChrome || isEdge),
+  };
+}
+
 export function isSpeechSynthesisSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }

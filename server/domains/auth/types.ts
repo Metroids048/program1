@@ -49,7 +49,6 @@ export interface RegisterInput {
   phone: string;
   password: string;
   displayName?: string;
-  consentAccepted: boolean;
 }
 
 export interface LoginInput {

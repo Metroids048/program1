@@ -24,24 +24,24 @@ export interface AppDb {
   saveState(state: BackendState, userId?: string): void;
   saveCueCard(card: AnswerCueCard): void;
   listCueCards(): AnswerCueCard[];
-  saveRecord(record: InterviewRecord): void;
-  listRecords(): InterviewRecord[];
-  getRecord(id: string): InterviewRecord | undefined;
+  saveRecord(record: InterviewRecord, userId?: string): void;
+  listRecords(userId?: string): InterviewRecord[];
+  getRecord(id: string, userId?: string): InterviewRecord | undefined;
   saveSearchResult(result: SearchResult): void;
-  savePromptRun(run: PromptRun): void;
-  saveMockSession(session: MockSessionRecord): void;
-  getMockSession(id: string): MockSessionRecord | undefined;
-  getLatestActiveMockSession(positionId: string): MockSessionRecord | undefined;
+  savePromptRun(run: PromptRun, userId?: string): void;
+  saveMockSession(session: MockSessionRecord, userId?: string): void;
+  getMockSession(id: string, userId?: string): MockSessionRecord | undefined;
+  getLatestActiveMockSession(positionId: string, userId?: string): MockSessionRecord | undefined;
   getCachedCueCard(key: string): AnswerCueCard | undefined;
   saveCachedCueCard(key: string, card: AnswerCueCard, positionId: string): void;
   deleteCachedCueCardsByPosition(positionId: string): void;
-  deletePositionArtifacts(positionId: string): void;
+  deletePositionArtifacts(positionId: string, userId?: string, ownerKey?: string): void;
   upsertDocument(document: RagDocument): void;
   replaceDocumentChunks(documentId: string, chunks: RagChunk[]): void;
-  deleteDocument(sourceType: RagSourceType, sourceId: string): void;
-  deleteDocumentsBySource(sourceType: RagSourceType, positionId: string): void;
-  searchRagChunks(query: string, positionId?: string): Array<RagChunk & { score: number }>;
-  saveRetrievalRun(run: RetrievalRun): void;
+  deleteDocument(sourceType: RagSourceType, sourceId: string, ownerKey?: string): void;
+  deleteDocumentsBySource(sourceType: RagSourceType, positionId: string, ownerKey?: string): void;
+  searchRagChunks(query: string, positionId?: string, ownerKey?: string): Array<RagChunk & { score: number }>;
+  saveRetrievalRun(run: RetrievalRun, userId?: string): void;
   // Auth
   insertUser(user: UserRow): void;
   updateUser(user: UserRow): void;
@@ -94,15 +94,20 @@ const DEFAULT_DB_PATH = ".data/ai-job-platform.sqlite";
 
 type FileStore = {
   state: BackendState;
+  userStates?: Record<string, BackendState>;
   cueCards: AnswerCueCard[];
   records: InterviewRecord[];
+  userRecords?: Array<{ userId: string; record: InterviewRecord }>;
   searchResults: SearchResult[];
   promptRuns: PromptRun[];
+  userPromptRuns?: Array<{ userId: string; run: PromptRun }>;
   mockSessions: MockSessionRecord[];
+  userMockSessions?: Array<{ userId: string; session: MockSessionRecord }>;
   cueCardCache: Array<{ cacheKey: string; positionId: string; card: AnswerCueCard; createdAt: string }>;
   documents: RagDocument[];
   documentChunks: RagChunk[];
   retrievalRuns: RetrievalRun[];
+  userRetrievalRuns?: Array<{ userId: string; run: RetrievalRun }>;
   users: UserRow[];
   authIdentities: AuthIdentityRow[];
   sessions: SessionRow[];
@@ -167,7 +172,11 @@ function createSqliteDb(db: Database.Database): AppDb {
     db,
     mode: "sqlite",
     getState(userId) {
-      const key = userId ?? "default";
+      if (!userId) {
+        const initial = createInitialAppState();
+        return { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
+      }
+      const key = userId;
       const raw = db.prepare("select json from app_state where id = ?").get(key) as { json: string } | undefined;
       if (raw) return JSON.parse(raw.json) as BackendState;
       const initial = createInitialAppState();
@@ -176,7 +185,8 @@ function createSqliteDb(db: Database.Database): AppDb {
       return state;
     },
     saveState(state, userId) {
-      const key = userId ?? "default";
+      if (!userId) return;
+      const key = userId;
       db.prepare("insert into app_state(id, json, updated_at, user_id) values (?, ?, ?, ?) on conflict(id) do update set json = excluded.json, updated_at = excluded.updated_at, user_id = excluded.user_id").run(
         key,
         JSON.stringify(state),
@@ -190,17 +200,25 @@ function createSqliteDb(db: Database.Database): AppDb {
     listCueCards() {
       return db.prepare("select json from cue_cards order by created_at desc").all().map((row) => JSON.parse((row as { json: string }).json) as AnswerCueCard);
     },
-    saveRecord(record) {
-      db.prepare("insert or replace into interview_records(id, mode, json, created_at) values (?, ?, ?, ?)").run(record.id, record.mode, JSON.stringify(record), record.createdAt);
+    saveRecord(record, userId) {
+      if (!userId) return;
+      db.prepare("insert or replace into interview_records(id, mode, json, created_at, user_id) values (?, ?, ?, ?, ?)").run(
+        record.id,
+        record.mode,
+        JSON.stringify(record),
+        record.createdAt,
+        userId ?? null,
+      );
     },
-    listRecords() {
-      return db
-        .prepare("select json from interview_records order by created_at desc")
-        .all()
+    listRecords(userId) {
+      if (!userId) return [];
+      const rows = db.prepare("select json from interview_records where user_id = ? order by created_at desc").all(userId);
+      return rows
         .map((row) => JSON.parse((row as { json: string }).json) as InterviewRecord);
     },
-    getRecord(id) {
-      const row = db.prepare("select json from interview_records where id = ?").get(id) as { json: string } | undefined;
+    getRecord(id, userId) {
+      if (!userId) return undefined;
+      const row = db.prepare("select json from interview_records where id = ? and user_id = ?").get(id, userId) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as InterviewRecord) : undefined;
     },
     saveSearchResult(result) {
@@ -212,8 +230,9 @@ function createSqliteDb(db: Database.Database): AppDb {
         result.createdAt,
       );
     },
-    savePromptRun(run) {
-      db.prepare("insert into prompt_runs(id, skill_id, prompt_id, model, provider, status, latency_ms, retrieval_count, search_used, fallback_reason, json, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+    savePromptRun(run, userId) {
+      if (!userId) return;
+      db.prepare("insert into prompt_runs(id, skill_id, prompt_id, model, provider, status, latency_ms, retrieval_count, search_used, fallback_reason, json, created_at, user_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
         run.id,
         run.skillId,
         run.promptId,
@@ -226,23 +245,28 @@ function createSqliteDb(db: Database.Database): AppDb {
         run.fallbackReason,
         JSON.stringify(run),
         run.createdAt,
+        userId ?? null,
       );
     },
-    saveMockSession(session) {
-      db.prepare("insert or replace into mock_sessions(id, position_id, json, updated_at, created_at) values (?, ?, ?, ?, ?)").run(
+    saveMockSession(session, userId) {
+      if (!userId) return;
+      db.prepare("insert or replace into mock_sessions(id, position_id, json, updated_at, created_at, user_id) values (?, ?, ?, ?, ?, ?)").run(
         session.id,
         session.positionId,
         JSON.stringify(session),
         session.updatedAt,
         session.createdAt,
+        userId ?? null,
       );
     },
-    getMockSession(id) {
-      const row = db.prepare("select json from mock_sessions where id = ?").get(id) as { json: string } | undefined;
+    getMockSession(id, userId) {
+      if (!userId) return undefined;
+      const row = db.prepare("select json from mock_sessions where id = ? and user_id = ?").get(id, userId) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as MockSessionRecord) : undefined;
     },
-    getLatestActiveMockSession(positionId) {
-      const rows = db.prepare("select json from mock_sessions where position_id = ? order by updated_at desc").all(positionId) as Array<{ json: string }>;
+    getLatestActiveMockSession(positionId, userId) {
+      if (!userId) return undefined;
+      const rows = db.prepare("select json from mock_sessions where position_id = ? and user_id = ? order by updated_at desc").all(positionId, userId) as Array<{ json: string }>;
       return rows
         .map((row) => JSON.parse(row.json) as MockSessionRecord)
         .find((session) => !session.completedAt);
@@ -257,14 +281,16 @@ function createSqliteDb(db: Database.Database): AppDb {
     deleteCachedCueCardsByPosition(positionId) {
       db.prepare("delete from cue_card_cache where position_id = ?").run(positionId);
     },
-    deletePositionArtifacts(positionId) {
+    deletePositionArtifacts(positionId, userId, ownerKey) {
       db.prepare("delete from cue_card_cache where position_id = ?").run(positionId);
-      db.prepare("delete from mock_sessions where position_id = ?").run(positionId);
-      db.prepare("delete from interview_records where json_extract(json, '$.positionId') = ?").run(positionId);
-      this.deleteDocumentsBySource("jd", positionId);
-      this.deleteDocumentsBySource("question", positionId);
-      this.deleteDocumentsBySource("material", positionId);
-      this.deleteDocumentsBySource("record", positionId);
+      if (userId) {
+        db.prepare("delete from mock_sessions where position_id = ? and user_id = ?").run(positionId, userId);
+        db.prepare("delete from interview_records where json_extract(json, '$.positionId') = ? and user_id = ?").run(positionId, userId);
+      }
+      this.deleteDocumentsBySource("jd", positionId, ownerKey);
+      this.deleteDocumentsBySource("question", positionId, ownerKey);
+      this.deleteDocumentsBySource("material", positionId, ownerKey);
+      this.deleteDocumentsBySource("record", positionId, ownerKey);
     },
     upsertDocument(document) {
       db.prepare(
@@ -343,10 +369,10 @@ function createSqliteDb(db: Database.Database): AppDb {
       });
       transaction(chunks);
     },
-    deleteDocument(sourceType, sourceId) {
+    deleteDocument(sourceType, sourceId, ownerKey) {
       const ids = db
-        .prepare("select id from documents where source_type = ? and source_id = ?")
-        .all(sourceType, sourceId)
+        .prepare("select id from documents where source_type = ? and source_id = ? and (? is null or owner_key = ?)")
+        .all(sourceType, sourceId, ownerKey ?? null, ownerKey ?? null)
         .map((row) => (row as { id: string }).id);
       ids.forEach((id) => {
         const chunkIds = db
@@ -358,12 +384,12 @@ function createSqliteDb(db: Database.Database): AppDb {
         });
         db.prepare("delete from document_chunks where document_id = ?").run(id);
       });
-      db.prepare("delete from documents where source_type = ? and source_id = ?").run(sourceType, sourceId);
+      db.prepare("delete from documents where source_type = ? and source_id = ? and (? is null or owner_key = ?)").run(sourceType, sourceId, ownerKey ?? null, ownerKey ?? null);
     },
-    deleteDocumentsBySource(sourceType, positionId) {
+    deleteDocumentsBySource(sourceType, positionId, ownerKey) {
       const ids = db
-        .prepare("select id from documents where source_type = ? and position_id = ?")
-        .all(sourceType, positionId)
+        .prepare("select id from documents where source_type = ? and position_id = ? and (? is null or owner_key = ?)")
+        .all(sourceType, positionId, ownerKey ?? null, ownerKey ?? null)
         .map((row) => (row as { id: string }).id);
       ids.forEach((id) => {
         const chunkIds = db
@@ -375,9 +401,11 @@ function createSqliteDb(db: Database.Database): AppDb {
         });
         db.prepare("delete from document_chunks where document_id = ?").run(id);
       });
-      db.prepare("delete from documents where source_type = ? and position_id = ?").run(sourceType, positionId);
+      db.prepare("delete from documents where source_type = ? and position_id = ? and (? is null or owner_key = ?)").run(sourceType, positionId, ownerKey ?? null, ownerKey ?? null);
     },
-    searchRagChunks(query, positionId) {
+    searchRagChunks(query, positionId, ownerKey) {
+      const normalizedQuery = normalizeFtsQuery(query);
+      if (!normalizedQuery) return [];
       const rows = db
         .prepare(
           `
@@ -400,11 +428,12 @@ function createSqliteDb(db: Database.Database): AppDb {
           join document_chunks c on c.id = document_chunks_fts.chunk_id
           where document_chunks_fts match ?
             and (? is null or c.position_id = ? or c.position_id is null or c.position_id = '')
+            and (? is null or c.owner_key = ?)
           order by score
           limit 20
         `,
         )
-        .all(normalizeFtsQuery(query), positionId ?? null, positionId ?? null);
+        .all(normalizedQuery, positionId ?? null, positionId ?? null, ownerKey ?? null, ownerKey ?? null);
       return rows.map((row) => ({
         id: String((row as { id: string }).id),
         documentId: String((row as { document_id: string }).document_id),
@@ -422,8 +451,9 @@ function createSqliteDb(db: Database.Database): AppDb {
         score: Number((row as { score: number }).score ?? 0),
       }));
     },
-    saveRetrievalRun(run) {
-      db.prepare("insert into retrieval_runs(id, query, position_id, owner_key, chunk_ids_json, latency_ms, created_at) values (?, ?, ?, ?, ?, ?, ?)").run(
+    saveRetrievalRun(run, userId) {
+      if (!userId) return;
+      db.prepare("insert into retrieval_runs(id, query, position_id, owner_key, chunk_ids_json, latency_ms, created_at, user_id) values (?, ?, ?, ?, ?, ?, ?, ?)").run(
         run.id,
         run.query,
         run.positionId ?? null,
@@ -431,6 +461,7 @@ function createSqliteDb(db: Database.Database): AppDb {
         JSON.stringify(run.chunkIds),
         run.latencyMs,
         run.createdAt,
+        userId ?? null,
       );
     },
     insertUser(user) {
@@ -519,15 +550,20 @@ function createFileDb(filePath: string): AppDb {
       const initial = createInitialAppState();
       return {
         state: { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" },
+        userStates: {},
         cueCards: [],
         records: [],
+        userRecords: [],
         searchResults: [],
         promptRuns: [],
+        userPromptRuns: [],
         mockSessions: [],
+        userMockSessions: [],
         cueCardCache: [],
         documents: [],
         documentChunks: [],
         retrievalRuns: [],
+        userRetrievalRuns: [],
         users: [],
         authIdentities: [],
         sessions: [],
@@ -537,15 +573,20 @@ function createFileDb(filePath: string): AppDb {
     const initial = createInitialAppState();
     return {
       state: parsed.state ?? { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" },
+      userStates: parsed.userStates ?? {},
       cueCards: parsed.cueCards ?? [],
       records: parsed.records ?? [],
+      userRecords: parsed.userRecords ?? [],
       searchResults: parsed.searchResults ?? [],
       promptRuns: parsed.promptRuns ?? [],
+      userPromptRuns: parsed.userPromptRuns ?? [],
       mockSessions: parsed.mockSessions ?? [],
+      userMockSessions: parsed.userMockSessions ?? [],
       cueCardCache: parsed.cueCardCache ?? [],
       documents: parsed.documents ?? [],
       documentChunks: parsed.documentChunks ?? [],
       retrievalRuns: parsed.retrievalRuns ?? [],
+      userRetrievalRuns: parsed.userRetrievalRuns ?? [],
       users: (parsed.users ?? []).map((item) => normalizeUserRow(item)),
       authIdentities: parsed.authIdentities ?? [],
       sessions: parsed.sessions ?? [],
@@ -564,13 +605,20 @@ function createFileDb(filePath: string): AppDb {
   return {
     db: null,
     mode: "file",
-    getState(_userId: string | undefined) {
-      void _userId;
-      return readStore().state;
+    getState(userId: string | undefined) {
+      if (!userId) {
+        const initial = createInitialAppState();
+        return { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
+      }
+      const store = readStore();
+      return store.userStates?.[userId] ?? store.state;
     },
-    saveState(state: BackendState, _userId: string | undefined) {
-      void _userId;
-      replace((store) => ({ ...store, state }));
+    saveState(state: BackendState, userId: string | undefined) {
+      if (!userId) return;
+      replace((store) => ({
+        ...store,
+        userStates: { ...(store.userStates ?? {}), [userId]: state },
+      }));
     },
     saveCueCard(card) {
       replace((store) => ({ ...store, cueCards: [card, ...store.cueCards.filter((item) => item.id !== card.id)] }));
@@ -578,34 +626,57 @@ function createFileDb(filePath: string): AppDb {
     listCueCards() {
       return readStore().cueCards;
     },
-    saveRecord(record) {
+    saveRecord(record, userId) {
+      if (!userId) return;
       replace((store) => ({
         ...store,
-        records: [record, ...store.records.filter((item) => item.id !== record.id)],
-        state: { ...store.state, records: [record, ...store.state.records.filter((item) => item.id !== record.id)] },
+        userRecords: [
+          { userId, record },
+          ...(store.userRecords ?? []).filter((item) => !(item.userId === userId && item.record.id === record.id)),
+        ],
+        userStates: {
+          ...(store.userStates ?? {}),
+          [userId]: {
+            ...(store.userStates?.[userId] ?? store.state),
+            records: [record, ...(store.userStates?.[userId]?.records ?? []).filter((item) => item.id !== record.id)],
+          },
+        },
       }));
     },
-    listRecords() {
-      return readStore().records;
+    listRecords(userId) {
+      if (!userId) return [];
+      return (readStore().userRecords ?? []).filter((item) => item.userId === userId).map((item) => item.record);
     },
-    getRecord(id) {
-      return readStore().records.find((item) => item.id === id);
+    getRecord(id, userId) {
+      if (!userId) return undefined;
+      return (readStore().userRecords ?? []).find((item) => item.userId === userId && item.record.id === id)?.record;
     },
     saveSearchResult(result) {
       replace((store) => ({ ...store, searchResults: [result, ...store.searchResults.filter((item) => item.id !== result.id)] }));
     },
-    savePromptRun(run) {
-      replace((store) => ({ ...store, promptRuns: [run, ...store.promptRuns] }));
+    savePromptRun(run, userId) {
+      if (!userId) return;
+      replace((store) => ({ ...store, userPromptRuns: [{ userId, run }, ...(store.userPromptRuns ?? [])] }));
     },
-    saveMockSession(session) {
-      replace((store) => ({ ...store, mockSessions: [session, ...store.mockSessions.filter((item) => item.id !== session.id)] }));
+    saveMockSession(session, userId) {
+      if (!userId) return;
+      replace((store) => ({
+        ...store,
+        userMockSessions: [
+          { userId, session },
+          ...(store.userMockSessions ?? []).filter((item) => !(item.userId === userId && item.session.id === session.id)),
+        ],
+      }));
     },
-    getMockSession(id) {
-      return readStore().mockSessions.find((item) => item.id === id);
+    getMockSession(id, userId) {
+      if (!userId) return undefined;
+      return (readStore().userMockSessions ?? []).find((item) => item.userId === userId && item.session.id === id)?.session;
     },
-    getLatestActiveMockSession(positionId) {
-      return readStore().mockSessions
-        .filter((item) => item.positionId === positionId && !item.completedAt)
+    getLatestActiveMockSession(positionId, userId) {
+      if (!userId) return undefined;
+      return (readStore().userMockSessions ?? [])
+        .filter((item) => item.userId === userId && item.session.positionId === positionId && !item.session.completedAt)
+        .map((item) => item.session)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
     },
     getCachedCueCard(key) {
@@ -623,21 +694,24 @@ function createFileDb(filePath: string): AppDb {
     deleteCachedCueCardsByPosition(positionId) {
       replace((store) => ({ ...store, cueCardCache: store.cueCardCache.filter((item) => item.positionId !== positionId) }));
     },
-    deletePositionArtifacts(positionId) {
+    deletePositionArtifacts(positionId, userId, ownerKey) {
       replace((store) => {
-        const remainingRecords = store.records.filter((item) => item.positionId !== positionId);
+        const userStates = { ...(store.userStates ?? {}) };
+        if (userId && userStates[userId]) {
+          userStates[userId] = {
+            ...userStates[userId],
+            positions: userStates[userId].positions.filter((item) => item.id !== positionId),
+            records: userStates[userId].records.filter((item) => item.positionId !== positionId),
+          };
+        }
         return {
           ...store,
-          records: remainingRecords,
-          mockSessions: store.mockSessions.filter((item) => item.positionId !== positionId),
+          userRecords: userId ? (store.userRecords ?? []).filter((item) => !(item.userId === userId && item.record.positionId === positionId)) : store.userRecords ?? [],
+          userMockSessions: userId ? (store.userMockSessions ?? []).filter((item) => !(item.userId === userId && item.session.positionId === positionId)) : store.userMockSessions ?? [],
           cueCardCache: store.cueCardCache.filter((item) => item.positionId !== positionId),
-          documents: store.documents.filter((item) => item.positionId !== positionId),
-          documentChunks: store.documentChunks.filter((item) => item.positionId !== positionId),
-          state: {
-            ...store.state,
-            positions: store.state.positions.filter((item) => item.id !== positionId),
-            records: store.state.records.filter((item) => item.positionId !== positionId),
-          },
+          documents: store.documents.filter((item) => item.positionId !== positionId || (ownerKey && item.ownerKey !== ownerKey)),
+          documentChunks: store.documentChunks.filter((item) => item.positionId !== positionId || (ownerKey && item.ownerKey !== ownerKey)),
+          userStates,
         };
       });
     },
@@ -653,33 +727,38 @@ function createFileDb(filePath: string): AppDb {
         documentChunks: [...chunks, ...store.documentChunks.filter((item) => item.documentId !== documentId)],
       }));
     },
-    deleteDocument(sourceType, sourceId) {
+    deleteDocument(sourceType, sourceId, ownerKey) {
       replace((store) => {
-        const removedIds = store.documents.filter((item) => item.sourceType === sourceType && item.sourceId === sourceId).map((item) => item.id);
+        const removedIds = store.documents
+          .filter((item) => item.sourceType === sourceType && item.sourceId === sourceId && (!ownerKey || item.ownerKey === ownerKey))
+          .map((item) => item.id);
         return {
           ...store,
-          documents: store.documents.filter((item) => !(item.sourceType === sourceType && item.sourceId === sourceId)),
+          documents: store.documents.filter((item) => !(item.sourceType === sourceType && item.sourceId === sourceId && (!ownerKey || item.ownerKey === ownerKey))),
           documentChunks: store.documentChunks.filter((item) => !removedIds.includes(item.documentId)),
         };
       });
     },
-    deleteDocumentsBySource(sourceType, positionId) {
+    deleteDocumentsBySource(sourceType, positionId, ownerKey) {
       replace((store) => {
-        const removedIds = store.documents.filter((item) => item.sourceType === sourceType && item.positionId === positionId).map((item) => item.id);
+        const removedIds = store.documents
+          .filter((item) => item.sourceType === sourceType && item.positionId === positionId && (!ownerKey || item.ownerKey === ownerKey))
+          .map((item) => item.id);
         return {
           ...store,
-          documents: store.documents.filter((item) => !(item.sourceType === sourceType && item.positionId === positionId)),
+          documents: store.documents.filter((item) => !(item.sourceType === sourceType && item.positionId === positionId && (!ownerKey || item.ownerKey === ownerKey))),
           documentChunks: store.documentChunks.filter((item) => !removedIds.includes(item.documentId)),
         };
       });
     },
-    searchRagChunks(query, positionId) {
-      const terms = query
-        .toLowerCase()
-        .split(/\s+/)
-        .map((item) => item.trim())
-        .filter(Boolean);
-      const chunks = (readStore().documentChunks ?? []).filter((item) => !positionId || item.positionId === positionId || !item.positionId);
+    searchRagChunks(query, positionId, ownerKey) {
+      const terms = normalizeSearchTerms(query).map((item) => item.toLowerCase());
+      if (!terms.length) return [];
+      const chunks = (readStore().documentChunks ?? []).filter((item) => {
+        const samePosition = !positionId || item.positionId === positionId || !item.positionId;
+        const sameOwner = !ownerKey || item.ownerKey === ownerKey;
+        return samePosition && sameOwner;
+      });
       return chunks
         .map((chunk) => {
           const haystack = `${chunk.title}\n${chunk.content}`.toLowerCase();
@@ -689,8 +768,9 @@ function createFileDb(filePath: string): AppDb {
         .sort((a, b) => a.score - b.score)
         .slice(0, 20);
     },
-    saveRetrievalRun(run) {
-      replace((store) => ({ ...store, retrievalRuns: [run, ...store.retrievalRuns] }));
+    saveRetrievalRun(run, userId) {
+      if (!userId) return;
+      replace((store) => ({ ...store, userRetrievalRuns: [{ userId, run }, ...(store.userRetrievalRuns ?? [])] }));
     },
     insertUser(user) {
       replace((store) => ({ ...store, users: [...store.users, normalizeUserRow(user)] }));
@@ -826,12 +906,22 @@ export function toApiSnapshot(state: BackendState, activePositionId?: string): A
 }
 
 function normalizeFtsQuery(query: string): string {
-  return query
-    .trim()
-    .split(/\s+/)
-    .map((item) => item.replace(/["']/g, ""))
-    .filter(Boolean)
+  return normalizeSearchTerms(query)
+    .slice(0, 32)
+    .map((item) => `"${item.replace(/"/g, '""')}"`)
     .join(" OR ");
+}
+
+function normalizeSearchTerms(query: string): string[] {
+  return Array.from(
+    new Set(
+      query
+        .normalize("NFKC")
+        .match(/[\p{Script=Han}]{2,}|[A-Za-z0-9][A-Za-z0-9+#._-]{1,}/gu)
+        ?.map((item) => item.replace(/^[-_.+#]+|[-_.+#]+$/g, "").trim())
+        .filter((item) => item.length >= 2) ?? [],
+    ),
+  );
 }
 
 function deriveFilePath(dbPath: string): string {

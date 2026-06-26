@@ -371,16 +371,6 @@ function AccountWorkspace({
               清空业务数据
             </button>
           </div>
-          <div className="account-actions">
-            <button type="button" className="account-btn" onClick={() => navigateTo("/terms-of-service")}>
-              <Shield size={14} />
-              用户协议
-            </button>
-            <button type="button" className="account-btn" onClick={() => navigateTo("/privacy-policy")}>
-              <Shield size={14} />
-              隐私政策
-            </button>
-          </div>
           <p className="account-card-hint">当前产品只使用必要 Cookie / 本地存储来保持登录状态和草稿缓存。</p>
         </div>
 

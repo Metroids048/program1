@@ -11,8 +11,7 @@ function buildPosition() {
 }
 
 describe("positions pages", () => {
-  it("opens existing position cards from home and keeps the entry actions focused", async () => {
-    const user = userEvent.setup();
+  it("keeps the home first screen focused on input and primary actions", () => {
     const position = buildPosition();
     const onOpenPosition = vi.fn();
 
@@ -30,10 +29,32 @@ describe("positions pages", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "最近岗位" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /腾讯/ }));
+    expect(screen.getByRole("heading", { name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
+    expect(screen.getByLabelText("首页主输入")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /保存并继续完善/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /进入实时助手/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /进入模拟面试/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "最近岗位" })).not.toBeInTheDocument();
+    expect(onOpenPosition).not.toHaveBeenCalled();
+  });
 
-    expect(onOpenPosition).toHaveBeenCalledWith(position.id);
+  it("shows quick prompt pills when there are no positions", () => {
+    render(
+      <HomeDashboard
+        positions={[]}
+        activePositionId=""
+        onSubmitJd={vi.fn()}
+        onOpenPosition={vi.fn()}
+        onOpenCreatedPosition={vi.fn()}
+        onOpenMockList={vi.fn()}
+        onOpenLive={vi.fn()}
+        onRequireLogin={vi.fn()}
+        isLoggedIn
+      />,
+    );
+
+    expect(screen.queryByLabelText("首页新手引导")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /我有一场 AI 产品运营实习面试/ })).toBeInTheDocument();
   });
 
   it("drives position detail actions with the full detail page instead of a drawer", async () => {
@@ -125,16 +146,18 @@ describe("positions pages", () => {
     expect(screen.getByRole("heading", { name: "腾讯 · AI 产品经理" })).toBeInTheDocument();
     expect(screen.queryByLabelText("题数")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("计时")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("面试官角色")).toBeInTheDocument();
-    expect(screen.getByLabelText("难度")).toBeInTheDocument();
-    expect(screen.getByLabelText("风格")).toBeInTheDocument();
-    expect(screen.getByLabelText("性别")).toBeInTheDocument();
-    expect(screen.getByLabelText("提交方式")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "面试官角色" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "难度" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "风格" })).toBeInTheDocument();
+    expect(screen.getByText("更多设置").closest("details")).not.toHaveAttribute("open");
 
-    await user.selectOptions(screen.getByLabelText("面试官角色"), "CTO");
-    await user.selectOptions(screen.getByLabelText("难度"), "地狱面");
-    await user.selectOptions(screen.getByLabelText("风格"), "pressure");
-    await user.selectOptions(screen.getByLabelText("性别"), "男");
+    await user.click(screen.getByRole("button", { name: "CTO" }));
+    await user.click(screen.getByRole("button", { name: "强压面" }));
+    await user.click(screen.getByRole("button", { name: "连续追问" }));
+    await user.click(screen.getByText("更多设置"));
+    expect(screen.getByLabelText("面试官性别")).toBeInTheDocument();
+    expect(screen.getByLabelText("提交方式")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("面试官性别"), "男");
     await user.selectOptions(screen.getByLabelText("提交方式"), "auto");
     await user.click(screen.getByRole("button", { name: "保存配置并进入练习" }));
 

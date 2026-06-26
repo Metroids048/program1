@@ -163,6 +163,7 @@ export function CueCardPanel({ card, meta, onSaveQuestion }: { card?: AnswerCueC
     : card.evidenceIds.length
       ? card.evidenceIds
       : ["暂无显式证据命中，回答时请主动补充真实项目数据。"];
+  const modelLabel = status === "success" ? "模型生成" : `本地练习 · ${meta?.fallbackReason || "请仅引用你能确认的真实经历与数据"}`;
 
   return (
     <Panel title="提词卡" className="cue-panel">
@@ -178,34 +179,39 @@ export function CueCardPanel({ card, meta, onSaveQuestion }: { card?: AnswerCueC
         {status !== "success" ? <div className="inline-message warn">当前为练习模式结果，请只引用你能确认的真实经历与数据。</div> : null}
         {meta?.evidenceTrace?.length ? <EvidenceTrace trace={meta.evidenceTrace} /> : null}
 
-        <div className="cue-section-grid">
-          <section className="cue-section cue-section-wide">
-            <span>回答框架</span>
+        <div className="cue-section-grid cue-section-grid--stacked">
+          <section className="cue-opener">
+            <span className="cue-section-label">开场句</span>
+            <p className="cue-opener-text">{card.openingLine || "先用一句话给出结论，再展开关键动作和结果。"}</p>
+          </section>
+          <section className="cue-section cue-section-strategy">
+            <span className="cue-section-label">回答框架</span>
             <strong>{card.strategy || "STAR 法：背景、动作、结果、复盘"}</strong>
           </section>
-          <section className="cue-section cue-section-wide">
-            <span>开场句</span>
-            <p className="opening-line">{card.openingLine}</p>
-          </section>
           <section className="cue-section">
-            <span>要点</span>
-            <ul>{card.bullets.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
+            <span className="cue-section-label">核心要点</span>
+            <ol className="cue-points">{card.bullets.slice(0, 3).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ol>
           </section>
-          <section className="cue-section">
-            <span>可引用证据</span>
-            <ul>{evidence.slice(0, 3).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-          </section>
-          <section className="cue-section risk">
-            <span>风险提醒</span>
-            <ul>{card.risks.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-          </section>
-          <section className="cue-section follow">
-            <span>追问预测</span>
-            <ul>{card.followUps.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-          </section>
+          <details className="cue-section cue-evidence" open>
+            <summary className="cue-section-label">证据 · {evidence.length} 条</summary>
+            <ul className="cue-evidence-list">{evidence.slice(0, 4).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
+          </details>
+          {card.risks.length ? (
+            <section className="cue-risks">
+              <span className="cue-section-label cue-section-label--warn">注意</span>
+              {card.risks.map((item, index) => <p key={`${item}-${index}`} className="cue-risk-item">{item}</p>)}
+            </section>
+          ) : null}
+          {card.followUps.length ? (
+            <section className="cue-followups">
+              <span className="cue-section-label">追问预测</span>
+              <ul>{card.followUps.map((item, index) => <li key={`${item}-${index}`} className="cue-followup-item">{item}</li>)}</ul>
+            </section>
+          ) : null}
         </div>
 
         <footer className="cue-card-actions">
+          <span className="cue-meta">{modelLabel}{meta?.latencyMs ? ` · ${meta.latencyMs}ms` : ""}</span>
           <button className="button secondary compact-button" type="button" onClick={() => onSaveQuestion(card)}>
             记录到面试资料
           </button>

@@ -5,7 +5,7 @@ import { answerMockSessionOnServer, createMockSessionOnServer, streamCueCardFrom
 import { repairText } from "../lib/copy";
 import { evaluateMockTurn, generateCueCard, generateFollowUpFromTranscript } from "../lib/interviewEngine";
 import { analyzeSpeech } from "../lib/speechAnalysis";
-import { type DictationHandle, isSpeechRecognitionSupported, startDictation } from "../lib/speech";
+import { type DictationHandle, getSpeechRecognitionSupport, isSpeechRecognitionSupported, startDictation } from "../lib/speech";
 import type { AnswerCueCard, CandidateProfile, ConversationMessage, InterviewRecord, MockMessage, MockTurn, Position, WorkspaceState } from "../types";
 import {
   AiStatusBadge,
@@ -227,6 +227,7 @@ export function LiveAssistantView({
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const dictationRef = useRef<DictationHandle | null>(null);
   const sttSupported = isSpeechRecognitionSupported();
+  const speechSupport = getSpeechRecognitionSupport();
   const questionNumber = getQuestionNumber(transcript) + (recognizedDraft.editableText.trim() ? 1 : 0);
 
   useEffect(() => () => dictationRef.current?.stop(), []);
@@ -393,6 +394,13 @@ export function LiveAssistantView({
                 <h2>面试官问题</h2>
               </div>
             </div>
+
+            {speechSupport.supported && !speechSupport.fullySupported ? (
+              <div className="speech-compat-warning" role="alert">
+                <span aria-hidden="true">!</span>
+                <span>当前浏览器对语音识别的支持有限，建议使用 Chrome 或 Edge 获得更稳定体验。你仍可使用文字输入模式继续练习。</span>
+              </div>
+            ) : null}
 
             <button className={listening ? "button danger voice-main-button recording" : "button primary voice-main-button"} type="button" onClick={toggleDictation}>
               <Mic size={18} />

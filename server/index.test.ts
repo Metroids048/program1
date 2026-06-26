@@ -1,12 +1,14 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { LocalFallbackProvider } from "./ai/provider";
 import { buildServer } from "./index";
 import { resetRateLimits } from "./security";
 
 const tempDirs: string[] = [];
+const apps: FastifyInstance[] = [];
 
 function testDbPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "ai-job-server-"));
@@ -14,14 +16,40 @@ function testDbPath(): string {
   return join(dir, "test.sqlite");
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.allSettled(apps.splice(0).map((app) => app.close()));
   tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   resetRateLimits();
 });
 
+function testApp(dbPath = testDbPath()): FastifyInstance {
+  const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
+  apps.push(app);
+  return app;
+}
+
+async function registerAndLogin(app: FastifyInstance, phone: string, displayName?: string): Promise<{ token: string; userId: string }> {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: displayName ? { phone, password: "Password123", displayName } : { phone, password: "Password123" },
+  });
+  const body = response.json();
+  return {
+    token: body.tokens.accessToken as string,
+    userId: body.user.id as string,
+  };
+}
+
+async function closeTestApp(app: FastifyInstance): Promise<void> {
+  const index = apps.indexOf(app);
+  if (index >= 0) apps.splice(index, 1);
+  await app.close();
+}
+
 describe("local backend API", () => {
   it("analyzes a JD and returns persisted position context", async () => {
-    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const app = testApp();
     const response = await app.inject({
       method: "POST",
       url: "/api/positions/analyze",
@@ -32,11 +60,10 @@ describe("local backend API", () => {
     const body = response.json();
     expect(body.positions[0].questions.length).toBeGreaterThan(0);
     expect(body.activePositionId).toBeTruthy();
-    await app.close();
   });
 
   it("streams cue-card stages and a final card with local fallback when AI is not configured", async () => {
-    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const app = testApp();
     const response = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
@@ -48,11 +75,10 @@ describe("local backend API", () => {
     expect(response.body).toContain("event: delta");
     expect(response.body).toContain("event: card");
     expect(response.body).toContain("openingLine");
-    await app.close();
   });
 
   it("keeps search explicit when provider credentials are missing", async () => {
-    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const app = testApp();
     const response = await app.inject({
       method: "POST",
       url: "/api/search",
@@ -61,14 +87,15 @@ describe("local backend API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().results[0].provider).toBe("disabled");
-    await app.close();
   });
 
   it("drives mock answers through the backend session and returns local practice metadata", async () => {
-    const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const app = testApp();
+    const { token } = await registerAndLogin(app, "13800138100", "Mock 用户");
     const sessionResponse = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: { authorization: `Bearer ${token}` },
       payload: { config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const session = sessionResponse.json();
@@ -76,6 +103,7 @@ describe("local backend API", () => {
     const answerResponse = await app.inject({
       method: "POST",
       url: `/api/mock/session/${session.sessionId}/answer`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         answer: "我负责过一个校园增长项目，先做用户访谈，再用 SQL 分析转化漏斗，最后把首单转化率从 12% 提升到 19%。",
         transcript: [
@@ -91,16 +119,18 @@ describe("local backend API", () => {
     expect(body.decision.type).toMatch(/followup|next/);
     expect(body.conversationHistory.length).toBeGreaterThanOrEqual(3);
     expect(body.record.report.structuredDimensions.length).toBeGreaterThan(0);
-    await app.close();
+    expect(body.record.questionResults[0].answer).toContain("12%");
   });
 
   it("keeps mock records consistent across state, records, export and service restart in file fallback mode", async () => {
     const dbPath = testDbPath();
-    const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
+    const app = testApp(dbPath);
+    const { token } = await registerAndLogin(app, "13800138101", "持久化用户");
 
     const sessionResponse = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: { authorization: `Bearer ${token}` },
       payload: { config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const session = sessionResponse.json();
@@ -108,6 +138,7 @@ describe("local backend API", () => {
     const answerResponse = await app.inject({
       method: "POST",
       url: `/api/mock/session/${session.sessionId}/answer`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         answer: "我负责一个增长项目，通过漏斗分析和补贴实验，把首单转化率从 12% 提升到 19%。",
         transcript: [
@@ -120,9 +151,10 @@ describe("local backend API", () => {
     expect(answerResponse.statusCode).toBe(200);
     const recordId = answerResponse.json().record.id as string;
 
-    const stateResponse = await app.inject({ method: "GET", url: "/api/state" });
-    const recordsResponse = await app.inject({ method: "GET", url: "/api/records" });
-    const exportResponse = await app.inject({ method: "POST", url: "/api/export" });
+    const authHeaders = { authorization: `Bearer ${token}` };
+    const stateResponse = await app.inject({ method: "GET", url: "/api/state", headers: authHeaders });
+    const recordsResponse = await app.inject({ method: "GET", url: "/api/records", headers: authHeaders });
+    const exportResponse = await app.inject({ method: "POST", url: "/api/export", headers: authHeaders });
 
     expect(stateResponse.json().records).toHaveLength(1);
     expect(recordsResponse.json().records).toHaveLength(1);
@@ -131,18 +163,99 @@ describe("local backend API", () => {
     expect(recordsResponse.json().records[0].id).toBe(recordId);
     expect(exportResponse.json().interviewRecords[0].id).toBe(recordId);
 
-    await app.close();
+    await closeTestApp(app);
 
-    const restarted = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-    const restartedState = await restarted.inject({ method: "GET", url: "/api/state" });
-    const restartedExport = await restarted.inject({ method: "POST", url: "/api/export" });
+    const restarted = testApp(dbPath);
+    const restartedState = await restarted.inject({ method: "GET", url: "/api/state", headers: authHeaders });
+    const restartedExport = await restarted.inject({ method: "POST", url: "/api/export", headers: authHeaders });
 
     expect(restartedState.json().records).toHaveLength(1);
     expect(restartedExport.json().interviewRecords).toHaveLength(1);
     expect(restartedState.json().records[0].id).toBe(recordId);
     expect(restartedExport.json().interviewRecords[0].id).toBe(recordId);
 
-    await restarted.close();
+  });
+
+  it("returns a safe blank state for guests without exposing persisted user data", async () => {
+    const app = testApp();
+    const { token } = await registerAndLogin(app, "13800138104", "游客隔离用户");
+
+    await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { rawJdText: "公司：测试科技\n岗位：产品经理\n负责增长分析与面试准备。" },
+    });
+
+    const guestState = await app.inject({ method: "GET", url: "/api/state" });
+    expect(guestState.statusCode).toBe(200);
+    expect(guestState.json().journeyState).toBe("guest");
+    expect(Array.isArray(guestState.json().records)).toBe(true);
+    expect(guestState.json().records).toHaveLength(0);
+
+    const userState = await app.inject({
+      method: "GET",
+      url: "/api/state",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(userState.json().positions.length).toBeGreaterThan(0);
+  });
+
+  it("isolates records and mock sessions between different authenticated users", async () => {
+    const app = testApp();
+    const userA = await registerAndLogin(app, "13800138105", "用户A");
+    const userB = await registerAndLogin(app, "13800138106", "用户B");
+
+    const intakeA = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { rawJdText: "公司：A公司\n岗位：产品经理\n负责增长。" },
+    });
+    const positionIdA = intakeA.json().positions[0].id as string;
+
+    const mockA = await app.inject({
+      method: "POST",
+      url: "/api/mock/session",
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { positionId: positionIdA, config: { stage: "上级", difficulty: "正常", submitMode: "manual" } },
+    });
+    const sessionIdA = mockA.json().sessionId as string;
+
+    const answerA = await app.inject({
+      method: "POST",
+      url: `/api/mock/session/${sessionIdA}/answer`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: {
+        positionId: positionIdA,
+        answer: "我负责增长项目，通过漏斗分析把转化率从 12% 提升到 19%。",
+        transcript: [
+          { role: "interviewer", text: mockA.json().question as string },
+          { role: "candidate", text: "我负责增长项目，通过漏斗分析把转化率从 12% 提升到 19%。" },
+        ],
+      },
+    });
+    expect(answerA.statusCode).toBe(200);
+    const recordIdA = answerA.json().record.id as string;
+
+    const recordsA = await app.inject({ method: "GET", url: "/api/records", headers: { authorization: `Bearer ${userA.token}` } });
+    const recordsB = await app.inject({ method: "GET", url: "/api/records", headers: { authorization: `Bearer ${userB.token}` } });
+    expect(recordsA.json().records).toHaveLength(1);
+    expect(recordsB.json().records).toHaveLength(0);
+
+    const recordB = await app.inject({
+      method: "GET",
+      url: `/api/records/${recordIdA}`,
+      headers: { authorization: `Bearer ${userB.token}` },
+    });
+    expect(recordB.statusCode).toBe(404);
+
+    const sessionB = await app.inject({
+      method: "GET",
+      url: `/api/positions/${positionIdA}/mock-session`,
+      headers: { authorization: `Bearer ${userB.token}` },
+    });
+    expect(sessionB.statusCode).toBe(404);
   });
 
   it("indexes materials and questions into RAG, and resume AI returns evidence trace", async () => {
@@ -222,9 +335,11 @@ describe("local backend API", () => {
 
   it("returns structured import results and warnings when active pointers are invalid", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138102", "导入用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${token}` },
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const snapshot = intake.json();
@@ -241,6 +356,7 @@ describe("local backend API", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/import",
+      headers: { authorization: `Bearer ${token}` },
       payload: stateToImport,
     });
 
@@ -254,9 +370,11 @@ describe("local backend API", () => {
 
   it("rejects invalid import payloads with a 400 response", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138103", "错误导入用户");
     const response = await app.inject({
       method: "POST",
       url: "/api/import",
+      headers: { authorization: `Bearer ${token}` },
       payload: { foo: "bar" },
     });
 
@@ -301,9 +419,11 @@ describe("local backend API", () => {
 
   it("persists interview preferences on the current position", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138107", "偏好设置用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${token}` },
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const positionId = intake.json().positions[0].id as string;
@@ -311,6 +431,7 @@ describe("local backend API", () => {
     const response = await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/preferences`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         interviewerRole: "业务负责人",
         difficulty: "压力面",
@@ -335,9 +456,11 @@ describe("local backend API", () => {
 
   it("returns the latest active mock session, completes it, and stops restoring it afterward", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138108", "恢复会话用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${token}` },
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const positionId = intake.json().positions[0].id as string;
@@ -345,6 +468,7 @@ describe("local backend API", () => {
     const sessionResponse = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: { authorization: `Bearer ${token}` },
       payload: { positionId, config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const sessionId = sessionResponse.json().sessionId as string;
@@ -352,6 +476,7 @@ describe("local backend API", () => {
     const latest = await app.inject({
       method: "GET",
       url: `/api/positions/${positionId}/mock-session`,
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(latest.statusCode).toBe(200);
     expect(latest.json().session.id).toBe(sessionId);
@@ -360,6 +485,7 @@ describe("local backend API", () => {
     const complete = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionId}/complete`,
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(complete.statusCode).toBe(200);
     expect(complete.json().ok).toBe(true);
@@ -367,6 +493,7 @@ describe("local backend API", () => {
     const afterComplete = await app.inject({
       method: "GET",
       url: `/api/positions/${positionId}/mock-session`,
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(afterComplete.statusCode).toBe(404);
     expect(afterComplete.json().error).toBe("MOCK_SESSION_NOT_FOUND");
@@ -375,9 +502,11 @@ describe("local backend API", () => {
 
   it("deletes a position and cascades its records, materials, questions and mock sessions", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138109", "删除岗位用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: { authorization: `Bearer ${token}` },
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const snapshot = intake.json();
@@ -386,6 +515,7 @@ describe("local backend API", () => {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         materials: [
           {
@@ -408,6 +538,7 @@ describe("local backend API", () => {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         questions: [
           {
@@ -431,6 +562,7 @@ describe("local backend API", () => {
     const sessionResponse = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: { authorization: `Bearer ${token}` },
       payload: { positionId, config: { stage: "上级", difficulty: "正常", submitMode: "manual" } },
     });
     const sessionBody = sessionResponse.json();
@@ -438,6 +570,7 @@ describe("local backend API", () => {
     const answerResponse = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      headers: { authorization: `Bearer ${token}` },
       payload: {
         positionId,
         answer: "我负责一套面试助手项目，做了 RAG 检索和回归验证。",
@@ -452,6 +585,7 @@ describe("local backend API", () => {
     const deleteResponse = await app.inject({
       method: "DELETE",
       url: `/api/positions/${positionId}`,
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(deleteResponse.statusCode).toBe(200);
 
@@ -459,13 +593,13 @@ describe("local backend API", () => {
     expect(state.positions.some((position: { id: string }) => position.id === positionId)).toBe(false);
     expect(state.records.some((record: { positionId: string }) => record.positionId === positionId)).toBe(false);
 
-    const records = await app.inject({ method: "GET", url: "/api/records" });
+    const records = await app.inject({ method: "GET", url: "/api/records", headers: { authorization: `Bearer ${token}` } });
     expect(records.json().records.some((record: { positionId: string }) => record.positionId === positionId)).toBe(false);
 
-    const context = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context` });
+    const context = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context`, headers: { authorization: `Bearer ${token}` } });
     expect(context.statusCode).toBe(404);
 
-    const latestMockSession = await app.inject({ method: "GET", url: `/api/positions/${positionId}/mock-session` });
+    const latestMockSession = await app.inject({ method: "GET", url: `/api/positions/${positionId}/mock-session`, headers: { authorization: `Bearer ${token}` } });
     expect(latestMockSession.statusCode).toBe(404);
     await app.close();
   });
@@ -476,7 +610,7 @@ describe("local backend API", () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138001", password: "Password123", displayName: "测试用户", consentAccepted: true },
+        payload: { phone: "13800138001", password: "Password123", displayName: "测试用户" },
       });
 
       expect(response.statusCode).toBe(201);
@@ -487,15 +621,15 @@ describe("local backend API", () => {
       await app.close();
     });
 
-    it("rejects registration without consent", async () => {
+    it("registers without requiring consent", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138002", password: "Password123", consentAccepted: false },
+        payload: { phone: "13800138002", password: "Password123" },
       });
 
-      expect(response.statusCode).toBe(400);
+      expect(response.statusCode).toBe(201);
       await app.close();
     });
 
@@ -504,13 +638,13 @@ describe("local backend API", () => {
       await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138003", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138003", password: "Password123" },
       });
 
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138003", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138003", password: "Password123" },
       });
 
       expect(response.statusCode).toBe(409);
@@ -522,7 +656,7 @@ describe("local backend API", () => {
       await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138004", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138004", password: "Password123" },
       });
 
       const response = await app.inject({
@@ -543,7 +677,7 @@ describe("local backend API", () => {
       await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138005", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138005", password: "Password123" },
       });
 
       const response = await app.inject({
@@ -561,7 +695,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138006", password: "Password123", displayName: "会话测试", consentAccepted: true },
+        payload: { phone: "13800138006", password: "Password123", displayName: "会话测试" },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -595,7 +729,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138007", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138007", password: "Password123" },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -620,7 +754,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138008", password: "Password123", displayName: "合并测试", consentAccepted: true },
+        payload: { phone: "13800138008", password: "Password123", displayName: "合并测试" },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -661,7 +795,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138009", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138009", password: "Password123" },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -682,7 +816,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138020", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138020", password: "Password123" },
       });
       expect(reg.statusCode).toBe(201);
       const token = reg.json().tokens.accessToken as string;
@@ -729,7 +863,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138021", password: "OldPassword123", consentAccepted: true },
+        payload: { phone: "13800138021", password: "OldPassword123" },
       });
       const authToken = reg.json().tokens.accessToken as string;
 
@@ -792,7 +926,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138022", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138022", password: "Password123" },
       });
       const token = reg.json().tokens.accessToken as string;
 
@@ -820,7 +954,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138010", password: "Password123", displayName: "测试用户", consentAccepted: true },
+        payload: { phone: "13800138010", password: "Password123", displayName: "测试用户" },
       });
       const token = reg.json().tokens.accessToken;
 
@@ -852,7 +986,7 @@ describe("local backend API", () => {
       const reg = await app.inject({
         method: "POST",
         url: "/api/auth/register",
-        payload: { phone: "13800138012", password: "Password123", consentAccepted: true },
+        payload: { phone: "13800138012", password: "Password123" },
       });
       const token = reg.json().tokens.accessToken;
 

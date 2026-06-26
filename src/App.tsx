@@ -45,7 +45,6 @@ import { AuthPage } from "./components/auth/AuthPage";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./components/auth/RecoveryPages";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 import { AccountPage } from "./components/account/AccountPage";
-import { LegalPage } from "./components/legal/LegalPage";
 import { JdWorkspace } from "./components/jd";
 import { QuestionsWorkspace } from "./components/questions";
 import { ResumeWorkspacePage } from "./components/resume";
@@ -114,7 +113,7 @@ export function App() {
   useEffect(() => {
     if (authLoading || !snapshotHydrated) return;
     const currentRoute = parseRoute(routePath);
-    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "legalTerms", "legalPrivacy", "termsOfService", "privacyPolicy", "notFound", "serverError"]);
+    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "notFound", "serverError"]);
     if (isLoggedIn && appState.journeyState === "onboarding" && currentRoute.name !== "onboarding" && !publicRoutes.has(currentRoute.name)) {
       if (redirectedRef.current) return;
       redirectedRef.current = true;
@@ -190,7 +189,7 @@ export function App() {
     route.name === "recordDetail" ? "records" :
     route.name === "positionDetail" || route.name === "positionConversation" ? "home" :
     route.name === "mockSetup" || route.name === "mockRoom" || route.name === "mockPositionList" ? "mock" :
-    route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" || route.name === "termsOfService" || route.name === "privacyPolicy" || route.name === "notFound" || route.name === "serverError" ? "home" :
+    route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "notFound" || route.name === "serverError" ? "home" :
     route.name === "account" ? "account" :
     route.name;
   const routeRecordId = route.name === "recordDetail" ? route.recordId : "";
@@ -410,6 +409,29 @@ export function App() {
       : activePosition.mockTurns;
     const report = payload.report ?? buildInterviewReport(turns, activePosition.questions, activePosition.matchReport);
     const baseRecord = payload.serverRecordId ? interviewRecords.find((item) => item.id === payload.serverRecordId) : undefined;
+    const questionResults = payload.turn
+      ? (() => {
+          const question = activePosition.questions.find((item) => item.id === payload.turn?.questionId);
+          return [
+            {
+              questionId: payload.turn.questionId,
+              questionText: question?.question ?? payload.transcript.find((item) => item.role === "interviewer")?.text ?? payload.title,
+              answer: payload.turn.answer,
+              score: payload.turn.score,
+              feedback: payload.turn.feedback,
+              evidenceIds: question?.evidenceIds ?? [],
+              cueCardIds: payload.cueCards.map((card) => card.id),
+              followUp: payload.conversationHistory?.filter((item) => item.role === "interviewer").at(-1)?.text,
+            },
+          ];
+        })()
+      : payload.cueCards.map((card, index) => ({
+          questionId: card.id,
+          questionText: card.questionText,
+          answer: payload.transcript.filter((item) => item.role === "candidate")[index]?.text ?? "",
+          evidenceIds: card.evidenceIds,
+          cueCardIds: [card.id],
+        }));
     const record: InterviewRecord = {
       ...(baseRecord ?? {}),
       id: baseRecord?.id ?? makeId("record"),
@@ -423,6 +445,7 @@ export function App() {
       speechMetrics: payload.speechMetrics ?? (payload.turn?.speechMetrics ? [payload.turn.speechMetrics] : []),
       report,
       summary: payload.report?.summary ?? `${payload.mode === "live" ? "实时助手" : "模拟面试"}记录已保存，生成 ${payload.cueCards.length} 张提词卡。`,
+      questionResults: questionResults.length ? questionResults : baseRecord?.questionResults,
       conversationHistory: payload.conversationHistory ?? baseRecord?.conversationHistory,
       aiMeta: payload.aiMeta ?? baseRecord?.aiMeta,
     };
@@ -528,14 +551,6 @@ export function App() {
       }} />}
 
       {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
-
-      {route.name === "legalTerms" && <LegalPage type="terms" />}
-
-      {route.name === "legalPrivacy" && <LegalPage type="privacy" />}
-
-      {route.name === "termsOfService" && <LegalPage type="terms" />}
-
-      {route.name === "privacyPolicy" && <LegalPage type="privacy" />}
 
       {route.name === "notFound" && <NotFoundPage />}
 
@@ -660,7 +675,6 @@ export function App() {
           onUpdateResume={updateResume}
           onUpdateEvidence={updateEvidence}
           onSetHighlights={updateHighlights}
-          onOpenJd={() => openRoute("/jd")}
           isLoggedIn={isLoggedIn}
           onRequireLogin={() => requireLoginFor("/resume")}
         />

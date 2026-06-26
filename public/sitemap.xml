@@ -12,10 +12,4 @@
   <url>
     <loc>http://127.0.0.1:5173/forgot-password</loc>
   </url>
-  <url>
-    <loc>http://127.0.0.1:5173/privacy-policy</loc>
-  </url>
-  <url>
-    <loc>http://127.0.0.1:5173/terms-of-service</loc>
-  </url>
 </urlset>

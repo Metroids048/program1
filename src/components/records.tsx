@@ -22,6 +22,55 @@ function getRecordTitle(record: InterviewRecord, positions: Position[]) {
   return position ? `${repairText(position.company)} · ${repairText(position.title)}` : repairText(record.title);
 }
 
+function getRecordsEmptyCopy(hasAnyRecords: boolean, mode: RecordsFilterMode, positionId: string, positions: Position[]) {
+  if (!hasAnyRecords) {
+    return {
+      title: "还没有面试记录",
+      detail: "完成一次实时助手或模拟练习后，这里会自动保存复盘。",
+    };
+  }
+  const position = positions.find((item) => item.id === positionId);
+  if (position && mode !== "all") {
+    return {
+      title: "该岗位暂无该类型记录",
+      detail: `${repairText(position.company)} · ${repairText(position.title)} 还没有${mode === "live" ? "实时助手" : "模拟练习"}记录。`,
+    };
+  }
+  if (position) {
+    return {
+      title: "该岗位暂无记录",
+      detail: `${repairText(position.company)} · ${repairText(position.title)} 还没有保存过面试复盘。`,
+    };
+  }
+  return {
+    title: "暂无符合条件的记录",
+    detail: "当前筛选条件下没有记录，可以切换类型或选择全部岗位。",
+  };
+}
+
+function getPracticePriorities(record: InterviewRecord, position?: Position) {
+  const nextActions = (record.report.improvementPoints?.length ? record.report.improvementPoints : record.report.nextActions)
+    .map((item) => repairText(item).trim())
+    .filter(Boolean);
+  const matchedQuestions = (position?.questions ?? [])
+    .filter((question) => record.questionIds.includes(question.id))
+    .slice(0, 3);
+
+  if (matchedQuestions.length > 0) {
+    return matchedQuestions.map((question, index) => ({
+      rank: index + 1,
+      label: repairText(question.category || question.question),
+      description: repairText(question.question),
+    }));
+  }
+
+  return nextActions.slice(0, 3).map((item, index) => ({
+    rank: index + 1,
+    label: item,
+    description: "建议下次练习时优先用一段真实经历和可验证结果来回答。",
+  }));
+}
+
 export function RecordsView({
   records,
   positions,
@@ -60,6 +109,8 @@ export function RecordsView({
   const activePosition = positions.find((item) => item.id === activeRecord?.positionId);
   const liveRecords = filtered.filter((record) => record.mode === "live");
   const mockRecords = filtered.filter((record) => record.mode === "mock");
+  const hasAnyRecords = records.length > 0;
+  const emptyCopy = getRecordsEmptyCopy(hasAnyRecords, mode, positionId, positions);
 
   const renderRecord = (record: InterviewRecord) => (
     <button
@@ -96,14 +147,22 @@ export function RecordsView({
           </select>
         </div>
 
-        <section>
-          <h2>实时助手记录</h2>
-          {liveRecords.length ? liveRecords.map(renderRecord) : <p className="records-rail-empty">暂无记录</p>}
-        </section>
-        <section>
-          <h2>模拟练习记录</h2>
-          {mockRecords.length ? mockRecords.map(renderRecord) : <p className="records-rail-empty">暂无记录</p>}
-        </section>
+        {filtered.length ? (
+          <>
+            {mode !== "mock" && liveRecords.length ? (
+              <section>
+                <h2>实时助手记录</h2>
+                {liveRecords.map(renderRecord)}
+              </section>
+            ) : null}
+            {mode !== "live" && mockRecords.length ? (
+              <section>
+                <h2>模拟练习记录</h2>
+                {mockRecords.map(renderRecord)}
+              </section>
+            ) : null}
+          </>
+        ) : null}
       </aside>
 
       <section className="records-report-pane">
@@ -111,7 +170,7 @@ export function RecordsView({
           <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveQuestionNote={onSaveQuestionNote} />
         ) : (
           <div className="records-empty-shell">
-            <EmptyState title="还没有面试记录" detail="完成一次实时助手或模拟练习后自动保存。" />
+            <EmptyState title={emptyCopy.title} detail={emptyCopy.detail} />
             <button className="button primary" type="button" onClick={onMock}>
               去模拟练习
             </button>
@@ -181,6 +240,7 @@ function RecordReportContent({
   const improvementPoints = record.report.improvementPoints?.length ? record.report.improvementPoints : record.report.nextActions;
   const evidenceCount = new Set(record.cueCards.flatMap((card) => card.evidenceIds)).size;
   const hitRate = record.cueCards.length ? `${Math.round((evidenceCount / Math.max(1, record.cueCards.length)) * 100)}%` : "--";
+  const practicePriorities = getPracticePriorities(record, position);
 
   return (
     <>
@@ -314,6 +374,38 @@ function RecordReportContent({
           ) : (
             <span className="transcript-label">Transcript</span>
           )}
+        </section>
+
+        <section className="surface-card next-step-card">
+          <div className="surface-card-inner">
+            <div className="section-row-header">
+              <div>
+                <span className="subtle-label">练习闭环</span>
+                <h2>下次练习建议</h2>
+              </div>
+            </div>
+            {practicePriorities.length ? (
+              <>
+                <p className="next-step-desc">根据本次记录，建议优先把下面这些题目或薄弱点再练一轮，先把结论、动作和结果说完整。</p>
+                <div className="weak-type-list">
+                  {practicePriorities.map((item) => (
+                    <article key={`${item.rank}-${item.label}`} className="weak-type-item">
+                      <div className="weak-type-info">
+                        <span className="weak-rank">#{item.rank}</span>
+                        <div>
+                          <span className="weak-name">{item.label}</span>
+                          <span className="weak-score">{item.description}</span>
+                        </div>
+                      </div>
+                      <button className="button secondary compact-button btn-practice" type="button" onClick={onMock}>去练习</button>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="next-step-empty">本次表现不错，继续保持当前节奏，下一轮可以尝试提升证据和数据表达的具体度。</p>
+            )}
+          </div>
         </section>
       </div>
     </>
