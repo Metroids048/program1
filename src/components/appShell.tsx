@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  ChevronDown,
   BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +16,14 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { loadUiPrefs, saveUiPrefs } from "../lib/store";
+import { navigateTo } from "../lib/router";
+
+const FOOTER_LINKS: Array<{ path: string; label: string }> = [
+  { path: "/about", label: "关于我们" },
+  { path: "/help", label: "帮助中心" },
+  { path: "/terms-of-service", label: "用户协议" },
+  { path: "/privacy-policy", label: "隐私政策" },
+];
 
 export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account";
 
@@ -71,6 +80,9 @@ export function AppShell({
   const isMobile = useMobileNav();
   const [desktopPrefs, setDesktopPrefs] = useState(() => loadUiPrefs());
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [libraryManualOpen, setLibraryManualOpen] = useState(() => LIBRARY_NAV.some((item) => item.id === activeNav));
+  const libraryRouteActive = LIBRARY_NAV.some((item) => item.id === activeNav);
+  const libraryOpen = libraryRouteActive || libraryManualOpen;
   const expanded = isMobile ? true : desktopPrefs.desktopSidebarExpanded;
 
   useEffect(() => {
@@ -138,12 +150,23 @@ export function AppShell({
             );
           })}
 
-          <details className="shell-nav-library" open={LIBRARY_NAV.some((item) => item.id === activeNav)}>
-            <summary className="shell-nav-library-summary">
+          <details
+            className={`shell-nav-library${libraryOpen ? " open" : ""}`}
+            open={libraryOpen}
+            onToggle={(event) => setLibraryManualOpen((event.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary className="shell-nav-library-summary" aria-expanded={libraryOpen}>
               <span className="shell-nav-icon">
                 <BookOpen size={18} />
               </span>
-              {expanded || isMobile ? <span className="shell-nav-label">资料库</span> : null}
+              {expanded || isMobile ? (
+                <>
+                  <span className="shell-nav-label">资料库</span>
+                  <span className="shell-nav-library-caret" aria-hidden="true">
+                    <ChevronDown size={14} />
+                  </span>
+                </>
+              ) : null}
             </summary>
             <div className="shell-nav-library-list">
               {LIBRARY_NAV.map((item) => {
@@ -265,6 +288,24 @@ export function AppShell({
 
       <main className="main main-v3" id="main-content">
         {children}
+        <footer className="shell-footer" aria-label="页脚信息">
+          <nav className="shell-footer-links" aria-label="法务与帮助">
+            {FOOTER_LINKS.map((link) => (
+              <button
+                key={link.path}
+                type="button"
+                className="shell-footer-link"
+                onClick={() => {
+                  navigateTo(link.path);
+                  closeMobileDrawer();
+                }}
+              >
+                {link.label}
+              </button>
+            ))}
+          </nav>
+          <span className="shell-footer-copy">© 2025 AI 求职台 · 仅供面试练习参考</span>
+        </footer>
       </main>
       <button type="button" className="feedback-fab" onClick={onFeedback} aria-label="打开反馈入口">
         <MessageSquarePlus size={18} />

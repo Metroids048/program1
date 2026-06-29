@@ -1,5 +1,54 @@
 # Task History
 
+## [TASK-2026-06-29-launch-closeout-loop-and-eval]
+
+- Date: 2026-06-29
+- Type: feature/fix/test
+- Summary: 上线收口版（C 端闭环）。在“尽量不加新功能”前提下查缺补漏：A1 法务/关于/帮助页路由与入口（注册同意、页脚、账户页链接）可达；A2 新增全局 Toast，apiFetch 网络失败统一提示；A3 修复游客数据隔离（按会话级 x-guest-id 隔离 ownerKey 与数据分区，含 RAG）；A4 DeepSeek 调用加 45s 超时 + 一次指数退避重试；A5 提词卡加 👍/👎 复用 /api/feedback 采集认可度。并用真实 DeepSeek key + 测试用材料做了首次用户全流程与 AI/语音评估打分。
+- Files:
+  - server/ai/provider.ts, server/ai/provider.test.ts
+  - server/security.ts, server/index.ts, server/index.test.ts
+  - src/lib/authClient.ts, src/lib/router.ts, src/lib/toast.ts
+  - src/components/legal/LegalPage.tsx, src/components/auth/AuthPage.tsx, src/components/account/AccountPage.tsx
+  - src/components/appShell.tsx, src/components/interactiveCueCard.tsx
+  - src/components/system/ToastHost.tsx, src/components/system/ToastHost.test.tsx
+  - src/App.tsx, src/App.test.tsx, src/styles.css
+  - docs/reports/上线收口-首次用户全流程测试报告.md
+  - docs/reports/AI与语音评估打分报告.md
+  - ~/.claude/CLAUDE.md, ~/.claude/AGENTS.md（全局规则：不确定必问 + 中文输出）
+- Verified:
+  - npm run verify 全过（lint/typecheck/test/build；新增 provider 超时重试、游客隔离、法务路由、Toast 测试）
+  - test:ai-success-smoke：cue-card/mock/resume 在线全 success
+  - full-ai-eval：11/13 pass，平均 74/100，JSON 解析 100%，fallback 0%
+  - full-verify-ai-voice-rag：29/32（3 项为未登录游客限制，非回归）
+- Notes:
+  - Codex 无渲染层验收；本轮接口/脚本级验收，未自动弹浏览器
+  - 已知项：cue-card 延迟 14–16s（reasoning 模型）、证据接地 invalid、相关性评估口径偏粗，均记录待后续
+  - 部分前端文件（App.tsx/appShell.tsx/styles.css/App.test.tsx）在本会话前已有未提交改动，本轮提交一并包含
+
+## [TASK-2026-06-26-plain-language-confirmation-rule]
+
+## [TASK-2026-06-27-home-resume-ui-and-auth-fix]
+
+- Date: 2026-06-27
+- Type: feature/fix
+- Summary: 按已确认方案完成首页、侧栏、简历页与登录入口收口：首页改为中轴大输入框加下沉岗位区，资料库补显式下拉箭头与开合状态，简历页收口为 6 个正式模块加“补充内容”并改成中间文档流 + 右侧正常 AI 对话，同时修复游客侧栏“登录 / 注册”点击无反应问题，并补齐对应回归测试。
+- Files:
+  - `src/App.tsx`
+  - `src/App.test.tsx`
+  - `src/components/appShell.tsx`
+  - `src/components/positions.tsx`
+  - `src/components/positions.test.tsx`
+  - `src/components/resume.tsx`
+  - `src/components/resume.test.tsx`
+  - `src/components/shared.tsx`
+  - `src/styles.css`
+- Verified:
+  - `npm run verify`
+- Notes:
+  - Codex 无渲染层验收；本轮以 lint/typecheck/Vitest/build 作为交付证据
+  - `lint` 仍保留既有 `react-refresh/only-export-components` warnings
+
 ## [TASK-2026-06-26-plain-language-confirmation-rule]
 
 - Date: 2026-06-26

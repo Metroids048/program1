@@ -1,4 +1,4 @@
-import { ArrowLeft, Shield } from "lucide-react";
+import { ArrowLeft, HelpCircle, Info, Shield } from "lucide-react";
 import { navigateTo } from "../../lib/router";
 import { Seo } from "../system/Seo";
 
@@ -85,14 +85,66 @@ const PRIVACY_CONTENT = `隐私政策
 9. 联系方式
 如有隐私相关问题，请通过产品内的反馈功能联系我们。`;
 
-export function LegalPage({ type }: { type: "terms" | "privacy" }) {
-  const title = type === "terms" ? "用户协议" : "隐私政策";
-  const content = type === "terms" ? TERMS_CONTENT : PRIVACY_CONTENT;
-  const path = type === "terms" ? "/terms-of-service" : "/privacy-policy";
+const ABOUT_CONTENT = `关于 AI 求职台
+
+AI 求职台是一款面向应届、实习和校招用户的本地优先 AI 面试准备工具。
+
+1. 我们解决什么
+1.1 把真实 JD、简历证据和面试记录串成一条闭环：导入岗位与简历 → 模拟面试预演 → 实时助手生成提词卡 → 保存记录 → 复盘改进。
+1.2 输出可讲的回答框架、要点与可能追问，而不是替你逐字代答。
+
+2. 我们的边界
+2.1 不做隐蔽代答，不捕获系统音频，不抓会议软件系统声。
+2.2 AI 生成内容仅供练习参考，模型不可用时会明确标记“本地练习模式”，不把本地规则伪装成模型成功。
+
+3. 技术与数据
+3.1 语音能力使用浏览器麦克风与 Web Speech API；不支持或未授权时自动降级为文字输入。
+3.2 你的数据可随时导出或删除，详见隐私政策。
+
+4. 联系方式
+如需合作或反馈，请通过产品内的反馈功能联系我们。`;
+
+const HELP_CONTENT = `帮助中心
+
+最后更新：2025年7月
+
+1. 新用户怎么开始
+1.1 粘贴一份真实 JD，或填写目标岗位，系统会完成岗位 intake 审核。
+1.2 导入或粘贴简历，补充项目资料与常见问题，作为 AI 的上下文底座。
+1.3 先用模拟面试预演，再在真实面试中开启实时助手。
+
+2. 实时助手怎么用
+2.1 输入或用语音说出面试官的问题，助手会生成回答策略、开场句、要点、可引用证据与可能追问。
+2.2 停止听取不会清空已识别文本，只有你点击清空/重录才会清空。
+
+3. 模拟面试怎么用
+3.1 选择岗位与风格（温和/严格/压力），系统按 JD、问题意图和简历证据排序出题。
+3.2 回答后会生成追问、下一题或评价；结束后自动保存记录与报告。
+
+4. 常见问题
+4.1 看到“本地练习模式”是什么意思？表示后端未连接或模型暂时不可用，已切回本地规则，内容仅供练习。
+4.2 语音用不了怎么办？请检查浏览器麦克风权限，或直接改用文字输入，不影响生成提词卡。
+4.3 数据安全吗？数据可随时导出或删除，详见隐私政策。
+
+5. 还有问题
+请通过产品内的反馈功能联系我们。`;
+
+type DocType = "terms" | "privacy" | "about" | "help";
+
+const DOC_META: Record<DocType, { title: string; content: string; path: string; date?: string }> = {
+  terms: { title: "用户协议", content: TERMS_CONTENT, path: "/terms-of-service", date: "2025年7月" },
+  privacy: { title: "隐私政策", content: PRIVACY_CONTENT, path: "/privacy-policy", date: "2025年7月" },
+  about: { title: "关于我们", content: ABOUT_CONTENT, path: "/about" },
+  help: { title: "帮助中心", content: HELP_CONTENT, path: "/help", date: "2025年7月" },
+};
+
+export function LegalPage({ type }: { type: DocType }) {
+  const meta = DOC_META[type];
+  const Icon = type === "about" ? Info : type === "help" ? HelpCircle : Shield;
 
   return (
     <section className="page legal-page">
-      <Seo title={`${title} | AI 求职台`} description={`查看 AI 求职台的${title}与账号、隐私处理说明。`} />
+      <Seo title={`${meta.title} | AI 求职台`} description={`查看 AI 求职台的${meta.title}。`} />
       <div className="legal-card">
         <div className="legal-header">
           <button type="button" className="legal-back" onClick={() => navigateTo(window.history.length > 1 ? window.location.pathname : "/account")}>
@@ -100,14 +152,14 @@ export function LegalPage({ type }: { type: "terms" | "privacy" }) {
             返回
           </button>
           <div className="legal-title-row">
-            <Shield size={20} />
-            <h1>{title}</h1>
+            <Icon size={20} />
+            <h1>{meta.title}</h1>
           </div>
-          <p className="legal-date">最后更新：2025年7月</p>
-          <p className="legal-link-hint">固定访问路径：{path}</p>
+          {meta.date ? <p className="legal-date">最后更新：{meta.date}</p> : null}
+          <p className="legal-link-hint">固定访问路径：{meta.path}</p>
         </div>
         <div className="legal-body">
-          {content.split("\n").map((line, index) => {
+          {meta.content.split("\n").map((line, index) => {
             if (!line.trim()) return <br key={index} />;
             if (/^\d+\./.test(line.trim())) return <h3 key={index}>{line}</h3>;
             if (/^\d+\.\d+/.test(line.trim())) return <h4 key={index}>{line}</h4>;

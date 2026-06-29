@@ -164,6 +164,7 @@ describe("App", () => {
       expect(nav.getByRole("button", { name })).toBeInTheDocument();
     });
     expect(nav.getByText("资料库")).toBeInTheDocument();
+    expect(nav.getByText("资料库").closest("summary")).toHaveAttribute("aria-expanded");
     (nav.getByText("资料库").closest("details") as HTMLDetailsElement).open = true;
     ["JD分析", "问题记录", "我的简历", "面试记录"].forEach((name) => {
       expect(nav.getByRole("button", { name })).toBeInTheDocument();
@@ -193,13 +194,34 @@ describe("App", () => {
     const main = within(screen.getByRole("main"));
 
     expect(main.getByRole("heading", { level: 1, name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
-    expect(main.getByRole("heading", { level: 2, name: "从一段 JD 开始" })).toBeInTheDocument();
+    expect(main.getByRole("heading", { level: 2, name: "先放一整段 JD 或面试背景" })).toBeInTheDocument();
     expect(main.getByLabelText("首页主输入")).toBeInTheDocument();
 
     await user.type(main.getByLabelText("首页主输入"), "岗位：高级产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟");
-    await user.click(main.getByRole("button", { name: "保存并继续完善" }));
+    await user.click(main.getByRole("button", { name: "保存当前岗位" }));
     await waitFor(() => expect(window.location.pathname).toMatch(/\/positions\/.+\/conversation$/));
     expect(screen.getByRole("heading", { name: "腾讯 · 高级产品经理" })).toBeInTheDocument();
+  });
+
+  it("opens the login page from the guest sidebar entry", async () => {
+    authState = {
+      session: null,
+      loading: false,
+      isLoggedIn: false,
+    };
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateResponse());
+      return mockJsonResponse(mockStateResponse());
+    });
+
+    const user = userEvent.setup();
+    renderApp("/");
+
+    await screen.findByRole("button", { name: "登录后自动保存与同步" });
+    await user.click(screen.getByRole("button", { name: "登录后自动保存与同步" }));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
   });
 
   it("redirects guests to login when they trigger gated homepage actions", async () => {
@@ -279,6 +301,31 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "页面暂时出了点问题" })).toBeInTheDocument();
   });
 
+  it("makes legal, about and help pages reachable by URL with a register consent link", async () => {
+    vi.spyOn(window, "fetch").mockImplementation(() => mockJsonResponse(mockStateWithPosition()));
+
+    resetDom();
+    renderApp("/terms-of-service");
+    expect(await screen.findByRole("heading", { name: "用户协议" })).toBeInTheDocument();
+
+    resetDom();
+    renderApp("/privacy-policy");
+    expect(await screen.findByRole("heading", { name: "隐私政策" })).toBeInTheDocument();
+
+    resetDom();
+    renderApp("/about");
+    expect(await screen.findByRole("heading", { name: "关于我们" })).toBeInTheDocument();
+
+    resetDom();
+    renderApp("/help");
+    expect(await screen.findByRole("heading", { name: "帮助中心" })).toBeInTheDocument();
+
+    resetDom();
+    renderApp("/auth/register");
+    expect(await screen.findByRole("button", { name: "《用户协议》" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "《隐私政策》" })).toBeInTheDocument();
+  });
+
   it("uses the current product routes for position detail, conversation, jd, questions, resume and records pages", async () => {
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -308,7 +355,7 @@ describe("App", () => {
 
     resetDom();
     renderApp("/resume");
-    expect(await screen.findByRole("heading", { name: "我的简历" })).toBeInTheDocument();
+    expect((await screen.findAllByRole("heading", { name: "我的简历" })).length).toBeGreaterThan(0);
 
     resetDom();
     renderApp("/records");

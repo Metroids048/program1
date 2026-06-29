@@ -1,7 +1,10 @@
 import { useState, useCallback } from "react";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
 import type { AnswerCueCard } from "../types";
 import type { AiRunMeta } from "../lib/apiClient";
 import { Panel, EvidenceTrace } from "./shared";
+import { apiFetch } from "../lib/authClient";
+import { notify } from "../lib/toast";
 
 type FeedbackType = "contradict" | "impatient" | "deep-dive";
 
@@ -25,6 +28,31 @@ export function InteractiveCueCard({
   const [checkedBullets, setCheckedBullets] = useState<Set<number>>(new Set());
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackType | null>(null);
   const [isReconstructing, setIsReconstructing] = useState(false);
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+
+  // A5：采集用户对提词卡的认可度，作为 AI 输出质量评估的上游信号（复用 /api/feedback）。
+  const rateCard = useCallback(
+    (value: "up" | "down", current: AnswerCueCard) => {
+      if (rating) return;
+      setRating(value);
+      const detail = {
+        rating: value,
+        skill: meta?.skillId ?? "cueCard",
+        promptId: meta?.promptId ?? "",
+        backendStatus: meta?.backendStatus ?? "fallback",
+        question: current.questionText,
+      };
+      void apiFetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: "cue-card-rating", content: JSON.stringify(detail) }),
+      }).catch(() => {
+        /* 网络失败已由 apiFetch 统一提示，这里不阻断交互 */
+      });
+      notify(value === "up" ? "感谢反馈，已记录这张卡片有帮助" : "感谢反馈，我们会持续改进", "success");
+    },
+    [meta, rating],
+  );
 
   const toggleBullet = useCallback((index: number) => {
     setCheckedBullets((prev) => {
@@ -90,6 +118,32 @@ export function InteractiveCueCard({
                 {isReconstructing && selectedFeedback === opt.key ? "重构中..." : opt.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="cue-rating-bar">
+          <span>这张卡片有帮助吗？</span>
+          <div className="cue-rating-actions">
+            <button
+              type="button"
+              className={`cue-rating-button${rating === "up" ? " active" : ""}`}
+              aria-label="有帮助"
+              aria-pressed={rating === "up"}
+              disabled={rating !== null}
+              onClick={() => rateCard("up", card)}
+            >
+              <ThumbsUp size={14} />
+            </button>
+            <button
+              type="button"
+              className={`cue-rating-button${rating === "down" ? " active" : ""}`}
+              aria-label="没帮助"
+              aria-pressed={rating === "down"}
+              disabled={rating !== null}
+              onClick={() => rateCard("down", card)}
+            >
+              <ThumbsDown size={14} />
+            </button>
           </div>
         </div>
 

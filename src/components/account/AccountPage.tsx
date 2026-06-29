@@ -372,6 +372,15 @@ function AccountWorkspace({
             </button>
           </div>
           <p className="account-card-hint">当前产品只使用必要 Cookie / 本地存储来保持登录状态和草稿缓存。</p>
+          <p className="account-card-hint account-policy-links">
+            <button type="button" className="account-link" onClick={() => navigateTo("/terms-of-service")}>用户协议</button>
+            <span aria-hidden="true"> · </span>
+            <button type="button" className="account-link" onClick={() => navigateTo("/privacy-policy")}>隐私政策</button>
+            <span aria-hidden="true"> · </span>
+            <button type="button" className="account-link" onClick={() => navigateTo("/help")}>帮助中心</button>
+            <span aria-hidden="true"> · </span>
+            <button type="button" className="account-link" onClick={() => navigateTo("/about")}>关于我们</button>
+          </p>
         </div>
 
         <div className="account-card">

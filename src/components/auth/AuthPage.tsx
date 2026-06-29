@@ -189,6 +189,19 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
             {!loading ? <ArrowRight size={16} /> : null}
           </button>
 
+          {mode === "register" ? (
+            <p className="auth-consent-text">
+              注册即表示你已阅读并同意
+              <button type="button" className="auth-link" onClick={() => navigateTo("/terms-of-service")}>
+                《用户协议》
+              </button>
+              和
+              <button type="button" className="auth-link" onClick={() => navigateTo("/privacy-policy")}>
+                《隐私政策》
+              </button>
+            </p>
+          ) : null}
+
           <p className="auth-footer-text">
             登录后继续原来的浏览进度
             <button type="button" className="auth-link" onClick={() => navigateTo(resolvedReturnTo, { replace: true })}>

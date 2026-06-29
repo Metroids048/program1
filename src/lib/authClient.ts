@@ -1,4 +1,5 @@
 import { navigateTo } from "./router";
+import { notify } from "./toast";
 
 const TOKENS_KEY = "ai-job:tokens:v1";
 const GUEST_ID_KEY = "ai-job:guest-id:v1";
@@ -54,7 +55,13 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     const guestId = getGuestSessionId();
     if (guestId) headers.set("x-guest-id", guestId);
   }
-  return fetch(input, { ...init, headers });
+  try {
+    return await fetch(input, { ...init, headers });
+  } catch (error) {
+    // 网络层失败（断网、超时、CORS）统一提示，避免各处静默失败。
+    notify("网络连接失败，请检查网络后重试", "error");
+    throw error;
+  }
 }
 
 export function buildAuthReturnPath(path: string): string {

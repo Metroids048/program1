@@ -49,6 +49,8 @@ import { JdWorkspace } from "./components/jd";
 import { QuestionsWorkspace } from "./components/questions";
 import { ResumeWorkspacePage } from "./components/resume";
 import { NotFoundPage, ServerErrorPage } from "./components/system/StatusPages";
+import { LegalPage } from "./components/legal/LegalPage";
+import { ToastHost } from "./components/system/ToastHost";
 import { Seo } from "./components/system/Seo";
 import { AuthGateModal } from "./components/auth/AuthGate";
 
@@ -113,7 +115,7 @@ export function App() {
   useEffect(() => {
     if (authLoading || !snapshotHydrated) return;
     const currentRoute = parseRoute(routePath);
-    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "notFound", "serverError"]);
+    const publicRoutes = new Set(["home", "authLogin", "authRegister", "forgotPassword", "resetPassword", "verifyEmail", "legalTerms", "legalPrivacy", "about", "help", "notFound", "serverError"]);
     if (isLoggedIn && appState.journeyState === "onboarding" && currentRoute.name !== "onboarding" && !publicRoutes.has(currentRoute.name)) {
       if (redirectedRef.current) return;
       redirectedRef.current = true;
@@ -128,7 +130,7 @@ export function App() {
   useEffect(() => {
     if (!authLoading && snapshotHydrated && isLoggedIn && appState.journeyState === "guest" && appState.positions.length === 0 && appState.interviewRecords.length === 0 && !appState.profile.resumeText.trim()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAppState((current) => repairAppState({ ...current, journeyState: "ready" }));
+      setAppState((current) => repairAppState({ ...current, journeyState: "onboarding" }));
     }
   }, [isLoggedIn, authLoading, appState.journeyState, appState.positions.length, appState.interviewRecords.length, appState.profile.resumeText, snapshotHydrated]);
 
@@ -189,7 +191,7 @@ export function App() {
     route.name === "recordDetail" ? "records" :
     route.name === "positionDetail" || route.name === "positionConversation" ? "home" :
     route.name === "mockSetup" || route.name === "mockRoom" || route.name === "mockPositionList" ? "mock" :
-    route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "notFound" || route.name === "serverError" ? "home" :
+    route.name === "authLogin" || route.name === "authRegister" || route.name === "forgotPassword" || route.name === "resetPassword" || route.name === "verifyEmail" || route.name === "onboarding" || route.name === "legalTerms" || route.name === "legalPrivacy" || route.name === "about" || route.name === "help" || route.name === "notFound" || route.name === "serverError" ? "home" :
     route.name === "account" ? "account" :
     route.name;
   const routeRecordId = route.name === "recordDetail" ? route.recordId : "";
@@ -520,12 +522,15 @@ export function App() {
         if (nav === "questions") openRoute("/questions");
         if (nav === "resume") openRoute("/resume");
         if (nav === "records") openRoute("/records");
+        if (nav === "authLogin") openRoute("/auth/login");
+        if (nav === "authRegister") openRoute("/auth/register");
         if (nav === "account") openRoute("/account");
       }}
       onAccount={() => setAccountOpen(true)}
       onFeedback={() => setFeedbackOpen(true)}
     >
       <Seo title="AI 求职台" description="围绕真实 JD、简历和面试记录，完成从准备到复盘的 AI 面试闭环。" />
+      <ToastHost />
 
       {(route.name === "authLogin" || route.name === "authRegister") && (
         <AuthPage mode={route.name === "authLogin" ? "login" : "register"} returnTo={route.returnTo} />
@@ -552,6 +557,14 @@ export function App() {
 
       {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
 
+      {route.name === "legalTerms" && <LegalPage type="terms" />}
+
+      {route.name === "legalPrivacy" && <LegalPage type="privacy" />}
+
+      {route.name === "about" && <LegalPage type="about" />}
+
+      {route.name === "help" && <LegalPage type="help" />}
+
       {route.name === "notFound" && <NotFoundPage />}
 
       {route.name === "serverError" && <ServerErrorPage />}
@@ -561,7 +574,6 @@ export function App() {
           positions={positions}
           activePositionId={activePositionId}
           onSubmitJd={createOrUpdatePosition}
-          onOpenPosition={openPositionDetail}
           onOpenCreatedPosition={openPositionConversation}
           onOpenMockList={openMockPositionList}
           onOpenLive={() => openRoute("/live")}
@@ -665,6 +677,7 @@ export function App() {
           onAddQuestion={addQuestion}
           isLoggedIn={isLoggedIn}
           onRequireLogin={() => requireLoginFor("/questions")}
+          onGoHome={() => openRoute("/")}
         />
       )}
 
