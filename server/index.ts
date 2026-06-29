@@ -17,11 +17,12 @@ import type { SessionInfo } from "./domains/auth/types";
 import { makeId, nowIso } from "./utils";
 import { createInitialAppState, createPosition } from "../src/lib/interviewEngine";
 import { createMailService } from "./mail/service";
-import { applyRateLimit, requireAuth, setCorsHeaders } from "./security";
+import { applyRateLimit, ownerOf, requireAuth, resolveGuestId, setCorsHeaders } from "./security";
 
 declare module "fastify" {
   interface FastifyRequest {
     session?: SessionInfo;
+    guestOwnerId?: string;
   }
 }
 
@@ -222,7 +223,11 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
         // Invalid/expired token — continue as guest
       }
     }
-    orchestrator.setUserId(request.session?.userId);
+    // 未登录访客按会话 id 隔离数据；缺少 id 时退化为旧的共享行为。
+    if (!request.session) {
+      request.guestOwnerId = resolveGuestId(request);
+    }
+    orchestrator.setUserId(ownerOf(request));
   });
 
   // Register auth routes
@@ -271,7 +276,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
 
   // Quota info endpoint
   app.get("/api/quota", async (request) => {
-    const userId = request.session?.userId;
+    const userId = ownerOf(request);
     const state = db.getState(userId);
     return quota.getQuotaInfo(userId, state.positions.length);
   });
@@ -391,7 +396,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   }));
 
   app.get("/api/state", async (request) => {
-    const state = request.session?.userId ? db.getState(request.session.userId) : createGuestState();
+    const ownerId = ownerOf(request);
+    const state = ownerId ? db.getState(ownerId) : createGuestState();
     return toApiSnapshot(state);
   });
 
@@ -434,7 +440,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.get<{ Params: { id: string } }>("/api/positions/:id/context", async (request, reply) => {
-    const state = db.getState(request.session?.userId);
+    const state = db.getState(ownerOf(request));
     const position = state.positions.find((item) => item.id === request.params.id);
     if (!position) return reply.code(404).send({ error: "POSITION_NOT_FOUND" });
     return {
@@ -637,7 +643,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     requireAuth(request);
     const record = request.body as InterviewRecord;
     orchestrator.saveInterviewRecord(record);
-    return { record, records: db.listRecords(request.session?.userId) };
+    return { record, records: db.listRecords(ownerOf(request)) };
   });
 
   app.post("/api/resume/ai", async (request) => {
@@ -670,7 +676,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.get("/api/records", async (request) => {
-    return { records: db.listRecords(request.session?.userId) };
+    return { records: db.listRecords(ownerOf(request)) };
   });
 
   app.get<{ Params: { id: string } }>("/api/records/:id", async (request, reply) => {
@@ -687,7 +693,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/export", async (request) => {
-    const state = request.session?.userId ? db.getState(request.session.userId) : createGuestState();
+    const ownerId = ownerOf(request);
+    const state = ownerId ? db.getState(ownerId) : createGuestState();
     return toClientAppState(state, {
       activePositionId: state.positions[0]?.id,
     });

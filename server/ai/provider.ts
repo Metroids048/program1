@@ -16,6 +16,8 @@ export interface AiProvider {
 
 const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS) > 0 ? Number(process.env.DEEPSEEK_TIMEOUT_MS) : 45000;
+const DEFAULT_MAX_RETRIES = Number.isFinite(Number(process.env.DEEPSEEK_MAX_RETRIES)) ? Math.max(0, Number(process.env.DEEPSEEK_MAX_RETRIES)) : 1;
 
 export function createProvider(apiKey = process.env.DEEPSEEK_API_KEY ?? "", model = process.env.DEEPSEEK_MODEL ?? DEFAULT_DEEPSEEK_MODEL): AiProvider {
   return apiKey ? new DeepSeekProvider(apiKey, model) : new LocalFallbackProvider();
@@ -63,28 +65,55 @@ export class DeepSeekProvider implements AiProvider {
   }
 
   private async call(messages: AiMessage[], options?: { temperature?: number; signal?: AbortSignal }): Promise<string> {
-    try {
-      const response = await fetch(DEEPSEEK_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          temperature: options?.temperature ?? 0.35,
-          stream: false,
-          messages,
-        }),
-        signal: options?.signal,
-      });
-      if (!response.ok) return await response.text().catch(() => "");
-      const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      return json.choices?.[0]?.message?.content ?? "";
-    } catch (error) {
-      return String(error);
+    const maxAttempts = DEFAULT_MAX_RETRIES + 1;
+    let lastError = "";
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      // 外部主动取消（如客户端断开）不重试，直接退出。
+      if (options?.signal?.aborted) return "ABORTED";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new Error("DEEPSEEK_TIMEOUT")), DEFAULT_TIMEOUT_MS);
+      const onExternalAbort = () => controller.abort(options?.signal?.reason);
+      options?.signal?.addEventListener("abort", onExternalAbort, { once: true });
+      try {
+        const response = await fetch(DEEPSEEK_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.model,
+            temperature: options?.temperature ?? 0.35,
+            stream: false,
+            messages,
+          }),
+          signal: controller.signal,
+        });
+        if (response.ok) {
+          const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+          return json.choices?.[0]?.message?.content ?? "";
+        }
+        // 5xx 可重试；4xx 是请求本身问题，不重试。
+        lastError = await response.text().catch(() => `HTTP_${response.status}`);
+        if (response.status < 500 || attempt === maxAttempts - 1) return lastError;
+      } catch (error) {
+        // 外部取消：立即返回，不重试。
+        if (options?.signal?.aborted) return "ABORTED";
+        lastError = String(error);
+        if (attempt === maxAttempts - 1) return lastError;
+      } finally {
+        clearTimeout(timeout);
+        options?.signal?.removeEventListener("abort", onExternalAbort);
+      }
+      // 指数退避后重试。
+      await sleep(400 * 2 ** attempt);
     }
+    return lastError;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractStructuredJson<T>(text: string): T | null {

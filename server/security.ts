@@ -62,7 +62,21 @@ export function setCorsHeaders(reply: FastifyReply): void {
   reply.header("Access-Control-Allow-Origin", allowedOrigin);
   reply.header("Vary", "Origin");
   reply.header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-  reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-guest-id");
+}
+
+// 解析访客会话 id：仅允许安全字符，限长，转成带前缀的 owner id，避免与真实用户 id 冲突。
+export function resolveGuestId(request: FastifyRequest): string | undefined {
+  const raw = request.headers["x-guest-id"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return undefined;
+  const safe = value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  return safe ? `guest_${safe}` : undefined;
+}
+
+// 当前请求的数据归属 id：已登录用户优先，否则用访客会话 id。
+export function ownerOf(request: FastifyRequest): string | undefined {
+  return request.session?.userId ?? request.guestOwnerId;
 }
 
 export function auditDetail(detail: Record<string, unknown>): string {

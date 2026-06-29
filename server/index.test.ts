@@ -258,6 +258,51 @@ describe("local backend API", () => {
     expect(sessionB.statusCode).toBe(404);
   });
 
+  it("isolates data between two different guest sessions via x-guest-id", async () => {
+    const app = testApp();
+
+    const intakeG1 = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      headers: { "x-guest-id": "guest-one" },
+      payload: { rawJdText: "公司：访客一公司\n岗位：数据分析\n负责报表。" },
+    });
+    expect(intakeG1.statusCode).toBe(200);
+    const positionIdG1 = intakeG1.json().positions[0].id as string;
+
+    // 访客二建立自己的岗位，应当看不到访客一的数据。
+    const intakeG2 = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      headers: { "x-guest-id": "guest-two" },
+      payload: { rawJdText: "公司：访客二公司\n岗位：运营\n负责活动。" },
+    });
+    expect(intakeG2.statusCode).toBe(200);
+
+    const stateG1 = await app.inject({ method: "GET", url: "/api/state", headers: { "x-guest-id": "guest-one" } });
+    const stateG2 = await app.inject({ method: "GET", url: "/api/state", headers: { "x-guest-id": "guest-two" } });
+    const titlesG1 = (stateG1.json().positions as Array<{ id: string }>).map((p) => p.id);
+    const titlesG2 = (stateG2.json().positions as Array<{ id: string }>).map((p) => p.id);
+    expect(titlesG1).toContain(positionIdG1);
+    expect(titlesG2).not.toContain(positionIdG1);
+
+    // 访客二访问访客一的岗位上下文应当 404。
+    const contextCross = await app.inject({
+      method: "GET",
+      url: `/api/positions/${positionIdG1}/context`,
+      headers: { "x-guest-id": "guest-two" },
+    });
+    expect(contextCross.statusCode).toBe(404);
+
+    // 访客一访问自己的岗位上下文应当成功。
+    const contextSelf = await app.inject({
+      method: "GET",
+      url: `/api/positions/${positionIdG1}/context`,
+      headers: { "x-guest-id": "guest-one" },
+    });
+    expect(contextSelf.statusCode).toBe(200);
+  });
+
   it("indexes materials and questions into RAG, and resume AI returns evidence trace", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
     const intake = await app.inject({
