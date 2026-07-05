@@ -85,4 +85,14 @@ describe("DeepSeekProvider 超时与重试", () => {
     expect(result.status).toBe("fallback");
     expect(result.data).toEqual(fallback);
   });
+
+  it("未配置 DEEPSEEK_API_KEY 时输出明确启动日志", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { createProvider, LocalFallbackProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+
+    const provider = createProvider("", "deepseek-chat");
+
+    expect(provider).toBeInstanceOf(LocalFallbackProvider);
+    expect(warn).toHaveBeenCalled();
+  });
 });

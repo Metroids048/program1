@@ -63,6 +63,7 @@ export function QuestionsWorkspace({
   onAddQuestion,
   isLoggedIn,
   onRequireLogin,
+  onGoHome,
 }: {
   workspace: WorkspaceState | null;
   position: Position | undefined;
@@ -71,6 +72,7 @@ export function QuestionsWorkspace({
   onAddQuestion: (question: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => void;
   isLoggedIn: boolean;
   onRequireLogin: () => void;
+  onGoHome: () => void;
 }) {
   const [newQuestion, setNewQuestion] = useState("");
   const [newAnswer, setNewAnswer] = useState("");
@@ -180,6 +182,7 @@ export function QuestionsWorkspace({
           <div>
             <h2>先在首页创建一个岗位</h2>
             <p>面试资料按岗位归档。创建岗位后，这里会显示项目卡、上传资料和题目记录。</p>
+            <button className="button primary" type="button" onClick={onGoHome} style={{ marginTop: 12 }}>去岗位台创建</button>
           </div>
         </div>
       ) : (

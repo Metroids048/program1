@@ -960,6 +960,11 @@ select.input:focus,
   background: var(--warn-soft);
 }
 
+.ai-status-badge.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
 .status-chip.muted,
 .pill,
 .ai-status-badge.generating {

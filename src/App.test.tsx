@@ -67,6 +67,15 @@ function mockJsonResponse(data: unknown) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response);
 }
 
+function mockTextErrorResponse(text: string, status = 500) {
+  return Promise.resolve({
+    ok: false,
+    status,
+    text: () => Promise.resolve(text),
+    statusText: "Request Failed",
+  } as Response);
+}
+
 function mockStateResponse() {
   return {
     profile: createProfile("测试候选人\nAI 产品"),
@@ -85,6 +94,78 @@ function mockStateWithPosition() {
     positions: [position],
     activePositionId: position.id,
     records: [],
+    journeyState: "ready",
+  };
+}
+
+function mockStateWithRecords() {
+  const profile = createProfile("测试候选人\nAI 产品\n项目经历\n负责增长分析与产品优化");
+  const positionA = createPosition("岗位：AI 产品经理\n公司：腾讯\n面试官：业务负责人\n时长：30分钟\n岗位职责：负责增长与数据分析", profile);
+  const positionB = createPosition("岗位：增长运营\n公司：字节跳动\n面试官：业务负责人\n时长：30分钟\n岗位职责：负责增长与活动分析", profile);
+  const now = new Date().toISOString();
+  const records: InterviewRecord[] = [
+    {
+      id: "record-a",
+      positionId: positionA.id,
+      mode: "mock",
+      title: "腾讯 · AI 产品经理",
+      createdAt: now,
+      transcript: [
+        { role: "interviewer", text: "请介绍一个你做过的 AI 项目。" },
+        { role: "candidate", text: "我负责过一个面试助手项目。" },
+      ],
+      cueCards: [],
+      questionIds: [],
+      speechMetrics: [],
+      report: {
+        overallScore: 82,
+        dimensions: {
+          completeness: 80,
+          relevance: 84,
+          evidenceStrength: 79,
+          structure: 83,
+          riskControl: 78,
+        },
+        summary: "回答完整，但证据还能更具体。",
+        nextActions: ["补充更可验证的结果数据"],
+        source: "local",
+      },
+      summary: "回答完整，但证据还能更具体。",
+    },
+    {
+      id: "record-b",
+      positionId: positionB.id,
+      mode: "live",
+      title: "字节跳动 · 增长运营",
+      createdAt: now,
+      transcript: [
+        { role: "interviewer", text: "请讲一个增长项目。" },
+        { role: "candidate", text: "我做过校园增长活动。" },
+      ],
+      cueCards: [],
+      questionIds: [],
+      speechMetrics: [],
+      report: {
+        overallScore: 76,
+        dimensions: {
+          completeness: 74,
+          relevance: 78,
+          evidenceStrength: 72,
+          structure: 77,
+          riskControl: 75,
+        },
+        summary: "结论有了，但数据还不够扎实。",
+        nextActions: ["补充关键指标和验证过程"],
+        source: "local",
+      },
+      summary: "结论有了，但数据还不够扎实。",
+    },
+  ];
+  return {
+    profile,
+    positions: [positionA, positionB],
+    activePositionId: positionA.id,
+    records,
     journeyState: "ready",
   };
 }
@@ -362,6 +443,25 @@ describe("App", () => {
     expect(await screen.findByText("还没有面试记录")).toBeInTheDocument();
   });
 
+  it("keeps a shareable record detail URL on direct open and when switching records", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithRecords());
+      return mockJsonResponse(mockStateWithRecords());
+    });
+
+    renderApp("/records/record-a");
+    expect(await screen.findByRole("heading", { name: "腾讯 · AI 产品经理" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/records/record-a");
+
+    const rail = document.querySelector(".records-rail");
+    const nextRecord = rail ? within(rail as HTMLElement).getByRole("button", { name: /字节跳动 · 增长运营/ }) : null;
+    await userEvent.setup().click(nextRecord as HTMLElement);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/records/record-b"));
+    expect(screen.getByRole("heading", { name: "字节跳动 · 增长运营" })).toBeInTheDocument();
+  });
+
   it("keeps live speech text after stop, lets the user edit, and generates a cue card", async () => {
     installSpeechRecognitionMock();
     vi.spyOn(window, "fetch").mockImplementation((input) => {
@@ -506,7 +606,86 @@ describe("App", () => {
     await screen.findByRole("heading", { name: "腾讯 · AI 产品经理" });
     await user.click(screen.getByRole("button", { name: "进入面试房间" }));
 
-    await waitFor(() => expect(screen.getByText("后端未连接，当前为本地练习模式。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/当前为本地练习模式/)).toBeInTheDocument());
+  });
+
+  it("shows the specific resume AI failure reason instead of only generic local mode copy", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
+      if (url.includes("/api/resume/ai")) {
+        return mockTextErrorResponse(JSON.stringify({ error: "DEEPSEEK_TIMEOUT", message: "模型响应超时" }), 504);
+      }
+      return mockJsonResponse(mockStateWithPosition());
+    });
+
+    renderApp("/resume");
+    expect((await screen.findAllByRole("heading", { name: "我的简历" })).length).toBeGreaterThan(0);
+    await user.click(screen.getAllByRole("button", { name: "优化当前模块" })[0]);
+
+    expect((await screen.findAllByText(/服务端失败：模型响应超时/)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/当前先保留本地练习模式建议/)).toBeInTheDocument();
+  });
+
+  it("shows a toast when saving a record fails after the interview ends", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
+      if (url.includes("/api/mock/session") && !url.includes("/answer")) {
+        return mockJsonResponse({
+          sessionId: "session-test",
+          question: "请讲一个你做过的增长项目。",
+          backendStatus: "success",
+          questionSource: "模型出题",
+        });
+      }
+      if (url.includes("/api/mock/session/session-test/answer")) {
+        return mockJsonResponse({
+          backendStatus: "success",
+          followUp: "你怎么判断这个增长动作不是短期补贴带来的？",
+          record: {
+            id: "server-record",
+            report: {
+              overallScore: 82,
+              dimensions: {
+                completeness: 80,
+                relevance: 84,
+                evidenceStrength: 79,
+                structure: 83,
+                riskControl: 78,
+              },
+              summary: "回答完整，但证据还能更具体。",
+              nextActions: ["补充更可验证的结果数据"],
+            },
+          } as InterviewRecord,
+          decision: { type: "followup", question: "追问", instantFeedback: "结构清晰，但证据还能更具体。", internalNote: "" },
+        });
+      }
+      if (url.includes("/api/records")) {
+        return mockTextErrorResponse(JSON.stringify({ error: "SAVE_FAILED", message: "记录保存失败" }), 500);
+      }
+      return mockJsonResponse(mockStateWithPosition());
+    });
+
+    const user = userEvent.setup();
+    renderApp("/mock");
+
+    await screen.findByRole("heading", { name: "先选择一个岗位" });
+    await user.click(screen.getByRole("button", { name: /腾讯/ }));
+    await screen.findByRole("heading", { name: "腾讯 · AI 产品经理" });
+    await user.click(screen.getByRole("button", { name: "进入面试房间" }));
+
+    await waitFor(() => expect(screen.getAllByText("请讲一个你做过的增长项目。").length).toBeGreaterThan(0));
+    await user.type(screen.getByLabelText("模拟面试回答"), "我做过校园二手交易增长项目，负责用户访谈、漏斗分析和优惠策略验证，首单转化从 12% 提升到 19%。");
+    await user.click(screen.getByRole("button", { name: "提交当前回答" }));
+    await waitFor(() => expect(screen.getAllByText("你怎么判断这个增长动作不是短期补贴带来的？").length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByRole("button", { name: "结束" })[1]);
+    const finishDialog = screen.getByRole("dialog", { name: "结束模拟面试" });
+    await user.click(within(finishDialog).getByRole("button", { name: "保存并结束" }));
+
+    expect(await screen.findByText(/记录保存失败/)).toBeInTheDocument();
   });
 
   it("opens account data management from the sidebar entry", async () => {

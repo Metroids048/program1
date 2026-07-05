@@ -19,8 +19,10 @@ import {
 import { apiFetch } from "./lib/authClient";
 import { repairAppState, repairText } from "./lib/copy";
 import { buildInterviewReport, createInitialAppState, saveQuestionFromCueCard, toWorkspace } from "./lib/interviewEngine";
+import { describeRequestError } from "./lib/requestError";
 import { navigateTo, parseRoute } from "./lib/router";
 import { clearCachedWorkspace, loadServerSnapshotCache, saveServerSnapshotCache } from "./lib/store";
+import { notify } from "./lib/toast";
 import type {
   AnswerCueCard,
   AppState,
@@ -62,6 +64,10 @@ type ServerSnapshot = {
   journeyState?: UserJourneyState;
 };
 
+function normalizeRoutePath(pathname: string): string {
+  return pathname === "/mock/positions" ? "/mock" : pathname;
+}
+
 function toAppStateFromSnapshot(snapshot: ServerSnapshot, current?: AppState): AppState {
   const fallback = current ?? createInitialAppState();
   const positions = Array.isArray(snapshot.positions) ? snapshot.positions : [];
@@ -73,10 +79,7 @@ function toAppStateFromSnapshot(snapshot: ServerSnapshot, current?: AppState): A
       ? snapshot.activePositionId
       : positions[0]?.id ?? "",
     interviewRecords: records,
-    activeRecordId:
-      current?.interviewRecords.some((record) => records.some((nextRecord) => nextRecord.id === record.id && record.id === current.activeRecordId))
-        ? current.activeRecordId
-        : records[0]?.id ?? "",
+    activeRecordId: records.some((record) => record.id === current?.activeRecordId) ? (current?.activeRecordId ?? "") : records[0]?.id ?? "",
     aiMode: true,
     journeyState: snapshot.journeyState ?? current?.journeyState ?? "guest",
   });
@@ -103,7 +106,11 @@ export function App() {
   });
   const [routePath, setRoutePath] = useState(() => {
     if (typeof window === "undefined") return "/";
-    return parseRoute(window.location.pathname).name === "recordDetail" ? "/records" : window.location.pathname;
+    const normalized = normalizeRoutePath(window.location.pathname);
+    if (normalized !== window.location.pathname) {
+      window.history.replaceState({}, "", normalized);
+    }
+    return normalized;
   });
   const [snapshotHydrated, setSnapshotHydrated] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -111,6 +118,11 @@ export function App() {
   const [loginGatePath, setLoginGatePath] = useState<string | null>(null);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(DEFAULT_CONFIG);
   const redirectedRef = useRef(false);
+
+  const notifySyncError = (title: string, error: unknown, fallback: string) => {
+    const detail = describeRequestError(error, fallback);
+    notify(`${title}：${detail}`, "error");
+  };
 
   useEffect(() => {
     if (authLoading || !snapshotHydrated) return;
@@ -147,7 +159,10 @@ export function App() {
         });
         setSnapshotHydrated(true);
       })
-      .catch(() => undefined)
+      .catch((error) => {
+        if (!active) return;
+        notifySyncError("同步最新数据失败", error, "当前先展示本地缓存。");
+      })
       .finally(() => {
         if (active) setSnapshotHydrated(true);
       });
@@ -160,20 +175,37 @@ export function App() {
     saveServerSnapshotCache(appState);
   }, [appState]);
 
+  const prevLoggedInRef = useRef(isLoggedIn);
+  useEffect(() => {
+    if (!prevLoggedInRef.current && isLoggedIn) {
+      void fetchStateSnapshot()
+        .then((snapshot) => {
+          if (!snapshot?.profile || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.records)) return;
+          setAppState((current) => {
+            const next = toAppStateFromSnapshot(snapshot, current);
+            saveServerSnapshotCache(next);
+            return next;
+          });
+        })
+        .catch((error) => {
+          notifySyncError("同步最新数据失败", error, "当前先展示本地缓存。");
+        });
+    }
+    prevLoggedInRef.current = isLoggedIn;
+  }, [isLoggedIn]);
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if (parseRoute(window.location.pathname).name === "recordDetail") {
-      window.history.replaceState({}, "", "/records");
-    }
     const onPopState = () => {
-      const nextRoute = parseRoute(window.location.pathname);
+      const normalizedPath = normalizeRoutePath(window.location.pathname);
+      if (normalizedPath !== window.location.pathname) {
+        window.history.replaceState({}, "", normalizedPath);
+      }
+      const nextRoute = parseRoute(normalizedPath);
       if (nextRoute.name === "recordDetail") {
         setAppState((current) => repairAppState({ ...current, activeRecordId: nextRoute.recordId }));
-        window.history.replaceState({}, "", "/records");
-        setRoutePath("/records");
-        return;
       }
-      setRoutePath(window.location.pathname);
+      setRoutePath(normalizedPath);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -233,7 +265,7 @@ export function App() {
   };
 
   const openMockPositionList = () => {
-    openRoute("/mock/positions");
+    openRoute("/mock");
   };
 
   const openMockSetup = (positionId: string, config?: InterviewConfig) => {
@@ -268,7 +300,8 @@ export function App() {
       });
       syncSnapshot(snapshot);
       return snapshot.activePositionId || snapshot.positions[0]?.id || null;
-    } catch {
+    } catch (error) {
+      notifySyncError("保存岗位信息失败", error, "请稍后重试。");
       return null;
     }
   };
@@ -276,7 +309,7 @@ export function App() {
   const updateProfile = (next: { resumeText: string; evidenceLibrary: EvidenceItem[]; highlights: string[] }) => {
     void updateProfileOnServer(next)
       .then((snapshot) => syncSnapshot(snapshot))
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("同步简历资料失败", error, "请稍后重试。"));
   };
 
   const renameProfile = (displayName: string) => {
@@ -287,7 +320,8 @@ export function App() {
       highlights: profile.highlights,
     })
       .then((snapshot) => syncSnapshot(snapshot))
-      .catch(() => {
+      .catch((error) => {
+        notifySyncError("同步显示名称失败", error, "当前先保留本地修改。");
         patchState((current) => ({ ...current, profile: { ...current.profile, displayName } }));
       });
   };
@@ -299,7 +333,8 @@ export function App() {
       highlights: profile.highlights,
     })
       .then((snapshot) => syncSnapshot(snapshot))
-      .catch(() => {
+      .catch((error) => {
+        notifySyncError("同步简历正文失败", error, "当前先保留本地修改。");
         patchState((current) => ({
           ...current,
           profile: {
@@ -338,7 +373,7 @@ export function App() {
           positions: replacePosition(current.positions, position),
         }));
       })
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("保存问题修改失败", error, "请稍后重试。"));
   };
 
   const addQuestion = (payload: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => {
@@ -365,7 +400,7 @@ export function App() {
           positions: replacePosition(current.positions, position),
         }));
       })
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("沉淀问题失败", error, "请稍后重试。"));
   };
 
   const addQuestionFromCueCard = (card: AnswerCueCard) => {
@@ -378,7 +413,7 @@ export function App() {
           positions: replacePosition(current.positions, position),
         }));
       })
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("保存提词卡到问题记录失败", error, "请稍后重试。"));
   };
 
   const updateMaterials = (materials: PositionMaterial[]) => {
@@ -390,7 +425,7 @@ export function App() {
           positions: replacePosition(current.positions, position),
         }));
       })
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("保存资料失败", error, "请稍后重试。"));
   };
 
   const saveInterviewRecord = (payload: {
@@ -469,11 +504,11 @@ export function App() {
           interviewRecords: Array.isArray(response.records) && response.records.length > 0 ? response.records : current.interviewRecords,
         }));
       })
-      .catch(() => undefined);
+      .catch((error) => notifySyncError("保存面试记录失败", error, "当前仅保留本地结果，请稍后重试同步。"));
     if (payload.mode === "mock") {
       void getLatestMockSessionOnServer(activePosition.id)
         .then(({ session }) => completeMockSessionOnServer(session.id))
-        .catch(() => undefined);
+        .catch((error) => notifySyncError("结束模拟会话同步失败", error, "不影响当前记录查看。"));
     }
     openRoute("/records");
   };
@@ -517,7 +552,7 @@ export function App() {
       onNavigate={(nav) => {
         if (nav === "home") openRoute("/");
         if (nav === "live") openRoute("/live");
-        if (nav === "mock") openRoute("/mock/positions");
+        if (nav === "mock") openRoute("/mock");
         if (nav === "jd") openRoute("/jd");
         if (nav === "questions") openRoute("/questions");
         if (nav === "resume") openRoute("/resume");
@@ -700,11 +735,11 @@ export function App() {
           activeRecordId={selectedRecordId}
           onOpen={(id) => {
             patchState((current) => ({ ...current, activeRecordId: id }));
-            openRoute("/records");
+            openRoute(`/records/${encodeURIComponent(id)}`);
           }}
           onMock={() => {
             if (!isLoggedIn) {
-              requireLoginFor("/mock/positions");
+              requireLoginFor("/mock");
               return;
             }
             openMockPositionList();

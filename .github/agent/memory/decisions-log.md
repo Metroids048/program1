@@ -110,3 +110,19 @@
 - **Consequences**:
   - Codex 不再具备内置 Browser 能力，但可稳定完成代码与后端验收
   - 若 OpenAI 修复 Windows IAB 崩溃，需重新评估后再手动启用插件
+
+## ADR-P010: 上线阻塞项收口采用服务端访客 cookie 与 owner-scoped RAG
+
+- **Date**: 2026-07-04
+- **Status**: accepted
+- **Context**: 上线前复核发现 Docker 生产监听、密钥打包、无身份访客共享桶、RAG 简历索引跨 owner 覆盖、本地 outbox 被 Git 跟踪等阻塞项。
+- **Decision**:
+  1. 生产默认监听 `0.0.0.0`，支持平台 `PORT`，Docker 显式设置 `HOST=0.0.0.0`
+  2. Docker 构建上下文排除 `.env` / `.env.*`，真实密钥只通过部署环境变量注入
+  3. 未登录访客优先用 `x-guest-id`；无本地存储时由服务端下发 HttpOnly 匿名 cookie，不再写共享访客桶
+  4. RAG 文档唯一键改为 `owner_key + source_type + source_id`，文档 id 带 owner，避免多用户索引覆盖
+  5. `.data/mail-outbox.json` 从工作树删除并加入忽略，测试 outbox 改写入临时目录
+- **Consequences**:
+  - 公开部署时不会因容器绑定回环地址而无法访问
+  - 多访客/多账号资料不会因无身份或 RAG 固定 id 互相覆盖
+  - full-flow 验收脚本必须像浏览器一样保留服务端 cookie，并对关键 200/持久化结果硬失败

@@ -17,7 +17,7 @@ import type { SessionInfo } from "./domains/auth/types";
 import { makeId, nowIso } from "./utils";
 import { createInitialAppState, createPosition } from "../src/lib/interviewEngine";
 import { createMailService } from "./mail/service";
-import { applyRateLimit, ownerOf, requireAuth, resolveGuestId, setCorsHeaders } from "./security";
+import { applyRateLimit, ensureGuestId, ownerOf, requireAuth, setCorsHeaders } from "./security";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -188,16 +188,6 @@ function contentTypeFor(path: string): string {
   }
 }
 
-function createGuestState(): BackendState {
-  const initial = createInitialAppState();
-  return {
-    profile: initial.profile,
-    positions: initial.positions,
-    records: [],
-    journeyState: "guest",
-  };
-}
-
 export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } = {}): FastifyInstance {
   const app = Fastify({ logger: false });
   const db = createDb(options.dbPath);
@@ -214,7 +204,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   app.options("/*", async () => ({ ok: true }));
 
   // Auth middleware: attach session if token present (optional — guests proceed without)
-  app.addHook("onRequest", async (request) => {
+  app.addHook("onRequest", async (request, reply) => {
     const header = request.headers.authorization;
     if (header?.startsWith("Bearer ")) {
       try {
@@ -223,9 +213,9 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
         // Invalid/expired token — continue as guest
       }
     }
-    // 未登录访客按会话 id 隔离数据；缺少 id 时退化为旧的共享行为。
+    // 未登录访客优先按前端 guest id 隔离；本地存储不可用时由服务端 cookie 兜底。
     if (!request.session) {
-      request.guestOwnerId = resolveGuestId(request);
+      request.guestOwnerId = ensureGuestId(request, reply);
     }
     orchestrator.setUserId(ownerOf(request));
   });
@@ -237,8 +227,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     if (process.env.NODE_ENV === "production") {
       return reply.code(404).send({ error: "NOT_FOUND" });
     }
-    requireAuth(request);
-    return { items: mailer.listOutbox() };
+    const session = requireAuth(request);
+    return { items: mailer.listOutbox().filter((item) => item.userId === session.userId) };
   });
 
   // Merge guest data into authenticated user account
@@ -384,7 +374,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     }
     const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
     if (statusCode >= 400 && statusCode < 500) {
-      return reply.code(statusCode).send({ error: String(error) });
+      return reply.code(statusCode).send({ error: (error as Error).message });
     }
     return reply.code(500).send({ error: "INTERNAL_ERROR", message: String(error) });
   });
@@ -396,8 +386,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   }));
 
   app.get("/api/state", async (request) => {
-    const ownerId = ownerOf(request);
-    const state = ownerId ? db.getState(ownerId) : createGuestState();
+    const state = db.getState(ownerOf(request));
     return toApiSnapshot(state);
   });
 
@@ -693,8 +682,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/export", async (request) => {
-    const ownerId = ownerOf(request);
-    const state = ownerId ? db.getState(ownerId) : createGuestState();
+    const state = db.getState(ownerOf(request));
     return toClientAppState(state, {
       activePositionId: state.positions[0]?.id,
     });
@@ -774,10 +762,16 @@ function toClientAppState(
   };
 }
 
+export function resolveListenOptions(): { host: string; port: number } {
+  const port = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 8787);
+  const host = process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
+  return { host, port };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const port = Number(process.env.SERVER_PORT ?? 8787);
+  const { host, port } = resolveListenOptions();
   const app = buildServer();
-  app.listen({ host: "127.0.0.1", port }).then(() => {
-    console.log(`AI job platform server listening on http://127.0.0.1:${port}`);
+  app.listen({ host, port }).then(() => {
+    console.log(`AI job platform server listening on http://${host}:${port}`);
   });
 }

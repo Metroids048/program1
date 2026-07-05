@@ -54,7 +54,14 @@ export function AuthGateModal({
           <p>{detail}</p>
         </div>
         <div className="drawer-actions stacked">
-          <button type="button" className="button primary" onClick={() => navigateTo(loginUrl)}>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => {
+              onClose();
+              navigateTo(loginUrl);
+            }}
+          >
             {actionLabel}
           </button>
           <button type="button" className="button secondary" onClick={onClose}>

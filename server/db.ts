@@ -17,6 +17,9 @@ import type {
   SearchResult,
 } from "./types";
 
+// 未登录且未提供访客会话 id 时，退化为旧版单一共享状态，而不是每次读写都换成一个新的空状态（否则数据写入后立刻"消失"）。
+const NO_ID_GUEST_KEY = "guest:__shared__";
+
 export interface AppDb {
   db: Database.Database | null;
   mode: "sqlite" | "file";
@@ -172,21 +175,16 @@ function createSqliteDb(db: Database.Database): AppDb {
     db,
     mode: "sqlite",
     getState(userId) {
-      if (!userId) {
-        const initial = createInitialAppState();
-        return { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
-      }
-      const key = userId;
+      const key = userId || NO_ID_GUEST_KEY;
       const raw = db.prepare("select json from app_state where id = ?").get(key) as { json: string } | undefined;
       if (raw) return JSON.parse(raw.json) as BackendState;
       const initial = createInitialAppState();
       const state: BackendState = { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
-      this.saveState(state, userId);
+      this.saveState(state, key);
       return state;
     },
     saveState(state, userId) {
-      if (!userId) return;
-      const key = userId;
+      const key = userId || NO_ID_GUEST_KEY;
       db.prepare("insert into app_state(id, json, updated_at, user_id) values (?, ?, ?, ?) on conflict(id) do update set json = excluded.json, updated_at = excluded.updated_at, user_id = excluded.user_id").run(
         key,
         JSON.stringify(state),
@@ -293,6 +291,20 @@ function createSqliteDb(db: Database.Database): AppDb {
       this.deleteDocumentsBySource("record", positionId, ownerKey);
     },
     upsertDocument(document) {
+      const existing = db
+        .prepare("select id from documents where owner_key = ? and source_type = ? and source_id = ?")
+        .get(document.ownerKey, document.sourceType, document.sourceId) as { id: string } | undefined;
+      if (existing && existing.id !== document.id) {
+        const chunkIds = db
+          .prepare("select id from document_chunks where document_id = ?")
+          .all(existing.id)
+          .map((row) => (row as { id: string }).id);
+        chunkIds.forEach((chunkId) => {
+          db.prepare("delete from document_chunks_fts where chunk_id = ?").run(chunkId);
+        });
+        db.prepare("delete from document_chunks where document_id = ?").run(existing.id);
+        db.prepare("delete from documents where id = ?").run(existing.id);
+      }
       db.prepare(
         `
         insert into documents(id, position_id, source_type, source_id, source_sub_type, owner_key, title, summary, content, priority, created_at, updated_at)
@@ -606,18 +618,15 @@ function createFileDb(filePath: string): AppDb {
     db: null,
     mode: "file",
     getState(userId: string | undefined) {
-      if (!userId) {
-        const initial = createInitialAppState();
-        return { profile: initial.profile, positions: initial.positions, records: [], journeyState: "guest" };
-      }
+      const key = userId || NO_ID_GUEST_KEY;
       const store = readStore();
-      return store.userStates?.[userId] ?? store.state;
+      return store.userStates?.[key] ?? store.state;
     },
     saveState(state: BackendState, userId: string | undefined) {
-      if (!userId) return;
+      const key = userId || NO_ID_GUEST_KEY;
       replace((store) => ({
         ...store,
-        userStates: { ...(store.userStates ?? {}), [userId]: state },
+        userStates: { ...(store.userStates ?? {}), [key]: state },
       }));
     },
     saveCueCard(card) {
@@ -718,7 +727,14 @@ function createFileDb(filePath: string): AppDb {
     upsertDocument(document) {
       replace((store) => ({
         ...store,
-        documents: [document, ...store.documents.filter((item) => item.id !== document.id)],
+        documents: [
+          document,
+          ...store.documents.filter(
+            (item) =>
+              item.id !== document.id &&
+              !(item.ownerKey === document.ownerKey && item.sourceType === document.sourceType && item.sourceId === document.sourceId),
+          ),
+        ],
       }));
     },
     replaceDocumentChunks(documentId, chunks) {
@@ -876,6 +892,8 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "users", "deleted_at", "alter table users add column deleted_at text");
   ensureColumn(db, "users", "notification_prefs", "alter table users add column notification_prefs text not null default '{}'");
 
+  db.exec("drop index if exists idx_documents_source");
+  db.exec("create unique index if not exists idx_documents_owner_source on documents(owner_key, source_type, source_id)");
   db.exec("create unique index if not exists idx_users_email on users(email)");
   db.exec("create index if not exists idx_users_email_verify on users(email_verification_token_hash, email_verification_expires_at)");
   db.exec("create index if not exists idx_users_password_reset on users(password_reset_token_hash, password_reset_expires_at)");

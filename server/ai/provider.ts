@@ -20,6 +20,9 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS) > 0 ? Number(
 const DEFAULT_MAX_RETRIES = Number.isFinite(Number(process.env.DEEPSEEK_MAX_RETRIES)) ? Math.max(0, Number(process.env.DEEPSEEK_MAX_RETRIES)) : 1;
 
 export function createProvider(apiKey = process.env.DEEPSEEK_API_KEY ?? "", model = process.env.DEEPSEEK_MODEL ?? DEFAULT_DEEPSEEK_MODEL): AiProvider {
+  if (!apiKey.trim()) {
+    console.warn("[ai] DEEPSEEK_API_KEY 未读取到，当前将使用本地 fallback provider。");
+  }
   return apiKey ? new DeepSeekProvider(apiKey, model) : new LocalFallbackProvider();
 }
 

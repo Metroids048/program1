@@ -1,5 +1,70 @@
 # Task History
 
+## [TASK-2026-07-04-launch-blockers-clearance]
+
+- Date: 2026-07-04
+- Type: fix/test/deploy-hardening
+- Summary: 清除上线前阻塞项：生产启动支持 `PORT` 与 `0.0.0.0`，Docker 排除本地 env 密钥并显式设置生产 host；无 `x-guest-id` 的访客改由服务端 HttpOnly cookie 兜底，避免共享访客桶；RAG 文档 id 与唯一约束改为 owner-scoped，修复多用户简历索引互相覆盖；删除被 Git 跟踪的 `.data/mail-outbox.json` 并将测试 outbox 改到临时目录；full-flow 脚本补 cookie jar 与硬断言，防止接口语义坏掉但脚本仍 0 退出。
+- Files:
+  - `server/index.ts`
+  - `server/security.ts`
+  - `server/db.ts`
+  - `server/rag.ts`
+  - `server/domains/quota/quota.service.ts`
+  - `server/migrations/001_init.sql`
+  - `server/index.test.ts`
+  - `scripts/full-flow-retest.ts`
+  - `Dockerfile`
+  - `.dockerignore`
+  - `.gitignore`
+  - `.env.example`
+  - `README.md`
+  - `.data/mail-outbox.json`
+  - `.github/agent/memory/project-memory.md`
+  - `.github/agent/memory/decisions-log.md`
+  - `.github/agent/memory/task-history.md`
+- Verified:
+  - `npm.cmd run test:server`：36 tests passed
+  - `npm.cmd run test:full-flow`：intake/profile/materials/questions/cueCard/mock/resumeAi/search 全链路通过，重启后 state/export 均保持 1
+  - `npm.cmd run verify`：lint 0 error / 15 warnings，server typecheck 通过，16 test files / 100 tests passed，build 成功
+  - `npm.cmd run test:acceptance`：app 37、server 36、full-flow、真实 DeepSeek smoke 全通过
+- Notes:
+  - 账号密码方案保持最简现状，本轮不继续扩展邮箱/验证码能力
+  - Codex 无渲染层验收；仍需 Cursor 或人工浏览器跑 UI 冒烟
+  - `JWT_SECRET` 未配置时仍按既有策略警告；正式部署必须注入独立密钥
+
+## [TASK-2026-07-04-prelaunch-ai-visibility-route-closure-security]
+
+- Date: 2026-07-04
+- Type: fix/test/security-review
+- Summary: 按“上线前双段收口计划”完成 AI 真实状态透明化、关键静默失败提示、`/records/:id` 分享路由保留、`/mock/positions` 兼容收口，并补做上线前安全审查。前端现在会明确区分模型成功 / 后端 fallback / 真实失败原因；`App` 内关键保存与同步失败不再静默；开发态 `/api/mail/outbox` 收紧为仅返回当前登录用户自己的邮件记录；服务端在缺少 `DEEPSEEK_API_KEY` 与 `JWT_SECRET` 时都会输出明确警告。`codex-security` 插件扫描因本机 Python helper 启动失败未能跑通，本轮安全结论来自人工代码审查 + 回归测试证据。
+- Files:
+  - `src/App.tsx`
+  - `src/App.test.tsx`
+  - `src/components/live.tsx`
+  - `src/components/resume.tsx`
+  - `src/components/shared.tsx`
+  - `src/components/positions.tsx`
+  - `src/styles.css`
+  - `src/lib/requestError.ts`
+  - `server/index.ts`
+  - `server/index.test.ts`
+  - `server/ai/provider.ts`
+  - `server/ai/provider.test.ts`
+  - `server/domains/auth/auth.service.ts`
+  - `.github/agent/memory/project-memory.md`
+  - `.github/agent/memory/task-history.md`
+- Verified:
+  - `npm run verify`
+  - `npm run test:ai-success-smoke`
+  - `npm run test:first-user`
+  - `npm run test:acceptance`
+- Notes:
+  - `test:first-user` 中的 `cueCard/mockAnswer = fallback` 仍是脚本前提，不等于真实 DeepSeek 挂掉；同轮 `test:ai-success-smoke` 三条真实链路仍为 success
+  - `test:full-flow` 中的 `fallback/401/404` 仍来自离线脚本前提与显式 `LocalFallbackProvider`，不是本轮回归
+  - Codex 无渲染层验收；本轮仍需用户在真实浏览器或 Cursor 补一轮人工点击复核
+  - 已知未处理限制保留：忘记密码 / 验证邮箱仍只写本地 outbox，不会真实发信
+
 ## [TASK-2026-06-29-launch-closeout-loop-and-eval]
 
 - Date: 2026-06-29

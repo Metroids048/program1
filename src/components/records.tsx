@@ -105,7 +105,9 @@ export function RecordsView({
     [mode, positionId, records],
   );
 
-  const activeRecord = filtered.find((record) => record.id === activeRecordId) ?? filtered[0];
+  const requestedRecord = activeRecordId ? filtered.find((record) => record.id === activeRecordId) : undefined;
+  const activeRecord = activeRecordId ? requestedRecord : filtered[0];
+  const recordNotFound = Boolean(activeRecordId) && !records.some((record) => record.id === activeRecordId);
   const activePosition = positions.find((item) => item.id === activeRecord?.positionId);
   const liveRecords = filtered.filter((record) => record.mode === "live");
   const mockRecords = filtered.filter((record) => record.mode === "mock");
@@ -166,7 +168,14 @@ export function RecordsView({
       </aside>
 
       <section className="records-report-pane">
-        {activeRecord ? (
+        {recordNotFound ? (
+          <div className="records-empty-shell">
+            <EmptyState title="该记录不存在或已被删除" detail="可能已被删除，或被当前筛选条件排除，请换一条记录查看。" />
+            <button className="button primary" type="button" onClick={onMock}>
+              去模拟练习
+            </button>
+          </div>
+        ) : activeRecord ? (
           <RecordReportContent record={activeRecord} position={activePosition} onMock={onMock} onOpenQuestions={onOpenQuestions} onOpenResume={onOpenResume} onOpenJd={onOpenJd} onSaveQuestionNote={onSaveQuestionNote} />
         ) : (
           <div className="records-empty-shell">
@@ -234,9 +243,17 @@ function RecordReportContent({
 }) {
   const [showMore, setShowMore] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
   const pace = record.speechMetrics[0]?.charsPerMinute ?? 0;
   const fillers = record.speechMetrics.reduce((sum, item) => sum + item.fillerCount, 0);
   const interviewerTurns = record.transcript.filter((item) => item.role === "interviewer");
+  const answersForTurns = interviewerTurns.map((question) => {
+    const questionIndex = record.transcript.indexOf(question);
+    const nextInterviewerIndex = record.transcript.findIndex((message, index) => index > questionIndex && message.role === "interviewer");
+    const searchEnd = nextInterviewerIndex === -1 ? record.transcript.length : nextInterviewerIndex;
+    return record.transcript.slice(questionIndex + 1, searchEnd).find((message) => message.role === "candidate");
+  });
+  const orderedCueCards = [...record.cueCards].reverse();
   const improvementPoints = record.report.improvementPoints?.length ? record.report.improvementPoints : record.report.nextActions;
   const evidenceCount = new Set(record.cueCards.flatMap((card) => card.evidenceIds)).size;
   const hitRate = record.cueCards.length ? `${Math.round((evidenceCount / Math.max(1, record.cueCards.length)) * 100)}%` : "--";
@@ -276,15 +293,16 @@ function RecordReportContent({
               </div>
             </div>
             <div className="record-timeline">
+              {interviewerTurns.length === 0 ? <p className="form-hint">暂无题目记录。</p> : null}
               {interviewerTurns.map((message, index) => (
                 <details key={`${message.text}-${index}`} className="timeline-item">
                   <summary>
                     <span>#{index + 1}</span>
                     <strong>{repairText(message.text).slice(0, 28)}</strong>
-                    <small>{record.cueCards[index] ? "提词卡已用" : "未生成卡"}</small>
+                    <small>{orderedCueCards[index] ? "提词卡已用" : "未生成卡"}</small>
                   </summary>
-                  <p>{repairText(record.transcript[index * 2 + 1]?.text ?? "暂无候选人回答记录。")}</p>
-                  {record.cueCards[index] ? <small>{repairText(record.cueCards[index].openingLine)}</small> : null}
+                  <p>{repairText(answersForTurns[index]?.text ?? "暂无候选人回答记录。")}</p>
+                  {orderedCueCards[index] ? <small>{repairText(orderedCueCards[index].openingLine)}</small> : null}
                 </details>
               ))}
             </div>
@@ -322,9 +340,11 @@ function RecordReportContent({
                     const firstQuestion = interviewerTurns[0]?.text || record.title;
                     const shortNote = improvementPoints.slice(0, 2).map((item) => repairText(item)).join("；") || repairText(record.summary);
                     onSaveQuestionNote({ question: firstQuestion, notes: shortNote });
+                    setNoteSaved(true);
+                    setTimeout(() => setNoteSaved(false), 3000);
                   }}
                 >
-                  一键沉淀到问题记录
+                  {noteSaved ? "✓ 已沉淀" : "一键沉淀到问题记录"}
                 </button>
                 <button className="button secondary compact-button" type="button" onClick={onOpenQuestions}>
                   去问题记录
@@ -349,7 +369,7 @@ function RecordReportContent({
               </div>
             </div>
             <div className="metrics-grid compact">
-              <MetricCard label="平均语速" value={String(pace)} suffix="字 / 分钟" detail="根据本次转写文本估算。" icon={Timer} />
+              <MetricCard label="平均语速" value={pace ? String(pace) : "--"} suffix="字 / 分钟" detail="根据本次转写文本估算。" icon={Timer} />
               <MetricCard label="口头填充词" value={String(fillers)} suffix="次" detail="统计“嗯”“啊”“那个”等口头填充。" icon={Volume2} />
             </div>
           </div>
@@ -363,6 +383,7 @@ function RecordReportContent({
             <div className="surface-card-inner">
               <h2>Transcript</h2>
               <div className="record-transcript-list">
+                {record.transcript.length === 0 ? <p className="form-hint">暂无 Transcript 记录。</p> : null}
                 {record.transcript.map((message, index) => (
                   <article key={`${message.role}-${index}`} className={`record-transcript-item ${message.role}`}>
                     <span>{message.role === "interviewer" ? "面试官" : "候选人"}</span>
@@ -429,8 +450,10 @@ export function AccountModal({
 
   const exportData = async () => {
     let exported = serializeAppState(state);
+    let fromServer = false;
     try {
       exported = JSON.stringify(await exportFromServer(), null, 2);
+      fromServer = true;
     } catch {
       // Keep local fallback.
     }
@@ -443,7 +466,7 @@ export function AccountModal({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setMessage({ tone: "success", text: "已导出全部数据。" });
+    setMessage({ tone: fromServer ? "success" : "warn", text: fromServer ? "已从服务端导出全部数据。" : "服务端未连接，已导出本地缓存（可能不是最新）。" });
   };
 
   const importData = async (event: ChangeEvent<HTMLInputElement>) => {

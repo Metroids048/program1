@@ -13,14 +13,12 @@ function buildPosition() {
 describe("positions pages", () => {
   it("keeps the home first screen focused on input and primary actions", () => {
     const position = buildPosition();
-    const onOpenPosition = vi.fn();
 
     render(
       <HomeDashboard
         positions={[position]}
         activePositionId={position.id}
         onSubmitJd={vi.fn()}
-        onOpenPosition={onOpenPosition}
         onOpenCreatedPosition={vi.fn()}
         onOpenMockList={vi.fn()}
         onOpenLive={vi.fn()}
@@ -31,11 +29,12 @@ describe("positions pages", () => {
 
     expect(screen.getByRole("heading", { name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
     expect(screen.getByLabelText("首页主输入")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /保存并继续完善/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /进入实时助手/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /进入模拟面试/ }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /保存当前岗位/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "已保存岗位" })).toBeInTheDocument();
+    expect(screen.getAllByText("当前岗位").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "进入实时助手" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "进入模拟面试" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "最近岗位" })).not.toBeInTheDocument();
-    expect(onOpenPosition).not.toHaveBeenCalled();
   });
 
   it("shows quick prompt pills when there are no positions", () => {
@@ -44,7 +43,6 @@ describe("positions pages", () => {
         positions={[]}
         activePositionId=""
         onSubmitJd={vi.fn()}
-        onOpenPosition={vi.fn()}
         onOpenCreatedPosition={vi.fn()}
         onOpenMockList={vi.fn()}
         onOpenLive={vi.fn()}

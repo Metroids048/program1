@@ -9,26 +9,26 @@ describe("resume full apply", () => {
     const drafts = {
       basic: "张三",
       education: "本科",
-      highlights: "原亮点",
       work: "原工作",
       projects: "原项目",
+      highlights: "原亮点",
       skills: "SQL",
-      risks: "原风险",
+      extra: "原补充",
     };
 
     const next = applyFullResumeSuggestionToDrafts(
       [
-        "亮点摘要",
+        "亮点总结",
         "1. 负责增长策略和数据闭环。",
         "项目经历",
         "主导校园增长项目，首单转化率从 12% 提升到 19%。",
-        "技能与工具",
+        "技能",
         "SQL、A/B 实验、增长漏斗分析。",
       ].join("\n"),
       [
-        { id: "highlights", title: "亮点摘要" },
+        { id: "highlights", title: "亮点总结" },
         { id: "projects", title: "项目经历" },
-        { id: "skills", title: "技能与工具" },
+        { id: "skills", title: "技能" },
       ],
       drafts,
     );
@@ -42,17 +42,17 @@ describe("resume full apply", () => {
     const drafts = {
       basic: "张三",
       education: "本科",
-      highlights: "原亮点",
       work: "原工作",
       projects: "原项目",
+      highlights: "原亮点",
       skills: "SQL",
-      risks: "原风险",
+      extra: "原补充",
     };
 
     const next = applyFullResumeSuggestionToDrafts(
       "整份简历建议：先写结论，再补动作和结果。",
       [
-        { id: "highlights", title: "亮点摘要" },
+        { id: "highlights", title: "亮点总结" },
         { id: "projects", title: "项目经历" },
       ],
       drafts,
@@ -70,7 +70,7 @@ describe("resume full apply", () => {
         "项目经历",
         "校园增长项目",
         "- 负责增长策略和数据闭环，首单转化率从 12% 提升到 19%。",
-        "技能与工具",
+        "技能",
         "SQL、A/B 实验、增长漏斗分析。",
       ].join("\n"),
     );
@@ -86,7 +86,7 @@ describe("resume full apply", () => {
       />,
     );
 
-    expect(screen.getByText("AI 已识别的经历证据")).toBeInTheDocument();
+    expect(screen.getByText("AI 已识别证据")).toBeInTheDocument();
     expect(screen.getByText(`${profile.evidenceLibrary.length} 条`)).toBeInTheDocument();
     expect(screen.getByText("命中关键词：")).toBeInTheDocument();
   });

@@ -31,7 +31,7 @@ type DraftState = {
 
 export function AccountPage({ journeyState }: { journeyState?: UserJourneyState }) {
   const { session, isLoggedIn, clearAuth, updateSession } = useAuth();
-  const draftKey = `${session?.userId ?? "guest"}:${session?.email ?? ""}:${session?.displayName ?? ""}:${session?.notificationPrefs?.marketing ?? true}:${session?.notificationPrefs?.product ?? true}`;
+  const draftKey = session?.userId ?? "guest";
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
   useEffect(() => {
@@ -232,6 +232,7 @@ function AccountWorkspace({
   };
 
   const handleDeleteData = async () => {
+    if (!window.confirm("确认清空业务数据？岗位、面试记录、简历等内容将被永久删除，且无法恢复。")) return;
     try {
       const res = await apiFetch("/api/data/delete-request", { method: "POST" });
       if (!res.ok) throw new Error("DELETE_FAILED");
@@ -297,7 +298,7 @@ function AccountWorkspace({
             <input className="account-input" type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} placeholder="name@example.com" />
           </label>
           <label className="account-form-field">
-            <span>辅助密码</span>
+            <span>新密码</span>
             <input className="account-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="不修改可留空，至少 8 位" />
           </label>
           <div className="account-inline-meta">

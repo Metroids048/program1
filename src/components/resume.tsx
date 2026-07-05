@@ -3,12 +3,26 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import { generateProfileHighlightsOnServer, runResumeAiOnServer } from "../lib/apiClient";
 import { generateHighlightsLocal } from "../lib/coach";
+import { describeAiFailure } from "../lib/requestError";
 import { loadDraftState, saveDraftState } from "../lib/store";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, Position } from "../types";
-import { buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
+import { AiStatusBadge, buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
 
 type ResumeAction = "section" | "full" | "match";
+
+function formatResumeMetaNote(status: ResumeChatMessage["status"], note?: string): string {
+  const trimmed = repairText(note ?? "");
+  if (status === "success") return trimmed;
+  if (status === "fallback") return trimmed ? `已切回本地练习模式：${trimmed}` : "已切回本地练习模式。";
+  if (status === "error") return trimmed ? `服务端失败：${trimmed}` : "服务端失败，当前先保留本地练习模式建议。";
+  return trimmed;
+}
+
+function normalizeResumeStatus(status?: "success" | "fallback" | "error" | "cache"): ResumeChatMessage["status"] {
+  if (status === "success" || status === "error") return status;
+  return "fallback";
+}
 
 function applySectionSave(sectionId: ResumeSectionId, text: string, profile: CandidateProfile, onUpdateEvidence: (items: EvidenceItem[]) => void, onSetHighlights: (highlights: string[]) => void) {
   if (sectionId === "highlights") {
@@ -19,6 +33,10 @@ function applySectionSave(sectionId: ResumeSectionId, text: string, profile: Can
         .filter(Boolean)
         .slice(0, 6),
     );
+    return;
+  }
+
+  if (sectionId === "basic" || sectionId === "extra") {
     return;
   }
 
@@ -109,7 +127,7 @@ export function ResumeWorkspacePage({
   onRequireLogin: () => void;
 }) {
   const sections = useMemo(() => buildResumeSections(profile), [profile]);
-  const [selectedSectionId, setSelectedSectionId] = useState<ResumeSectionId>("highlights");
+  const [selectedSectionId, setSelectedSectionId] = useState<ResumeSectionId>("basic");
   const initialDrafts = useMemo(() => sectionsToDrafts(sections), [sections]);
   const [draftOverrides, setDraftOverrides] = useState<Partial<Record<ResumeSectionId, string>>>({});
   const [chatInput, setChatInput] = useState(() => loadDraftState().resumeChatInput ?? "");
@@ -155,6 +173,16 @@ export function ResumeWorkspacePage({
 
   const buildFullResumeText = () => sections.map((section) => `${section.title}\n${sectionDrafts[section.id]}`).join("\n\n");
 
+  const saveCurrentSection = () => {
+    if (!isLoggedIn) {
+      onRequireLogin();
+      return;
+    }
+    onUpdateResume(buildFullResumeText());
+    applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
+    setSaveMessage(`已保存「${selectedSection.title}」并同步简历内容。`);
+  };
+
   const generateHighlights = async () => {
     if (!isLoggedIn) {
       onRequireLogin();
@@ -170,13 +198,18 @@ export function ResumeWorkspacePage({
       onSetHighlights(response.highlights);
       setDraftOverrides((current) => ({ ...current, highlights: response.highlights.join("\n") }));
       setSelectedSectionId("highlights");
-      setSaveMessage(response.meta.fallbackReason ? `已生成亮点，当前为降级结果：${response.meta.fallbackReason}` : "已生成亮点摘要并同步到后端。");
-    } catch {
+      setSaveMessage(
+        response.meta.backendStatus === "success"
+          ? "模型已生成亮点总结并同步到后端。"
+          : `模型本次未成功返回，已保留本地亮点总结：${repairText(response.meta.fallbackReason) || "请手动核对内容。"}`
+      );
+    } catch (error) {
+      console.error("resume.generateHighlights failed", error);
       const fallback = generateHighlightsLocal(profile);
       onSetHighlights(fallback);
       setDraftOverrides((current) => ({ ...current, highlights: fallback.join("\n") }));
       setSelectedSectionId("highlights");
-      setSaveMessage("后端暂时不可用，已回退为本地亮点摘要。");
+      setSaveMessage(`服务端失败：${describeAiFailure(error, "后端暂时不可用")}；当前先保留本地亮点总结。`);
     } finally {
       setIsGenerating(false);
     }
@@ -203,6 +236,7 @@ export function ResumeWorkspacePage({
         currentText: baseText,
         fullResumeText: buildFullResumeText(),
       });
+      const status = normalizeResumeStatus(response.meta.backendStatus);
       setChatMessages((current) => [
         ...current,
         {
@@ -213,20 +247,24 @@ export function ResumeWorkspacePage({
           suggestion: response.suggestion,
           applyTarget: response.applyTarget,
           evidenceTrace: response.evidenceTrace,
-          metaNote: response.meta.fallbackReason || "",
+          metaNote: formatResumeMetaNote(status, response.meta.fallbackReason),
+          status,
         },
       ]);
-    } catch {
+    } catch (error) {
+      console.error("resume.runAction failed", error);
+      const reason = describeAiFailure(error, "服务端暂时不可用");
       setChatMessages((current) => [
         ...current,
         {
           id: makeId("resume-ai"),
           role: "assistant",
-          text: "后端暂时没返回结果，我先保留本地练习模式建议，至少不会让你卡住。",
+          text: `服务端失败：${reason}。当前先保留本地练习模式建议，至少不会让你卡住。`,
           sectionId: selectedSectionId,
           suggestion: buildResumeSuggestion(action === "full" ? "整份简历" : selectedSection.title, baseText, profile),
           applyTarget: action === "full" ? "full" : "section",
-          metaNote: "本地练习模式",
+          metaNote: formatResumeMetaNote("error", reason),
+          status: "error",
         },
       ]);
     } finally {
@@ -257,6 +295,7 @@ export function ResumeWorkspacePage({
         fullResumeText: buildFullResumeText(),
         userMessage: text,
       });
+      const status = normalizeResumeStatus(response.meta.backendStatus);
       setChatMessages((current) => [
         ...current,
         {
@@ -267,22 +306,26 @@ export function ResumeWorkspacePage({
           suggestion: response.suggestion,
           applyTarget: response.applyTarget,
           evidenceTrace: response.evidenceTrace,
-          metaNote: response.meta.fallbackReason || "",
+          metaNote: formatResumeMetaNote(status, response.meta.fallbackReason),
+          status,
         },
       ]);
       setChatInput("");
       saveDraftState({ ...loadDraftState(), resumeChatInput: "" });
-    } catch {
+    } catch (error) {
+      console.error("resume.sendChat failed", error);
+      const reason = describeAiFailure(error, "服务端暂时不可用");
       setChatMessages((current) => [
         ...current,
         {
           id: makeId("resume-ai"),
           role: "assistant",
-          text: "后端暂时没返回结果，我先给你一版本地练习模式建议。",
+          text: `服务端失败：${reason}。当前先保留本地练习模式建议。`,
           sectionId: selectedSectionId,
           suggestion: buildResumeSuggestion(selectedSection.title, `${selectedDraft}\n${text}`, profile),
           applyTarget: "section",
-          metaNote: "本地练习模式",
+          metaNote: formatResumeMetaNote("error", reason),
+          status: "error",
         },
       ]);
     } finally {
@@ -332,42 +375,40 @@ export function ResumeWorkspacePage({
       <div className="resume-layout focused-resume-layout">
         <section className="surface-card resume-editor-column">
           <div className="surface-card-inner">
-            <div className="resume-profile-head">
+            <div className="resume-page-headline">
+              <span className="subtle-label">简历</span>
+              <div className="resume-page-headline-row">
+                <div>
+                  <h2>我的简历</h2>
+                  <p>AI 实时优化你的简历，按岗位做匹配分析</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="resume-status-strip">
               <div className="resume-avatar">{(profile.displayName || profile.resume.name || "候").slice(0, 1)}</div>
-              <div>
+              <div className="resume-status-copy">
                 <strong>{repairText(profile.displayName || profile.resume.name || "候选人")}</strong>
                 <p>
-                  {repairText(profile.resume.targetRole || "目标岗位待补充")}
+                  {repairText(profile.resume.targetRole || "校招目标岗位")}
                   {position ? ` · 当前岗位：${repairText(position.title)}` : ""}
                 </p>
               </div>
             </div>
 
-            {profile.evidenceLibrary.length > 0 ? (
-              <section className="evidence-preview">
-                <div className="evidence-preview-header">
-                  <span className="evidence-preview-title">AI 已识别的经历证据</span>
-                  <span className="evidence-count">{profile.evidenceLibrary.length} 条</span>
-                </div>
-                <div className="evidence-tags">
-                  {profile.evidenceLibrary.slice(0, 8).map((item) => <span key={item.id} className="evidence-tag">{repairText(item.title)}</span>)}
-                </div>
-                {evidenceKeywords.length > 0 || skillKeywords.length > 0 ? (
-                  <div className="evidence-keywords">
-                    <span className="evidence-kw-label">命中关键词：</span>
-                    {[...evidenceKeywords, ...skillKeywords.filter((item) => !evidenceKeywords.includes(item))].slice(0, 10).map((item) => (
-                      <span key={item} className="evidence-kw-tag">{repairText(item)}</span>
-                    ))}
-                  </div>
-                ) : null}
-                <p className="evidence-hint">这些内容会作为实时助手和模拟面试的证据底座。遗漏的经历可以继续编辑当前模块并保存。</p>
-              </section>
-            ) : null}
-
-            <div className="section-row-header">
-              <div>
-                <span className="subtle-label">{selectedSection.label}</span>
-                <h2>{selectedSection.title}</h2>
+            <div className="resume-document-toolbar">
+              <div className="resume-section-switcher" role="tablist" aria-label="简历模块切换">
+                {sections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={selectedSectionId === section.id ? "resume-section-pill active" : "resume-section-pill"}
+                    onClick={() => setSelectedSectionId(section.id)}
+                    aria-pressed={selectedSectionId === section.id}
+                  >
+                    {section.title}
+                  </button>
+                ))}
               </div>
               <div className="hero-actions">
                 {selectedSectionId === "highlights" ? (
@@ -375,41 +416,59 @@ export function ResumeWorkspacePage({
                     AI 生成亮点
                   </button>
                 ) : null}
-                <button className="button secondary" type="button" onClick={() => void runAction("section")}>
-                  优化当前区块
-                </button>
-                <button
-                  className="button primary"
-                  type="button"
-                  onClick={() => {
-                    if (!isLoggedIn) {
-                      onRequireLogin();
-                      return;
-                    }
-                    applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
-                    setSaveMessage(`已保存「${selectedSection.title}」到后端。`);
-                  }}
-                >
-                  保存到后端
+                <button className="button primary resume-save-button" type="button" onClick={saveCurrentSection}>
+                  保存当前模块
                 </button>
               </div>
             </div>
+
             {saveMessage ? <div className="inline-message success">{saveMessage}</div> : null}
 
-            <textarea
-              className="input textarea tall"
-              value={selectedDraft}
-              aria-label={`${selectedSection.title} 编辑`}
-              onChange={(event) => setDraftOverrides((current) => ({ ...current, [selectedSectionId]: event.target.value }))}
-            />
+            <div className="resume-document-flow">
+              {sections.map((section) => {
+                const active = section.id === selectedSectionId;
+                const value = sectionDrafts[section.id];
+                return (
+                  <article key={section.id} className={active ? "resume-document-section active" : "resume-document-section"}>
+                    <header className="resume-document-section-head">
+                      <div>
+                        <span className="subtle-label">{section.label}</span>
+                        <h2>{section.title}</h2>
+                      </div>
+                      <div className="resume-document-section-actions">
+                        <button className="button secondary compact-button" type="button" onClick={() => void runAction("section")}>
+                          <Sparkles size={14} />
+                          让 AI 优化这一段
+                        </button>
+                        {!active ? (
+                          <button className="button secondary compact-button" type="button" onClick={() => setSelectedSectionId(section.id)}>
+                            编辑
+                          </button>
+                        ) : null}
+                      </div>
+                    </header>
 
-            <div className="resume-module-summary-list">
-              {sections.map((section) => (
-                <button key={section.id} type="button" className={selectedSectionId === section.id ? "resume-module-summary active" : "resume-module-summary"} onClick={() => setSelectedSectionId(section.id)}>
-                  <strong>{section.title}</strong>
-                  <p>{repairText(sectionDrafts[section.id]).slice(0, 60) || "等待补充内容"}</p>
-                </button>
-              ))}
+                    {active ? (
+                      <textarea
+                        className="input textarea tall resume-document-textarea"
+                        value={value}
+                        aria-label={`${section.title} 编辑`}
+                        onChange={(event) => setDraftOverrides((current) => ({ ...current, [section.id]: event.target.value }))}
+                      />
+                    ) : (
+                      <div className="resume-document-preview">
+                        {(repairText(value) || "等待补充内容")
+                          .split(/\n+/)
+                          .filter(Boolean)
+                          .slice(0, 6)
+                          .map((line, index) => (
+                            <p key={`${section.id}-${index}`}>{line}</p>
+                          ))}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -419,28 +478,15 @@ export function ResumeWorkspacePage({
             <div className="resume-chat-header">
               <div>
                 <span className="subtle-label">AI 助手</span>
-                <h2>简历优化</h2>
+                <h2>正常对话优化</h2>
+                <p className="summary-copy">围绕当前模块直接提要求，或用下方快捷意图发起整份优化和岗位匹配分析。</p>
               </div>
             </div>
 
-            <div className="resume-chat-actions">
-              <button
-                className="btn-ai-action btn-ai-action--primary"
-                type="button"
-                onClick={() => {
-                  if (!isLoggedIn) {
-                    onRequireLogin();
-                    return;
-                  }
-                  applySectionSave(selectedSectionId, selectedDraft, profile, onUpdateEvidence, onSetHighlights);
-                  setSaveMessage(`已保存「${selectedSection.title}」到后端。`);
-                }}
-              >
-                保存到后端
-              </button>
+            <div className="resume-chat-actions compact">
               <button className="button secondary compact-button" type="button" onClick={() => void runAction("section")}>
                 <Sparkles size={14} />
-                优化当前区块
+                优化当前模块
               </button>
               <button className="button secondary compact-button" type="button" onClick={() => void runAction("full")}>
                 <FileText size={14} />
@@ -452,9 +498,30 @@ export function ResumeWorkspacePage({
               </button>
             </div>
 
+            {profile.evidenceLibrary.length > 0 ? (
+              <section className="resume-ai-evidence-strip">
+                <div className="evidence-preview-header">
+                  <span className="evidence-preview-title">AI 已识别证据</span>
+                  <span className="evidence-count">{profile.evidenceLibrary.length} 条</span>
+                </div>
+                <div className="evidence-tags">
+                  {profile.evidenceLibrary.slice(0, 6).map((item) => <span key={item.id} className="evidence-tag">{repairText(item.title)}</span>)}
+                </div>
+                {evidenceKeywords.length > 0 || skillKeywords.length > 0 ? (
+                  <div className="evidence-keywords">
+                    <span className="evidence-kw-label">命中关键词：</span>
+                    {[...evidenceKeywords, ...skillKeywords.filter((item) => !evidenceKeywords.includes(item))].slice(0, 8).map((item) => (
+                      <span key={item} className="evidence-kw-tag">{repairText(item)}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
             <div className="chat-thread resume-chat-thread standard-chat-thread">
               {chatMessages.map((message) => (
                 <article key={message.id} className={message.role === "assistant" ? "chat-bubble assistant" : "chat-bubble user"}>
+                  {message.role === "assistant" && message.status ? <AiStatusBadge status={message.status} /> : null}
                   <p>{message.text}</p>
                   {message.metaNote ? <div className="inline-message">{message.metaNote}</div> : null}
                   {message.evidenceTrace?.length ? <EvidenceTrace trace={message.evidenceTrace} /> : null}

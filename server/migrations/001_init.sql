@@ -70,7 +70,7 @@ create table if not exists documents (
   updated_at text not null
 );
 
-create unique index if not exists idx_documents_source on documents(source_type, source_id);
+create unique index if not exists idx_documents_owner_source on documents(owner_key, source_type, source_id);
 create index if not exists idx_documents_position on documents(position_id, source_type, updated_at desc);
 
 create table if not exists document_chunks (

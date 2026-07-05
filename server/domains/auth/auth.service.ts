@@ -7,7 +7,8 @@ import { createOneTimeToken, hashOpaqueToken } from "../../security";
 import { MAIL_TEMPLATES } from "../../mail/templates";
 import type { MailService } from "../../mail/service";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "ai-job-dev-secret-change-in-production";
+const DEFAULT_JWT_SECRET = "ai-job-dev-secret-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN = "24h";
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 64;
@@ -66,6 +67,10 @@ function verifyToken(token: string): JwtPayload {
 }
 
 export function createAuthService(db: AppDb, mailer: MailService) {
+  if (!process.env.JWT_SECRET) {
+    console.warn("[auth] JWT_SECRET 未配置，当前使用默认开发密钥。正式部署前请设置独立密钥。");
+  }
+
   function toUser(row: {
     id: string;
     phone: string | null;

@@ -16,6 +16,7 @@
     "typecheck:server": "node node_modules/typescript/bin/tsc -p tsconfig.server.json --noEmit",
     "test": "node node_modules/vitest/vitest.mjs run --configLoader runner",
     "test:full-flow": "node node_modules/tsx/dist/cli.mjs scripts/full-flow-retest.ts",
+    "test:first-user": "node node_modules/tsx/dist/cli.mjs scripts/first-time-user-flow.ts",
     "test:ai-success-smoke": "node node_modules/tsx/dist/cli.mjs scripts/ai-success-smoke.ts",
     "test:server": "node node_modules/vitest/vitest.mjs run server/index.test.ts --configLoader runner",
     "test:app": "node node_modules/vitest/vitest.mjs run src/App.test.tsx src/components/positions.test.tsx src/components/questions.test.tsx src/components/records.test.tsx src/components/resume.test.tsx --configLoader runner",

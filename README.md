@@ -21,7 +21,7 @@
 
 - `src/components/live.tsx`：实时助手驾驶舱、实时题词卡、模拟面试间。
 - `src/components/context.tsx`：上下文资料、简历证据、问题库。
-- `src/components/home.tsx`：JD 对话收集、岗位卡、面试配置弹窗。
+- `src/components/positions.tsx`：首页岗位台、JD 对话收集、岗位卡、面试配置入口。
 - `src/components/records.tsx`：记录列表、复盘报告、账户与数据导入导出。
 - `src/components/shared.tsx`：共享 UI、配置类型、辅助函数。
 
@@ -65,12 +65,18 @@ npm run dev
 可选环境变量：
 
 ```bash
+HOST=127.0.0.1
 SERVER_PORT=8787
 AI_JOB_DB_PATH=.data/ai-job-platform.sqlite
+APP_BASE_URL=http://127.0.0.1:5173
+APP_CORS_ORIGIN=http://127.0.0.1:5173
+JWT_SECRET=replace-with-a-long-random-secret
 DEEPSEEK_API_KEY=your_deepseek_key
 SEARCH_PROVIDER=tavily # tavily | bing | serpapi
 SEARCH_API_KEY=your_search_key
 ```
+
+生产部署时不要启动 Vite dev server 对外服务。先构建前端，再运行 Fastify 服务返回 `dist` 静态文件与 `/api/*` 接口；容器或云平台可使用 `PORT` 覆盖端口，生产默认监听 `0.0.0.0`。`.env` 和 `.env.*` 不会进入 Docker 构建上下文，密钥应由部署平台以环境变量注入。
 
 主要 API：
 

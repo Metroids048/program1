@@ -4,6 +4,7 @@ import type { AiRunMeta } from "../lib/apiClient";
 import { answerMockSessionOnServer, createMockSessionOnServer, streamCueCardFromServer } from "../lib/apiClient";
 import { repairText } from "../lib/copy";
 import { evaluateMockTurn, generateCueCard, generateFollowUpFromTranscript } from "../lib/interviewEngine";
+import { describeAiFailure } from "../lib/requestError";
 import { analyzeSpeech } from "../lib/speechAnalysis";
 import { type DictationHandle, getSpeechRecognitionSupport, isSpeechRecognitionSupported, startDictation } from "../lib/speech";
 import type { AnswerCueCard, CandidateProfile, ConversationMessage, InterviewRecord, MockMessage, MockTurn, Position, WorkspaceState } from "../types";
@@ -280,10 +281,18 @@ export function LiveAssistantView({
             setBackendHint(result.backendStatus === "success" ? `模型生成 · ${result.latencyMs}ms` : `本地练习 · ${repairText(result.fallbackReason)}`);
           });
         })
-        .catch(() => {
+        .catch((error) => {
+          const reason = describeAiFailure(error, "服务端暂时不可用");
+          console.error("live.generate cue card failed", error);
           startTransition(() => {
-            setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "后端未连接，当前使用本地规则提词卡。", evidenceTrace: [], latencyMs: 0 });
-            setBackendHint("后端未连接 · 本地练习模式");
+            setCueMeta({
+              backendStatus: "fallback",
+              skillId: CUE_CARD_SKILL_ID,
+              fallbackReason: `服务端失败：${reason}。当前保留本地练习提词卡。`,
+              evidenceTrace: [],
+              latencyMs: 0,
+            });
+            setBackendHint(`服务端失败：${reason}；当前继续使用本地练习卡。`);
           });
         })
         .finally(() => {
@@ -341,6 +350,12 @@ export function LiveAssistantView({
         setCaptureState((current) => (current === "error" ? "error" : "ready"));
       },
     });
+    if (!dictationRef.current) {
+      setVoiceError("麦克风启动失败，请重试或直接输入文字。");
+      setListening(false);
+      setStartedAt(null);
+      setCaptureState("error");
+    }
   };
 
   const clearDraft = () => {
@@ -436,7 +451,7 @@ export function LiveAssistantView({
               </button>
             </div>
 
-            {backendHint ? <div className="inline-message success">{backendHint}</div> : null}
+            {backendHint ? <div className={cueMeta?.backendStatus === "success" ? "inline-message success" : "inline-message warn"}>{backendHint}</div> : null}
           </div>
         </section>
 
@@ -533,7 +548,10 @@ export function InterviewRoomView({
   const [transcript, setTranscript] = useState<MockMessage[]>([{ role: "interviewer", text: questionPlan[0]?.question ?? "请先介绍一段和当前岗位最相关的经历。" }]);
   const [cueCards, setCueCards] = useState<AnswerCueCard[]>([]);
   const [cueMeta, setCueMeta] = useState<AiRunMeta | null>(null);
+  const [cueCardLoading, setCueCardLoading] = useState(false);
   const [backendHint, setBackendHint] = useState("");
+  const [sessionBackendStatus, setSessionBackendStatus] = useState<"success" | "fallback" | "cache" | "error">("fallback");
+  const [questionSourceLabel, setQuestionSourceLabel] = useState("");
   const [instantFeedback, setInstantFeedback] = useState("");
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [latestServerRecord, setLatestServerRecord] = useState<InterviewRecord | null>(null);
@@ -571,7 +589,10 @@ export function InterviewRoomView({
         })) as MockMessage[];
         setTranscript(restoredTranscript.length > 0 ? restoredTranscript : [{ role: "interviewer", text: stripMarkdown(result.question) }]);
         setConversationHistory(result.conversationHistory ?? []);
-        formatQuestionSourceLabel(result.questionSource ?? (result.backendStatus === "success" ? "模型出题" : "本地出题"));
+        const answeredCount = restoredTranscript.filter((message) => message.role === "candidate").length;
+        setQuestionIndex(Math.min(answeredCount, questionPlan.length - 1));
+        setQuestionSourceLabel(formatQuestionSourceLabel(result.questionSource ?? (result.backendStatus === "success" ? "model" : "local")));
+        setSessionBackendStatus(result.backendStatus ?? "fallback");
         setBackendHint(
           result.backendStatus === "cache"
             ? "已恢复上次未完成的模拟面试。"
@@ -581,9 +602,13 @@ export function InterviewRoomView({
         );
         startedAtRef.current = Date.now();
       })
-      .catch(() => {
+      .catch((error) => {
+        const reason = describeAiFailure(error, "服务端暂时不可用");
+        console.error("mock.createSession failed", error);
         if (!active) return;
-        setBackendHint("后端未连接，当前为本地练习模式。");
+        setSessionId((current) => current || "local-fallback");
+        setSessionBackendStatus("error");
+        setBackendHint(`服务端失败：${reason}；当前为本地练习模式，回答将仅保存在本地。`);
         startedAtRef.current = Date.now();
       });
     return () => {
@@ -626,6 +651,10 @@ export function InterviewRoomView({
       },
       onEnd: () => setListening(false),
     });
+    if (!dictationRef.current) {
+      setVoiceError("麦克风启动失败，请重试或直接输入文字。");
+      setListening(false);
+    }
   };
 
   const showCueCard = () => {
@@ -638,6 +667,7 @@ export function InterviewRoomView({
     setCueCards((current) => [localCard, ...current.filter((item) => item.id !== localCard.id)]);
     setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "正在连接后端模型，先展示本地练习提词卡。", evidenceTrace: [], latencyMs: 0 });
     setBackendHint("本地规则已先生成提词卡。");
+    setCueCardLoading(true);
 
     void streamCueCardFromServer({
       questionText: currentPrompt,
@@ -659,12 +689,21 @@ export function InterviewRoomView({
           setBackendHint(result.backendStatus === "success" ? `模型生成 · ${result.latencyMs}ms` : `本地练习 · ${repairText(result.fallbackReason)}`);
         });
       })
-      .catch(() => {
+      .catch((error) => {
+        const reason = describeAiFailure(error, "服务端暂时不可用");
+        console.error("mock.showCueCard failed", error);
         startTransition(() => {
-          setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "后端未连接，当前使用本地规则提词卡。", evidenceTrace: [], latencyMs: 0 });
-          setBackendHint("后端未连接 · 本地练习模式");
+          setCueMeta({
+            backendStatus: "fallback",
+            skillId: CUE_CARD_SKILL_ID,
+            fallbackReason: `服务端失败：${reason}。当前保留本地练习提词卡。`,
+            evidenceTrace: [],
+            latencyMs: 0,
+          });
+          setBackendHint(`服务端失败：${reason}；当前继续使用本地练习卡。`);
         });
-      });
+      })
+      .finally(() => setCueCardLoading(false));
   };
 
   const submitAnswer = useCallback(() => {
@@ -692,13 +731,17 @@ export function InterviewRoomView({
         setConversationHistory(result.conversationHistory ?? []);
         setLatestServerRecord(result.record);
         setInstantFeedback(repairText(result.decision?.instantFeedback ?? ""));
-        formatQuestionSourceLabel(result.backendStatus === "success" ? (result.decision?.type === "next" ? "模型下一题" : "模型追问") : "本地追问");
+        setQuestionSourceLabel(result.backendStatus === "success" ? (result.decision?.type === "next" ? "模型下一题" : "模型追问") : "本地追问");
+        setSessionBackendStatus(result.backendStatus ?? "fallback");
         setBackendHint(result.backendStatus === "success" ? "模型面试官已根据回答继续追问" : `本地练习模式${result.meta?.fallbackReason ? ` · ${repairText(result.meta.fallbackReason)}` : ""}`);
       })
-      .catch(() => {
+      .catch((error) => {
+        const reason = describeAiFailure(error, "服务端暂时不可用");
+        console.error("mock.submitAnswer failed", error);
         const followUp = stripMarkdown(questionPlan[questionIndex + 1]?.question ?? generateFollowUpFromTranscript(history, profile, position));
         setTranscript([...history, { role: "interviewer", text: followUp }]);
-        setBackendHint("后端未连接，当前为本地练习模式。");
+        setSessionBackendStatus("error");
+        setBackendHint(`服务端失败：${reason}；当前继续使用本地追问。`);
       })
       .finally(() => {
         setQuestionIndex((current) => Math.min(current + 1, questionPlan.length - 1));
@@ -823,7 +866,8 @@ export function InterviewRoomView({
                 {voiceError ? <div className="inline-message error">{repairText(voiceError)}</div> : null}
                 {!sttSupported ? <p className="form-hint">当前浏览器不支持语音识别，已自动降级为文本输入。</p> : null}
                 {instantFeedback ? <div className="inline-message success">{instantFeedback}</div> : null}
-                {backendHint ? <div className="inline-message">{backendHint}</div> : null}
+                {questionSourceLabel ? <p className="form-hint">题目来源：{questionSourceLabel}</p> : null}
+                {backendHint ? <div className={sessionBackendStatus === "success" ? "inline-message success" : "inline-message warn"}>{backendHint}</div> : null}
               </div>
             </section>
 
@@ -865,7 +909,7 @@ export function InterviewRoomView({
                     生成提词卡
                   </button>
                 </div>
-                {submitting && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={(card) => {
+                {cueCardLoading && cueCards.length === 0 ? <CueCardSkeleton /> : <CueCardPanel card={cueCards[0]} meta={cueMeta} onSaveQuestion={(card) => {
                   if (!isLoggedIn) {
                     onRequireLogin();
                     return;

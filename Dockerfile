@@ -10,6 +10,7 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
+ENV HOST=0.0.0.0
 ENV SERVER_PORT=8787
 ENV AI_JOB_DB_PATH=/data/ai-job-platform.sqlite
 

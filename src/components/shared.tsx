@@ -46,7 +46,7 @@ export type SpeechCaptureState = "idle" | "listening" | "paused" | "finalizing" 
 export type RealtimeSubmitMode = InterviewSubmitMode;
 export type RecognizedDraft = { interimText: string; finalText: string; editableText: string; lastFinalAt: number };
 export type ChatMessage = { id: string; role: "assistant" | "user"; text: string };
-export type ResumeSectionId = "basic" | "education" | "highlights" | "work" | "projects" | "skills" | "risks";
+export type ResumeSectionId = "basic" | "education" | "work" | "projects" | "highlights" | "skills" | "extra";
 export type ResumeChatMessage = {
   id: string;
   role: "assistant" | "user";
@@ -56,8 +56,9 @@ export type ResumeChatMessage = {
   applyTarget?: "section" | "full";
   evidenceTrace?: Array<{ id: string; title: string; reason: string; synthetic?: boolean }>;
   metaNote?: string;
+  status?: AiStatusKind;
 };
-export type AiStatusKind = "success" | "fallback" | "generating";
+export type AiStatusKind = "success" | "fallback" | "generating" | "error";
 
 export const DEFAULT_CONFIG: InterviewConfig = {
   interviewerRole: "上级",
@@ -222,7 +223,7 @@ export function CueCardPanel({ card, meta, onSaveQuestion }: { card?: AnswerCueC
 }
 
 export function AiStatusBadge({ status }: { status: AiStatusKind }) {
-  const label = status === "success" ? "模型生成" : status === "generating" ? "生成中..." : "本地练习";
+  const label = status === "success" ? "模型生成" : status === "generating" ? "生成中..." : status === "error" ? "请求失败" : "本地练习";
   return (
     <span className={`ai-status-badge ${status}`} aria-label={`AI 状态：${label}`}>
       <span aria-hidden="true" />
@@ -248,48 +249,67 @@ export function EvidenceTrace({ trace }: { trace: Array<{ id: string; title: str
 }
 
 export function buildResumeSections(profile: CandidateProfile): Array<{ id: ResumeSectionId; label: string; title: string; content: string; icon: LucideIcon }> {
-  const evidenceByType = (type: EvidenceType) =>
-    profile.evidenceLibrary.filter((item) => item.type === type).map((item) => `${item.title}\n${item.detail}\n${item.impact}`).join("\n\n");
+  const formatEvidence = (items: typeof profile.evidenceLibrary) =>
+    items
+      .map((item) => [item.title, item.detail, item.impact].filter(Boolean).join("\n"))
+      .join("\n\n");
+
+  const evidenceByType = (type: EvidenceType) => formatEvidence(profile.evidenceLibrary.filter((item) => item.type === type));
+  const educationLines = profile.resumeText
+    .split(/\n/)
+    .filter((line) => /大学|学院|本科|硕士|博士|GPA|教育/.test(line))
+    .join("\n");
+  const workEvidence = profile.evidenceLibrary.filter((item) => item.type === "实习");
+  const projectEvidence = profile.evidenceLibrary.filter((item) => item.type === "项目" || item.type === "成果");
+  const matchedEvidenceIds = new Set([...workEvidence, ...projectEvidence].map((item) => item.id));
+  const extraEvidence = profile.evidenceLibrary.filter((item) => !matchedEvidenceIds.has(item.id) && item.type !== "教育" && item.type !== "技能");
+  const extraBlocks = [formatEvidence(extraEvidence), profile.resume.risks.join("\n")].filter((block) => block.trim().length > 0);
 
   return [
-    { id: "basic", label: "基本信息", title: profile.displayName || profile.resume.name || "候选人", content: `${profile.resume.name}\n${profile.resume.targetRole}\n${profile.resume.summary}`, icon: UserRound },
+    {
+      id: "basic",
+      label: "个人信息",
+      title: "个人信息",
+      content: [profile.resume.name, profile.resume.targetRole, profile.resume.summary].filter(Boolean).join("\n"),
+      icon: UserRound,
+    },
     {
       id: "education",
       label: "教育经历",
       title: "教育经历",
-      content: evidenceByType("教育") || profile.resumeText.split(/\n/).filter((line) => /大学|本科|硕士|GPA|教育/.test(line)).join("\n"),
+      content: evidenceByType("教育") || educationLines,
       icon: GraduationCap,
-    },
-    {
-      id: "highlights",
-      label: "亮点摘要",
-      title: "亮点摘要",
-      content: profile.highlights.length ? profile.highlights.join("\n") : generateHighlightsLocal(profile).join("\n"),
-      icon: Check,
     },
     {
       id: "work",
       label: "工作经历",
       title: "工作经历",
-      content: evidenceByType("实习") || profile.evidenceLibrary.slice(0, 2).map((item) => `${item.title}\n${item.detail}`).join("\n\n"),
+      content: formatEvidence(workEvidence) || formatEvidence(profile.evidenceLibrary.slice(0, 2)),
       icon: ClipboardList,
     },
     {
       id: "projects",
       label: "项目经历",
       title: "项目经历",
-      content: evidenceByType("项目") || profile.evidenceLibrary.map((item) => `${item.title}\n${item.detail}`).join("\n\n"),
+      content: formatEvidence(projectEvidence) || formatEvidence(profile.evidenceLibrary),
       icon: Target,
     },
-    { id: "skills", label: "技能", title: "技能与工具", content: profile.resume.skills.join("、"), icon: BookOpenCheck },
-    { id: "risks", label: "待补强", title: "待补强", content: profile.resume.risks.join("\n"), icon: RefreshCw },
+    {
+      id: "highlights",
+      label: "亮点总结",
+      title: "亮点总结",
+      content: profile.highlights.length ? profile.highlights.join("\n") : generateHighlightsLocal(profile).join("\n"),
+      icon: Check,
+    },
+    { id: "skills", label: "技能", title: "技能", content: profile.resume.skills.join("、"), icon: BookOpenCheck },
+    { id: "extra", label: "补充内容", title: "补充内容", content: extraBlocks.join("\n\n") || "等待补充内容", icon: RefreshCw },
   ];
 }
 
 export function sectionsToDrafts(sections: Array<{ id: ResumeSectionId; content: string }>): Record<ResumeSectionId, string> {
   return sections.reduce(
     (acc, section) => ({ ...acc, [section.id]: section.content }),
-    { basic: "", education: "", highlights: "", work: "", projects: "", skills: "", risks: "" },
+    { basic: "", education: "", work: "", projects: "", highlights: "", skills: "", extra: "" },
   );
 }
 

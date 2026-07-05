@@ -68,7 +68,6 @@ export function HomeDashboard({
       messages?: Array<{ role: "assistant" | "user"; text: string }>;
     },
   ) => Promise<string | null> | string | null;
-  onOpenPosition: (positionId: string) => void;
   onOpenCreatedPosition: (positionId: string) => void;
   onOpenMockList: () => void;
   onOpenLive: () => void;
@@ -76,7 +75,12 @@ export function HomeDashboard({
   isLoggedIn: boolean;
 }) {
   const activePosition = positions.find((item) => item.id === activePositionId) ?? positions[0];
+  const orderedPositions = activePosition
+    ? [activePosition, ...positions.filter((item) => item.id !== activePosition.id)]
+    : positions;
   const [input, setInput] = useState(() => loadDraftState().homeInput ?? "");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -86,12 +90,25 @@ export function HomeDashboard({
       onRequireLogin("/");
       return;
     }
-    const previousMessages = activePosition?.intake.messages?.map((message) => ({ role: message.role, text: message.text })) ?? [];
-    const nextMessages = [...previousMessages, { role: "user" as const, text }];
-    const positionId = await onSubmitJd(text, { positionId: activePosition?.id, messages: nextMessages });
-    saveDraftState({ ...loadDraftState(), homeInput: "" });
-    setInput("");
-    if (positionId) onOpenCreatedPosition(positionId);
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      const previousMessages = activePosition?.intake.messages?.map((message) => ({ role: message.role, text: message.text })) ?? [];
+      const nextMessages = [...previousMessages, { role: "user" as const, text }];
+      const positionId = await onSubmitJd(text, { positionId: activePosition?.id, messages: nextMessages });
+      if (!positionId) {
+        setSubmitError("保存失败，请检查网络后重试。");
+        setSubmitting(false);
+        return;
+      }
+      saveDraftState({ ...loadDraftState(), homeInput: "" });
+      setInput("");
+      onOpenCreatedPosition(positionId);
+    } catch {
+      setSubmitError("保存失败，请检查网络后重试。");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const updateInput = (value: string) => {
@@ -108,39 +125,51 @@ export function HomeDashboard({
             <QuotaBadge />
           </div>
           <h1>告诉 AI 你想面试的岗位</h1>
-          <p>粘贴 JD、输入岗位名称，或从下方选择一个常见场景开始准备。</p>
+          <p>把真实 JD、岗位要求或你已经知道的面试背景直接贴进来，先把当前岗位坐稳，再继续进入实时助手或模拟面试。</p>
         </header>
 
         <div className="home-product-shell">
           <section className="surface-card home-hero-input-card">
             <div className="surface-card-inner">
-              <div className="section-row-header">
+              <div className="home-dialog-intro">
                 <div>
                   <span className="subtle-label">岗位输入</span>
-                  <h2>从一段 JD 开始</h2>
-                  <p>只需要先放入真实岗位信息，后续再补面试官、轮次和资料。</p>
+                  <h2>先放一整段 JD 或面试背景</h2>
+                  <p>这里就是首页的主对话框。你可以直接粘贴一大段文本，系统会先承接原文，再带你继续补全当前岗位。</p>
                 </div>
               </div>
 
               <form className="home-intake-box home-intake-box-product" onSubmit={submit}>
-                <textarea
-                  id="home-intake-product"
-                  value={input}
-                  aria-label="首页主输入"
-                  onChange={(event) => updateInput(event.target.value)}
-                  placeholder="例如：腾讯 AI 产品经理实习，业务负责人一面，45 分钟，有完整 JD。"
-                />
-                <div className="home-intake-actions">
-                  <button className="button ghost home-attach-button" type="button" onClick={() => updateInput(`${input}${input ? "\n" : ""}我会补充自定义 JD。`)}>
-                    <Upload size={14} />
-                    上传自定义 JD
-                  </button>
-                  <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim()}>
-                    保存并继续完善
-                    <ArrowRight size={14} />
-                  </button>
+                <div className="home-dialog-shell">
+                  <textarea
+                    id="home-intake-product"
+                    value={input}
+                    aria-label="首页主输入"
+                    onChange={(event) => updateInput(event.target.value)}
+                    placeholder="例如：岗位：AI 产品运营实习生
+公司：某 AI 教育科技创业公司
+
+岗位职责
+1. 负责 AI 求职工具的用户增长、社群运营和内容运营，提升新用户激活率和留存率
+2. 基于用户反馈和数据表现，协助产品经理优化简历诊断、模拟面试等核心功能
+3. 策划校招季专题活动，求职训练营和校园大使合作"
+                  />
+                  <div className="home-dialog-footer">
+                    <div className="home-dialog-footer-spacer" />
+                    <div className="home-intake-actions">
+                      <button className="button secondary compact-button" type="button" onClick={() => updateInput(`${input}${input ? "\n" : ""}我会补充自定义 JD。`)}>
+                        <Upload size={14} />
+                        上传 JD
+                      </button>
+                      <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim() || submitting}>
+                        {submitting ? "保存中..." : "保存当前岗位"}
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </form>
+              {submitError ? <p className="inline-message error" role="alert">{submitError}</p> : null}
 
               <div className="home-suggestion-grid home-suggestion-grid-product">
                 {[
@@ -157,39 +186,47 @@ export function HomeDashboard({
             </div>
           </section>
 
-          <section className="surface-card home-hero-side-card">
+          <section className="surface-card home-current-position-card">
             <div className="surface-card-inner">
-              <div className="section-row-header">
-                <div>
+              <div className="home-current-position-strip">
+                <div className="home-current-position-copy">
                   <span className="subtle-label">当前岗位</span>
                   <h2>{activePosition ? `${repairText(activePosition.company) || "公司待确认"} · ${repairText(activePosition.title) || "岗位待确认"}` : "还没有岗位卡"}</h2>
+                  <p>{activePosition ? positionSummary(activePosition) : "保存一个岗位后，这里会显示当前岗位摘要和后续入口。"}</p>
                 </div>
+
+                <article className="home-mini-status-card">
+                  <span>准备状态</span>
+                  <strong>{activePosition ? summarizePositionStatus(activePosition) : "等待创建岗位"}</strong>
+                </article>
               </div>
 
-              <article className="home-mini-status-card">
-                <span>准备状态</span>
-                <strong>{activePosition ? summarizePositionStatus(activePosition) : "等待创建岗位"}</strong>
-                <p>{activePosition ? positionSummary(activePosition) : "保存一个岗位后，这里会显示最小岗位摘要。"} </p>
-              </article>
-
-              <div className="home-card-actions hero-actions-column">
-                <button className="button primary" type="button" onClick={() => {
-                  if (!isLoggedIn) {
-                    onRequireLogin("/live");
-                    return;
-                  }
-                  onOpenLive();
-                }}>
+              <div className="home-current-position-actions">
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => {
+                    if (!isLoggedIn) {
+                      onRequireLogin("/live");
+                      return;
+                    }
+                    onOpenLive();
+                  }}
+                >
                   <MessageCircle size={16} />
                   进入实时助手
                 </button>
-                <button className="button secondary" type="button" onClick={() => {
-                  if (!isLoggedIn) {
-                    onRequireLogin("/mock/positions");
-                    return;
-                  }
-                  onOpenMockList();
-                }}>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => {
+                    if (!isLoggedIn) {
+                      onRequireLogin("/mock");
+                      return;
+                    }
+                    onOpenMockList();
+                  }}
+                >
                   <Mic size={16} />
                   进入模拟面试
                 </button>
@@ -198,6 +235,39 @@ export function HomeDashboard({
               {!isLoggedIn ? <p className="home-guest-hint">页面可以先看；点击进入、生成、保存、上传或开始练习时再登录。</p> : null}
             </div>
           </section>
+
+          {orderedPositions.length > 0 ? (
+            <section className="home-position-collection">
+              <div className="section-row-header">
+                <div>
+                  <span className="subtle-label">岗位列表</span>
+                  <h2>已保存岗位</h2>
+                </div>
+              </div>
+              <div className="home-position-grid">
+                {orderedPositions.map((position, index) => {
+                  const isActive = position.id === activePosition?.id;
+                  return (
+                    <button
+                      key={position.id}
+                      type="button"
+                      className={isActive ? "home-position-card home-position-card--active" : "home-position-card"}
+                      onClick={() => onOpenCreatedPosition(position.id)}
+                    >
+                      <div className="home-position-head">
+                        <span className="home-position-icon"><BriefcaseBusiness size={16} /></span>
+                        <strong>{repairText(position.company) || "公司待确认"}</strong>
+                        {index === 0 ? <span className="badge-current">当前岗位</span> : null}
+                      </div>
+                      <p className="home-position-title">{repairText(position.title) || "岗位待确认"}</p>
+                      <span className="home-position-status">{summarizePositionStatus(position)}</span>
+                      <p className="home-position-summary">{positionSummary(position)}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
     </section>

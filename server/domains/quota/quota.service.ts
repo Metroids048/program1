@@ -18,6 +18,10 @@ export interface QuotaInfo {
 }
 
 export function createQuotaService(db: AppDb) {
+  function isGuestOwner(userId: string | undefined): boolean {
+    return !userId || userId.startsWith("guest_");
+  }
+
   function getDailyResetAt(): string {
     const tomorrow = new Date();
     tomorrow.setHours(0, 0, 0, 0);
@@ -57,7 +61,7 @@ export function createQuotaService(db: AppDb) {
   }
 
   function getQuotaInfo(userId: string | undefined, positionsCount?: number): QuotaInfo {
-    const isGuest = !userId;
+    const isGuest = isGuestOwner(userId);
     const dailyLimit = isGuest ? GUEST_DAILY_LIMIT : USER_DAILY_LIMIT;
     const positionLimit = isGuest ? GUEST_POSITION_LIMIT : USER_POSITION_LIMIT;
     const dailyUsed = userId ? countDailyUsage(userId) : 0;

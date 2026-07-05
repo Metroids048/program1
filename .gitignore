@@ -10,6 +10,7 @@ logs/
 .data/*.sqlite
 .data/*.sqlite-shm
 .data/*.sqlite-wal
+.data/mail-outbox.json
 
 # Local env (contains DeepSeek API key) — never commit
 .env

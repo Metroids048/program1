@@ -62,11 +62,12 @@ export function createRagRuntime(db: AppDb, resolveOwnerKey: () => string, resol
       this.reindexQuestions(position.id, position.questions);
     },
     reindexQuestions(positionId, questions) {
-      db.deleteDocumentsBySource("question", positionId);
+      const ownerKey = resolveOwnerKey();
+      db.deleteDocumentsBySource("question", positionId, ownerKey);
       questions.forEach((question, index) => {
         const now = nowIso();
         const document = createDocument({
-          ownerKey: resolveOwnerKey(),
+          ownerKey,
           positionId,
           sourceType: "question",
           sourceId: question.id,
@@ -81,11 +82,12 @@ export function createRagRuntime(db: AppDb, resolveOwnerKey: () => string, resol
       });
     },
     reindexMaterials(positionId, materials) {
-      db.deleteDocumentsBySource("material", positionId);
+      const ownerKey = resolveOwnerKey();
+      db.deleteDocumentsBySource("material", positionId, ownerKey);
       materials.forEach((material, index) => {
         const now = nowIso();
         const document = createDocument({
-          ownerKey: resolveOwnerKey(),
+          ownerKey,
           positionId,
           sourceType: "material",
           sourceId: material.id,
@@ -147,7 +149,7 @@ function createDocument(input: {
   now: string;
 }): RagDocument {
   return {
-    id: `${input.sourceType}:${input.sourceId}`,
+    id: `${input.ownerKey}:${input.sourceType}:${input.sourceId}`,
     positionId: input.positionId || undefined,
     sourceType: input.sourceType,
     sourceId: input.sourceId,

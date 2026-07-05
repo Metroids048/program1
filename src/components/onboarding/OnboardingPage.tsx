@@ -74,7 +74,7 @@ export function OnboardingPage({
       });
       const data = (await res.json()) as OnboardingResponse;
       if (data.nextStep) setNextStep(data.nextStep);
-      if (data.position && onComplete) onComplete(data.position);
+      onComplete?.(data.position);
     } catch {
       // Best effort
     }
@@ -92,6 +92,7 @@ export function OnboardingPage({
     } catch {
       // Best effort
     }
+    onComplete?.();
     setDone(true);
   };
 
@@ -122,7 +123,7 @@ export function OnboardingPage({
   }
 
   const selectedOptions = step.options || [];
-  const currentValue = values[step.key] || "";
+  const currentValue = values[step.field] || "";
 
   return (
     <div className="onboarding-page">
@@ -138,7 +139,7 @@ export function OnboardingPage({
         <h1 className="onboarding-step-title">{step.title}</h1>
         <p className="onboarding-step-copy">
           {step.key === "targetRole" ? "先告诉我们你的目标方向，后面的 JD 分析和题目生成会更贴近你的求职目标。" :
-            step.key === "resumeText" ? "粘贴简历后，我们会优先帮你抽取证据素材、问题库和提词卡上下文。" :
+            step.key === "resume" ? "粘贴简历后，我们会优先帮你抽取证据素材、问题库和提词卡上下文。" :
               "这些信息会帮助系统为你生成更贴近真实场景的模拟面试。"}
         </p>
 
@@ -149,7 +150,7 @@ export function OnboardingPage({
                 key={opt}
                 type="button"
                 className={`onboarding-option ${currentValue === opt ? "selected" : ""}`}
-                onClick={() => setValue(step.key, currentValue === opt ? "" : opt)}
+                onClick={() => setValue(step.field, currentValue === opt ? "" : opt)}
               >
                 {opt}
                 {currentValue === opt && <Check size={14} />}
@@ -161,9 +162,9 @@ export function OnboardingPage({
             <textarea
               className="onboarding-textarea"
               placeholder={step.placeholder || ""}
-              rows={step.key === "resumeText" ? 8 : 2}
+              rows={step.key === "resume" ? 8 : 2}
               value={currentValue}
-              onChange={(e) => setValue(step.key, e.target.value)}
+              onChange={(e) => setValue(step.field, e.target.value)}
             />
           </div>
         )}

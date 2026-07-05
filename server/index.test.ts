@@ -1,24 +1,35 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalFallbackProvider } from "./ai/provider";
-import { buildServer } from "./index";
+import { createDb } from "./db";
+import { buildServer, resolveListenOptions } from "./index";
+import { createRagRuntime } from "./rag";
 import { resetRateLimits } from "./security";
+import { createInitialAppState } from "../src/lib/interviewEngine";
 
 const tempDirs: string[] = [];
 const apps: FastifyInstance[] = [];
+const originalMailOutboxPath = process.env.MAIL_OUTBOX_PATH;
+const originalMailOutboxLogPath = process.env.MAIL_OUTBOX_LOG_PATH;
 
 function testDbPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "ai-job-server-"));
   tempDirs.push(dir);
+  process.env.MAIL_OUTBOX_PATH = join(dir, "mail-outbox.json");
+  process.env.MAIL_OUTBOX_LOG_PATH = join(dir, "mail-outbox.log");
   return join(dir, "test.sqlite");
 }
 
 afterEach(async () => {
   await Promise.allSettled(apps.splice(0).map((app) => app.close()));
   tempDirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  if (originalMailOutboxPath === undefined) delete process.env.MAIL_OUTBOX_PATH;
+  else process.env.MAIL_OUTBOX_PATH = originalMailOutboxPath;
+  if (originalMailOutboxLogPath === undefined) delete process.env.MAIL_OUTBOX_LOG_PATH;
+  else process.env.MAIL_OUTBOX_LOG_PATH = originalMailOutboxLogPath;
   resetRateLimits();
 });
 
@@ -48,6 +59,37 @@ async function closeTestApp(app: FastifyInstance): Promise<void> {
 }
 
 describe("local backend API", () => {
+  it("uses platform port and all-interface host in production listen options", () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldPort = process.env.PORT;
+    const oldServerPort = process.env.SERVER_PORT;
+    const oldHost = process.env.HOST;
+    process.env.NODE_ENV = "production";
+    process.env.PORT = "9456";
+    process.env.SERVER_PORT = "8787";
+    delete process.env.HOST;
+
+    try {
+      expect(resolveListenOptions()).toEqual({ host: "0.0.0.0", port: 9456 });
+    } finally {
+      if (oldNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldNodeEnv;
+      if (oldPort === undefined) delete process.env.PORT;
+      else process.env.PORT = oldPort;
+      if (oldServerPort === undefined) delete process.env.SERVER_PORT;
+      else process.env.SERVER_PORT = oldServerPort;
+      if (oldHost === undefined) delete process.env.HOST;
+      else process.env.HOST = oldHost;
+    }
+  });
+
+  it("keeps local env files out of the Docker build context", () => {
+    const dockerignore = readFileSync(".dockerignore", "utf8");
+    expect(dockerignore).toContain(".env");
+    expect(dockerignore).toContain(".env.*");
+    expect(dockerignore).toContain("!.env.example");
+  });
+
   it("analyzes a JD and returns persisted position context", async () => {
     const app = testApp();
     const response = await app.inject({
@@ -301,6 +343,53 @@ describe("local backend API", () => {
       headers: { "x-guest-id": "guest-one" },
     });
     expect(contextSelf.statusCode).toBe(200);
+  });
+
+  it("uses a server-issued cookie for guests without x-guest-id instead of a shared data bucket", async () => {
+    const app = testApp();
+
+    const intake = await app.inject({
+      method: "POST",
+      url: "/api/positions/intake",
+      payload: { rawJdText: "公司：无痕访客公司\n岗位：产品经理\n负责访谈和复盘。" },
+    });
+    expect(intake.statusCode).toBe(200);
+    const positionId = intake.json().positions[0].id as string;
+    const setCookie = intake.headers["set-cookie"];
+    const cookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    expect(cookie).toContain("ai_job_guest_id=");
+
+    const sameGuest = await app.inject({
+      method: "GET",
+      url: "/api/state",
+      headers: { cookie: String(cookie).split(";")[0] },
+    });
+    expect((sameGuest.json().positions as Array<{ id: string }>).map((position) => position.id)).toContain(positionId);
+
+    const freshAnonymous = await app.inject({ method: "GET", url: "/api/state" });
+    expect((freshAnonymous.json().positions as Array<{ id: string }>).map((position) => position.id)).not.toContain(positionId);
+  });
+
+  it("keeps profile RAG documents scoped per owner", () => {
+    const db = createDb(testDbPath());
+    let ownerKey = "user:A";
+    const rag = createRagRuntime(db, () => ownerKey, () => ownerKey);
+
+    const profileA = createInitialAppState().profile;
+    profileA.displayName = "Alice";
+    rag.reindexProfile(profileA);
+    expect(rag.retrieve("Alice").items.some((item) => item.ownerKey === "user:A")).toBe(true);
+
+    ownerKey = "user:B";
+    const profileB = createInitialAppState().profile;
+    profileB.displayName = "Bob";
+    rag.reindexProfile(profileB);
+
+    ownerKey = "user:A";
+    expect(rag.retrieve("Alice").items.some((item) => item.ownerKey === "user:A")).toBe(true);
+    ownerKey = "user:B";
+    expect(rag.retrieve("Bob").items.some((item) => item.ownerKey === "user:B")).toBe(true);
+    db.db?.close();
   });
 
   it("indexes materials and questions into RAG, and resume AI returns evidence trace", async () => {
@@ -903,6 +992,55 @@ describe("local backend API", () => {
       await app.close();
     });
 
+    it("only exposes the current user's outbox items", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const regA = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138031", password: "Password123" },
+      });
+      const regB = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138032", password: "Password123" },
+      });
+      const tokenA = regA.json().tokens.accessToken as string;
+      const tokenB = regB.json().tokens.accessToken as string;
+
+      await app.inject({
+        method: "POST",
+        url: "/api/account/profile",
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { email: "owner-a@example.com" },
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/account/profile",
+        headers: { authorization: `Bearer ${tokenB}` },
+        payload: { email: "owner-b@example.com" },
+      });
+
+      const outboxA = await app.inject({
+        method: "GET",
+        url: "/api/mail/outbox",
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const outboxB = await app.inject({
+        method: "GET",
+        url: "/api/mail/outbox",
+        headers: { authorization: `Bearer ${tokenB}` },
+      });
+
+      expect(outboxA.statusCode).toBe(200);
+      expect(outboxB.statusCode).toBe(200);
+      expect(outboxA.json().items).toHaveLength(1);
+      expect(outboxB.json().items).toHaveLength(1);
+      expect(outboxA.json().items[0].to).toBe("owner-a@example.com");
+      expect(outboxB.json().items[0].to).toBe("owner-b@example.com");
+
+      await app.close();
+    });
+
     it("sends password reset email and resets password successfully", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
       const reg = await app.inject({
@@ -964,6 +1102,26 @@ describe("local backend API", () => {
       });
       expect(login.statusCode).toBe(200);
       await app.close();
+    });
+
+    it("warns when JWT_SECRET is not configured", async () => {
+      const oldJwtSecret = process.env.JWT_SECRET;
+      delete process.env.JWT_SECRET;
+      vi.resetModules();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const [{ buildServer: isolatedBuildServer }, { LocalFallbackProvider: IsolatedFallbackProvider }] = await Promise.all([
+        import("./index"),
+        import("./ai/provider"),
+      ]);
+
+      const app = isolatedBuildServer({ dbPath: testDbPath(), llmClient: new IsolatedFallbackProvider() });
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("JWT_SECRET"));
+
+      await app.close();
+      warn.mockRestore();
+      if (oldJwtSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = oldJwtSecret;
     });
 
     it("deletes account with DELETE confirmation and invalidates session", async () => {

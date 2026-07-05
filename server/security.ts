@@ -9,6 +9,8 @@ type RateLimitEntry = {
 };
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
+const GUEST_COOKIE_NAME = "ai_job_guest_id";
+const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
 
 export function createOneTimeToken(): { plainToken: string; tokenHash: string } {
   const plainToken = randomBytes(24).toString("hex");
@@ -63,15 +65,28 @@ export function setCorsHeaders(reply: FastifyReply): void {
   reply.header("Vary", "Origin");
   reply.header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-guest-id");
+  reply.header("Access-Control-Allow-Credentials", "true");
 }
 
 // 解析访客会话 id：仅允许安全字符，限长，转成带前缀的 owner id，避免与真实用户 id 冲突。
 export function resolveGuestId(request: FastifyRequest): string | undefined {
   const raw = request.headers["x-guest-id"];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (!value) return undefined;
-  const safe = value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  const cookieValue = readCookie(request, GUEST_COOKIE_NAME);
+  const safe = sanitizeGuestId(value || cookieValue || "");
   return safe ? `guest_${safe}` : undefined;
+}
+
+export function ensureGuestId(request: FastifyRequest, reply: FastifyReply): string {
+  const resolved = resolveGuestId(request);
+  if (resolved) return resolved;
+  const plain = randomBytes(18).toString("base64url");
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  reply.header(
+    "Set-Cookie",
+    `${GUEST_COOKIE_NAME}=${plain}; Path=/; Max-Age=${GUEST_COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax${secure}`,
+  );
+  return `guest_${plain}`;
 }
 
 // 当前请求的数据归属 id：已登录用户优先，否则用访客会话 id。
@@ -81,4 +96,20 @@ export function ownerOf(request: FastifyRequest): string | undefined {
 
 export function auditDetail(detail: Record<string, unknown>): string {
   return JSON.stringify({ ...detail, recordedAt: nowIso() });
+}
+
+function sanitizeGuestId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+}
+
+function readCookie(request: FastifyRequest, name: string): string | undefined {
+  const raw = request.headers.cookie;
+  if (!raw) return undefined;
+  const cookies = Array.isArray(raw) ? raw.join(";") : raw;
+  const prefix = `${name}=`;
+  return cookies
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(prefix))
+    ?.slice(prefix.length);
 }

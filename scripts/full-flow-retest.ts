@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { File } from "node:buffer";
+import type { FastifyInstance } from "fastify";
 import { buildServer } from "../server/index";
 import { LocalFallbackProvider } from "../server/ai/provider";
 import { importResumeFile } from "../src/lib/resumeImport";
@@ -22,6 +23,24 @@ async function main() {
   const tempDir = mkdtempSync(join(tmpdir(), "ai-job-full-flow-"));
   const dbPath = join(tempDir, "retest.sqlite");
   const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
+  let cookieHeader = "";
+
+  const injectWithGuestCookie = async (target: FastifyInstance, options: Parameters<FastifyInstance["inject"]>[0]) => {
+    const optionObject = options as { headers?: Record<string, string> };
+    const response = await target.inject({
+      ...optionObject,
+      headers: {
+        ...(optionObject.headers ?? {}),
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      },
+    });
+    const setCookie = response.headers["set-cookie"];
+    const firstCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+    if (firstCookie && !cookieHeader) {
+      cookieHeader = String(firstCookie).split(";")[0];
+    }
+    return response;
+  };
 
   try {
     const pdfBytes = readFileSync(resolve("测试用/AI产品经理.pdf"));
@@ -34,7 +53,7 @@ async function main() {
     });
     const docxImport = await importResumeFile(docxFile);
 
-    const intake = await app.inject({
+    const intake = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/positions/intake",
       payload: {
@@ -49,7 +68,7 @@ async function main() {
     const position = intakeBody.positions[0];
     const positionId = position.id as string;
 
-    const profile = await app.inject({
+    const profile = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/profile",
       payload: {
@@ -60,7 +79,7 @@ async function main() {
       },
     });
 
-    const materials = await app.inject({
+    const materials = await injectWithGuestCookie(app, {
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
       payload: {
@@ -82,7 +101,7 @@ async function main() {
       },
     });
 
-    const questions = await app.inject({
+    const questions = await injectWithGuestCookie(app, {
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
       payload: {
@@ -105,7 +124,7 @@ async function main() {
       },
     });
 
-    const cueCard = await app.inject({
+    const cueCard = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/copilot/cue-card/stream",
       payload: {
@@ -119,7 +138,7 @@ async function main() {
 
     const cueCardEvent = extractSseEvent(cueCard.body, "card");
 
-    const mockSession = await app.inject({
+    const mockSession = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/mock/session",
       payload: {
@@ -129,7 +148,7 @@ async function main() {
     });
     const mockSessionBody = mockSession.json();
 
-    const mockAnswer = await app.inject({
+    const mockAnswer = await injectWithGuestCookie(app, {
       method: "POST",
       url: `/api/mock/session/${mockSessionBody.sessionId}/answer`,
       payload: {
@@ -143,7 +162,7 @@ async function main() {
     });
     const mockAnswerBody = mockAnswer.json();
 
-    const resumeAi = await app.inject({
+    const resumeAi = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/resume/ai",
       payload: {
@@ -158,29 +177,29 @@ async function main() {
     });
     const resumeAiBody = resumeAi.json();
 
-    const recordSave = await app.inject({
+    const recordSave = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/records",
       payload: mockAnswerBody.record,
     });
 
-    const search = await app.inject({
+    const search = await injectWithGuestCookie(app, {
       method: "POST",
       url: "/api/search",
       payload: { query: "测试科技 AI 产品运营 面试" },
     });
 
-    const stateBeforeRestart = await app.inject({ method: "GET", url: "/api/state" });
-    const recordsBeforeRestart = await app.inject({ method: "GET", url: "/api/records" });
-    const exportBeforeRestart = await app.inject({ method: "POST", url: "/api/export" });
+    const stateBeforeRestart = await injectWithGuestCookie(app, { method: "GET", url: "/api/state" });
+    const recordsBeforeRestart = await injectWithGuestCookie(app, { method: "GET", url: "/api/records" });
+    const exportBeforeRestart = await injectWithGuestCookie(app, { method: "POST", url: "/api/export" });
     const exportedState = exportBeforeRestart.json();
 
     await app.close();
 
     const restarted = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-    const stateAfterRestart = await restarted.inject({ method: "GET", url: "/api/state" });
-    const exportAfterRestart = await restarted.inject({ method: "POST", url: "/api/export" });
-    const importRoundTrip = await restarted.inject({
+    const stateAfterRestart = await injectWithGuestCookie(restarted, { method: "GET", url: "/api/state" });
+    const exportAfterRestart = await injectWithGuestCookie(restarted, { method: "POST", url: "/api/export" });
+    const importRoundTrip = await injectWithGuestCookie(restarted, {
       method: "POST",
       url: "/api/import",
       payload: exportedState,
@@ -201,11 +220,11 @@ async function main() {
       },
       materials: {
         statusCode: materials.statusCode,
-        count: materials.json().position.materials.length,
+        count: materials.json().position?.materials?.length ?? 0,
       },
       questions: {
         statusCode: questions.statusCode,
-        count: questions.json().position.questions.length,
+        count: questions.json().position?.questions?.length ?? 0,
       },
       cueCard: {
         statusCode: cueCard.statusCode,
@@ -237,6 +256,21 @@ async function main() {
     };
 
     console.log(JSON.stringify(result, null, 2));
+    const failures = [
+      result.intake.statusCode === 200 ? "" : `intake=${result.intake.statusCode}`,
+      result.profile.statusCode === 200 ? "" : `profile=${result.profile.statusCode}`,
+      result.materials.statusCode === 200 && result.materials.count > 0 ? "" : `materials=${result.materials.statusCode}/${result.materials.count}`,
+      result.questions.statusCode === 200 && result.questions.count > 0 ? "" : `questions=${result.questions.statusCode}/${result.questions.count}`,
+      result.cueCard.statusCode === 200 ? "" : `cueCard=${result.cueCard.statusCode}`,
+      result.mock.sessionStatusCode === 200 && result.mock.answerStatusCode === 200 ? "" : `mock=${result.mock.sessionStatusCode}/${result.mock.answerStatusCode}`,
+      result.resumeAi.statusCode === 200 && result.resumeAi.structured ? "" : `resumeAi=${result.resumeAi.statusCode}/${result.resumeAi.structured}`,
+      result.records.stateBeforeRestart > 0 && result.records.exportBeforeRestart > 0 && result.records.stateAfterRestart > 0 && result.records.exportAfterRestart > 0
+        ? ""
+        : `records=${JSON.stringify(result.records)}`,
+    ].filter(Boolean);
+    if (failures.length) {
+      throw new Error(`full-flow failed: ${failures.join(", ")}`);
+    }
     await restarted.close();
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

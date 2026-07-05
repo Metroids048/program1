@@ -72,6 +72,7 @@ describe("questions workspace", () => {
         onAddQuestion={vi.fn()}
         isLoggedIn
         onRequireLogin={vi.fn()}
+        onGoHome={vi.fn()}
       />,
     );
 
@@ -101,6 +102,7 @@ describe("questions workspace", () => {
         onAddQuestion={onAddQuestion}
         isLoggedIn
         onRequireLogin={vi.fn()}
+        onGoHome={vi.fn()}
       />,
     );
 
@@ -133,6 +135,7 @@ describe("questions workspace", () => {
         onAddQuestion={vi.fn()}
         isLoggedIn
         onRequireLogin={vi.fn()}
+        onGoHome={vi.fn()}
       />,
     );
 
@@ -155,6 +158,7 @@ describe("questions workspace", () => {
         onAddQuestion={vi.fn()}
         isLoggedIn={false}
         onRequireLogin={onRequireLogin}
+        onGoHome={vi.fn()}
       />,
     );
 
