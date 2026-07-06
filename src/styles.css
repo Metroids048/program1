@@ -983,6 +983,68 @@ select.input:focus,
   animation: statusSpin 600ms linear infinite;
 }
 
+.ai-progress-panel {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.ai-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ai-progress-steps {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-progress-step {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: var(--space-xs);
+  align-items: start;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+}
+
+.ai-progress-step > span {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.ai-progress-step.running > span {
+  background: var(--accent);
+  animation: statusSpin 700ms linear infinite;
+}
+
+.ai-progress-step.success > span,
+.ai-progress-step.done > span {
+  background: var(--green);
+}
+
+.ai-progress-step.fallback > span,
+.ai-progress-step.error > span {
+  background: var(--warn);
+}
+
+.ai-progress-step p,
+.ai-progress-step small {
+  min-width: 0;
+  margin: 0;
+}
+
 .simple-list,
 .record-transcript-list,
 .record-cue-archive {
@@ -2820,6 +2882,12 @@ select.input:focus,
   opacity: 0;
 }
 
+.file-button.disabled {
+  opacity: 0.68;
+  cursor: wait;
+  pointer-events: none;
+}
+
 .focused-resume-layout,
 .resume-layout {
   display: grid;
@@ -3113,6 +3181,25 @@ select.input:focus,
   font-size: var(--text-caption);
   line-height: var(--leading-caption);
   white-space: pre-wrap;
+}
+
+.suggestion-text {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  line-height: 1.65;
+}
+
+.suggestion-text p {
+  margin: 0;
+}
+
+.chat-bubble-role {
+  display: inline-flex;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chat-composer {
@@ -4408,6 +4495,34 @@ select.input:focus,
 .account-quota-label {
   font-size: var(--text-body-sm);
   color: var(--text-secondary);
+}
+
+.account-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+
+.account-quota-feature {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-xs);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.account-quota-feature span,
+.account-quota-feature small {
+  font-size: var(--text-micro);
+  color: var(--text-secondary);
+}
+
+.account-quota-feature strong {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  line-height: 1;
 }
 
 .account-actions {

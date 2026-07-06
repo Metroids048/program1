@@ -7,6 +7,7 @@ interface QuotaInfo {
   dailyLimit: number;
   remaining: number;
   resetAt: string;
+  features?: Record<string, { used: number; limit: number; remaining: number }>;
 }
 
 export function QuotaBadge() {
@@ -23,13 +24,14 @@ export function QuotaBadge() {
 
   if (!quota) return null;
 
-  const pct = quota.dailyLimit > 0 ? quota.remaining / quota.dailyLimit : 0;
+  const primary = quota.features?.cueCard ?? { used: quota.dailyUsed, limit: quota.dailyLimit, remaining: quota.remaining };
+  const pct = primary.limit > 0 ? primary.remaining / primary.limit : 0;
   const tone = pct > 0.4 ? "ok" : pct > 0.15 ? "warn" : "low";
 
   return (
-    <span className={`quota-badge quota-${tone}`} title={`今日已用 ${quota.dailyUsed}/${quota.dailyLimit} 次`}>
+    <span className={`quota-badge quota-${tone}`} title={`提词卡今日已用 ${primary.used}/${primary.limit} 次`}>
       <Zap size={12} />
-      <span>{quota.remaining}</span>
+      <span>提词 {primary.remaining}</span>
     </span>
   );
 }

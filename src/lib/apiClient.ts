@@ -21,6 +21,26 @@ export interface CueCardStreamResult {
   fallbackReason: string;
   evidenceTrace: AiRunMeta["evidenceTrace"];
   latencyMs: number;
+  sessionId?: string;
+  history?: LiveCueSessionTurn[];
+}
+
+export interface LiveCueSessionTurn {
+  id: string;
+  questionText: string;
+  card: AnswerCueCard;
+  meta: AiRunMeta;
+  createdAt: string;
+}
+
+export type CueCardProgressEvent =
+  | { type: "stage"; label: string; status?: string }
+  | { type: "delta"; text: string }
+  | { type: "done"; label?: string };
+
+export interface CueCardStreamOptions {
+  signal?: AbortSignal;
+  onProgress?: (event: CueCardProgressEvent) => void;
 }
 
 export interface MockSessionResult {
@@ -94,6 +114,7 @@ export interface IntakeSubmitPayload {
 export interface IntakeAssistantPayload {
   reply: string;
   missingFields: Array<{ key: PositionIntakeFieldKey; label: string }>;
+  confirmedFields: Array<{ key: PositionIntakeFieldKey; label: string; value: string; source: PositionIntakeFieldSource }>;
   suggestedPrompts: string[];
   meta: AiRunMeta;
 }
@@ -201,13 +222,16 @@ export async function streamCueCardFromServer(input: {
   source?: AnswerCueCard["source"];
   enableSearch?: boolean;
   recentHistory?: MockMessage[];
-}): Promise<CueCardStreamResult> {
+  sessionId?: string;
+}, options: CueCardStreamOptions = {}): Promise<CueCardStreamResult> {
   const response = await apiFetch("/api/copilot/cue-card/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+    signal: options.signal,
   });
-  if (!response.ok || !response.body) throw new Error("CUE_CARD_STREAM_FAILED");
+  if (!response.ok) throw new Error(await response.text().catch(() => response.statusText || "CUE_CARD_STREAM_FAILED"));
+  if (!response.body) throw new Error("CUE_CARD_STREAM_FAILED");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -219,6 +243,8 @@ export async function streamCueCardFromServer(input: {
   let fallbackReason = "后端未返回模型状态，当前按本地练习模式处理。";
   let evidenceTrace: CueCardStreamResult["evidenceTrace"] = [];
   let latencyMs = 0;
+  let sessionId = "";
+  let history: LiveCueSessionTurn[] = [];
 
   const consumeBlock = (block: string) => {
     const event = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
@@ -232,12 +258,20 @@ export async function streamCueCardFromServer(input: {
       card?: AnswerCueCard;
       promptRun?: { status?: CueCardStreamResult["backendStatus"]; latencyMs?: number };
       meta?: AiRunMeta;
+      sessionId?: string;
+      history?: LiveCueSessionTurn[];
     };
 
     if (event === "stage" && data.label) {
       stages.push(data.label);
+      options.onProgress?.({ type: "stage", label: data.label, status: data.status });
       if (data.searchCount !== undefined) searchCount = data.searchCount;
       if (data.status === "success" || data.status === "fallback") backendStatus = data.status;
+    }
+
+    if (event === "delta" && typeof dataText === "string") {
+      const delta = JSON.parse(dataText) as { text?: string };
+      if (delta.text) options.onProgress?.({ type: "delta", text: delta.text });
     }
 
     if (event === "card" && data.card) {
@@ -256,8 +290,11 @@ export async function streamCueCardFromServer(input: {
       fallbackReason = data.meta?.fallbackReason ?? fallbackReason;
       evidenceTrace = data.meta?.evidenceTrace ?? evidenceTrace;
       latencyMs = data.meta?.latencyMs ?? data.promptRun?.latencyMs ?? latencyMs;
+      sessionId = data.sessionId ?? sessionId;
+      history = data.history ?? history;
     }
 
+    if (event === "done") options.onProgress?.({ type: "done" });
     if (event === "error") throw new Error(dataText);
   };
 
@@ -274,7 +311,7 @@ export async function streamCueCardFromServer(input: {
 
   if (buffer.trim()) consumeBlock(buffer);
   if (!card) throw new Error("CUE_CARD_EMPTY");
-  return { card, stages, backendStatus, searchCount, fallbackReason, evidenceTrace, latencyMs };
+  return { card, stages, backendStatus, searchCount, fallbackReason, evidenceTrace, latencyMs, sessionId: sessionId || undefined, history };
 }
 
 export async function saveRecordOnServer(record: InterviewRecord): Promise<{ record: InterviewRecord; records: InterviewRecord[] }> {
@@ -368,13 +405,15 @@ export async function reconstructCueCard(input: {
   positionId?: string;
   feedback: string;
   originalCard: AnswerCueCard;
-}): Promise<CueCardStreamResult> {
+}, options: CueCardStreamOptions = {}): Promise<CueCardStreamResult> {
   const response = await apiFetch("/api/copilot/cue-card/reconstruct", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+    signal: options.signal,
   });
-  if (!response.ok || !response.body) throw new Error("RECONSTRUCT_STREAM_FAILED");
+  if (!response.ok) throw new Error(await response.text().catch(() => response.statusText || "RECONSTRUCT_STREAM_FAILED"));
+  if (!response.body) throw new Error("RECONSTRUCT_STREAM_FAILED");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -397,7 +436,10 @@ export async function reconstructCueCard(input: {
       meta?: AiRunMeta;
     };
 
-    if (event === "stage" && data.label) stages.push(data.label);
+    if (event === "stage" && data.label) {
+      stages.push(data.label);
+      options.onProgress?.({ type: "stage", label: data.label });
+    }
     if (event === "card" && data.card) {
       card = data.card;
       backendStatus =
@@ -410,6 +452,7 @@ export async function reconstructCueCard(input: {
       evidenceTrace = data.meta?.evidenceTrace ?? evidenceTrace;
       latencyMs = data.meta?.latencyMs ?? latencyMs;
     }
+    if (event === "done") options.onProgress?.({ type: "done" });
     if (event === "error") throw new Error(dataText);
   };
 

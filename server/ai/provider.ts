@@ -67,7 +67,7 @@ export class DeepSeekProvider implements AiProvider {
     return repaired ? { data: repaired, status: "success", raw: repair } : { data: fallback, status: "fallback", raw: repair || first };
   }
 
-  private async call(messages: AiMessage[], options?: { temperature?: number; signal?: AbortSignal }): Promise<string> {
+  private async call(messages: AiMessage[], options?: { temperature?: number; signal?: AbortSignal; schemaHint?: string }): Promise<string> {
     const maxAttempts = DEFAULT_MAX_RETRIES + 1;
     let lastError = "";
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -88,6 +88,7 @@ export class DeepSeekProvider implements AiProvider {
             model: this.model,
             temperature: options?.temperature ?? 0.35,
             stream: false,
+            ...(options?.schemaHint ? { response_format: { type: "json_object" } } : {}),
             messages,
           }),
           signal: controller.signal,

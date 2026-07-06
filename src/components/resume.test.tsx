@@ -1,8 +1,26 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProfile } from "../lib/interviewEngine";
 import { applyFullResumeSuggestionToDrafts } from "./resume";
 import { ResumeWorkspacePage } from "./resume";
+
+const importResumeFileMock = vi.hoisted(() => vi.fn());
+const runResumeAiOnServerMock = vi.hoisted(() => vi.fn());
+const generateProfileHighlightsOnServerMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../lib/resumeImport", () => ({
+  importResumeFile: importResumeFileMock,
+}));
+
+vi.mock("../lib/apiClient", () => ({
+  runResumeAiOnServer: runResumeAiOnServerMock,
+  generateProfileHighlightsOnServer: generateProfileHighlightsOnServerMock,
+}));
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("resume full apply", () => {
   it("maps structured full-resume suggestions back into matching sections", () => {
@@ -89,5 +107,63 @@ describe("resume full apply", () => {
     expect(screen.getByText("AI 已识别证据")).toBeInTheDocument();
     expect(screen.getByText(`${profile.evidenceLibrary.length} 条`)).toBeInTheDocument();
     expect(screen.getByText("命中关键词：")).toBeInTheDocument();
+  });
+
+  it("shows parsing state while uploading a resume file", async () => {
+    const user = userEvent.setup();
+    const profile = createProfile("测试候选人\nAI 产品经理");
+    let resolveImport: (value: { text: string }) => void = () => {};
+    importResumeFileMock.mockReturnValue(new Promise((resolve) => {
+      resolveImport = resolve;
+    }));
+
+    render(
+      <ResumeWorkspacePage
+        profile={profile}
+        onUpdateResume={vi.fn()}
+        onUpdateEvidence={vi.fn()}
+        onSetHighlights={vi.fn()}
+        isLoggedIn
+        onRequireLogin={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText("上传简历文件") as HTMLInputElement;
+    await user.upload(input, new File(["简历内容"], "resume.txt", { type: "text/plain" }));
+
+    expect(screen.getAllByText("解析中...").length).toBeGreaterThan(0);
+    expect(input).toBeDisabled();
+
+    resolveImport({ text: "解析后的简历" });
+    expect(await screen.findByText(/已导入 resume.txt/)).toBeInTheDocument();
+  });
+
+  it("renders AI suggestions without a raw preformatted code block", async () => {
+    const user = userEvent.setup();
+    const profile = createProfile("测试候选人\nAI 产品经理\n项目经历\n负责增长项目");
+    runResumeAiOnServerMock.mockResolvedValue({
+      reply: "可以这样改。",
+      suggestion: "1. 先写结论\n2. 补充动作和结果",
+      evidenceTrace: [],
+      applyTarget: "section",
+      meta: { backendStatus: "success", fallbackReason: "", evidenceTrace: [], latencyMs: 100 },
+    });
+
+    render(
+      <ResumeWorkspacePage
+        profile={profile}
+        onUpdateResume={vi.fn()}
+        onUpdateEvidence={vi.fn()}
+        onSetHighlights={vi.fn()}
+        isLoggedIn
+        onRequireLogin={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "优化当前模块" }));
+
+    expect(await screen.findByText("可以这样改。")).toBeInTheDocument();
+    expect(screen.getByText("1. 先写结论")).toBeInTheDocument();
+    expect(document.querySelector(".suggestion-box pre")).toBeNull();
   });
 });

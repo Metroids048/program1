@@ -80,6 +80,7 @@ interface JdAnalysisJson {
 
 interface IntakeFollowUpJson {
   reply?: string;
+  confirmedFields?: Array<{ key?: string; label?: string; value?: string }>;
   missingFields?: Array<{ key?: string; label?: string }>;
   suggestedPrompts?: string[];
   confidence?: number;
@@ -98,6 +99,7 @@ interface ResumeHighlightsJson {
 
 const LOCAL_FALLBACK_REASON = "模型未配置、响应失败或 JSON 不符合结构，已切回本地练习模式。";
 const SEARCH_FALLBACK_REASON = "联网搜索未接通，本次仅使用本地资料与已有证据。";
+const CUE_CARD_BUDGET_MS = 12000;
 
 export class AiOrchestrator {
   private readonly rag: ReturnType<typeof createRagRuntime>;
@@ -238,12 +240,17 @@ export class AiOrchestrator {
       })),
       assistantMessage,
     ]);
+    const mergedConfirmedFields = mergeConfirmedFields([
+      ...nextPosition.intake.confirmedFields,
+      ...intakeAssistant.confirmedFields,
+    ]);
     const finalizedPosition = recomputePosition(
       {
         ...nextPosition,
         intake: {
           ...nextPosition.intake,
           messages: mergedMessages,
+          confirmedFields: mergedConfirmedFields,
           suggestedPrompts: intakeAssistant.suggestedPrompts,
         },
       },
@@ -495,6 +502,7 @@ export class AiOrchestrator {
       { temperature: 0.25, schemaHint: JSON.stringify(prompt.outputSchema) },
     );
     const missingFields = normalizeMissingFields(result.data.missingFields, position.intake.missingFields);
+    const confirmedFields = normalizeConfirmedFields(result.data.confirmedFields);
     const suggestedPrompts = normalizeList(result.data.suggestedPrompts, fallback.suggestedPrompts ?? []).slice(0, 3);
     const reply = result.data.reply?.trim() || fallback.reply || "我先保留你的原文，并继续帮你补齐缺失字段。";
     const meta: AiRunMeta = {
@@ -515,7 +523,7 @@ export class AiOrchestrator {
         model: this.llm.model,
         provider: this.llm.model,
         inputSummary: `[intake] ${position.title || "岗位待确认"} / ${position.company || "公司待确认"}`,
-        outputJson: JSON.stringify({ reply, missingFields, suggestedPrompts }),
+        outputJson: JSON.stringify({ reply, confirmedFields, missingFields, suggestedPrompts }),
         status: result.status,
         latencyMs: meta.latencyMs,
         retrievalCount: 0,
@@ -524,7 +532,7 @@ export class AiOrchestrator {
       }),
       this.currentUserId,
     );
-    return { reply, missingFields, suggestedPrompts, meta };
+    return { reply, confirmedFields, missingFields, suggestedPrompts, meta };
   }
 
   private async summarizeSearchResults(position: Position, questionText: string, searchResults: SearchResult[]) {
@@ -617,89 +625,96 @@ export class AiOrchestrator {
       };
     }
 
-    const local = generateCueCard(request.questionText, state.profile, position, position.questions, request.source ?? "live");
-    const retrieval = this.rag.retrieve(request.questionText, { positionId: position.id });
-    const shouldSearch = shouldUseSearch(request.questionText, request.enableSearch);
-    const searchResults = shouldSearch ? await this.safeSearch(position, request.questionText) : [];
-    const searchSummary = shouldSearch ? await this.summarizeSearchResults(position, request.questionText, searchResults) : { facts: [], risks: [], promptRun: null };
-    const prompt = prompts.cueCard;
-    const fallback: CueCardJson = {
-      strategy: local.strategy,
-      openingLine: local.openingLine,
-      bullets: local.bullets,
-      evidenceIds: local.evidenceIds,
-      risks: local.risks,
-      followUps: local.followUps,
-    };
-    const result = await this.llm.chatJson<CueCardJson>(
-      [
-        { role: "system", content: prompt.system },
-        {
-          role: "user",
-          content: JSON.stringify({
-            questionText: request.questionText,
-            jd: pickPositionContext(position),
-            matchReport: position.matchReport,
-            profileEvidence: state.profile.evidenceLibrary.slice(0, 8),
-            questionBank: position.questions.slice(0, 10),
-            retrievedContext: retrieval.items.map(toRetrievedContext),
-            recentHistory: request.recentHistory ?? [],
-            searchResults,
-            searchFacts: searchSummary.facts,
-            searchRisks: searchSummary.risks,
-            outputSchema: prompt.outputSchema,
-            guardrails: prompt.guardrails,
-          }),
-        },
-      ],
-      fallback,
-      { temperature: 0.35, schemaHint: JSON.stringify(prompt.outputSchema) },
-    );
+    const budget = new AbortController();
+    const budgetTimer = setTimeout(() => budget.abort(new Error("CUE_CARD_TIMEOUT")), CUE_CARD_BUDGET_MS);
+    try {
+      const local = generateCueCard(request.questionText, state.profile, position, position.questions, request.source ?? "live");
+      const retrieval = this.rag.retrieve(request.questionText, { positionId: position.id });
+      const shouldSearch = shouldUseSearch(request.questionText, request.enableSearch);
+      const searchResults = shouldSearch ? await this.safeSearch(position, request.questionText) : [];
+      const searchFacts = searchResults.map((item) => `${item.title}：${item.snippet}`).slice(0, 4);
+      const searchRisks = searchResults.some((item) => item.provider === "disabled" || item.provider === "local") ? [SEARCH_FALLBACK_REASON] : [];
+      const prompt = prompts.cueCard;
+      const fallback: CueCardJson = {
+        strategy: local.strategy,
+        openingLine: local.openingLine,
+        bullets: local.bullets,
+        evidenceIds: local.evidenceIds,
+        risks: local.risks,
+        followUps: local.followUps,
+      };
+      const result = await this.llm.chatJson<CueCardJson>(
+        [
+          { role: "system", content: prompt.system },
+          {
+            role: "user",
+            content: JSON.stringify({
+              questionText: request.questionText,
+              jd: pickPositionContext(position),
+              matchReport: position.matchReport,
+              profileEvidence: state.profile.evidenceLibrary.slice(0, 8),
+              questionBank: position.questions.slice(0, 10),
+              retrievedContext: retrieval.items.map(toRetrievedContext),
+              recentHistory: request.recentHistory ?? [],
+              searchResults,
+              searchFacts,
+              searchRisks,
+              outputSchema: prompt.outputSchema,
+              guardrails: prompt.guardrails,
+            }),
+          },
+        ],
+        fallback,
+        { temperature: 0.35, schemaHint: JSON.stringify(prompt.outputSchema), signal: budget.signal },
+      );
 
-    const evidenceIds = normalizeList(result.data.evidenceIds, mergeEvidenceIds(local.evidenceIds, retrieval.items, state.profile.evidenceLibrary)).slice(0, 4);
-    const sanitized = sanitizeCueCardPayload(result.data, local);
-    const card: AnswerCueCard = {
-      ...local,
-      strategy: sanitized.strategy,
-      openingLine: sanitized.openingLine,
-      bullets: sanitized.bullets,
-      evidenceIds,
-      risks: sanitized.risks,
-      followUps: sanitized.followUps,
-    };
-    this.saveCueCard(card);
-    this.db.saveCachedCueCard(cacheKey, card, position.id);
-    const evidenceTrace = buildMergedEvidenceTrace(card.evidenceIds, state.profile.evidenceLibrary, retrieval.items);
-    const promptRun = buildPromptRun({
-      skillId,
-      promptId: prompt.id,
-      model: this.llm.model,
-      provider: this.llm.model,
-      inputSummary: `${position.title}: ${request.questionText.slice(0, 80)}`,
-      outputJson: JSON.stringify({ ...result.data, ...sanitized, evidenceIds }),
-      status: result.status,
-      latencyMs: Date.now() - started,
-      retrievalCount: retrieval.items.length,
-      searchUsed: shouldSearch && searchResults.length > 0,
-      fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
-    });
-    this.db.savePromptRun(promptRun, this.currentUserId);
-    return {
-      card,
-      searchResults,
-      promptRun,
-      meta: {
-        backendStatus: result.status,
+      const evidenceIds = normalizeList(result.data.evidenceIds, mergeEvidenceIds(local.evidenceIds, retrieval.items, state.profile.evidenceLibrary)).slice(0, 4);
+      const sanitized = sanitizeCueCardPayload(result.data, local);
+      const card: AnswerCueCard = {
+        ...local,
+        strategy: sanitized.strategy,
+        openingLine: sanitized.openingLine,
+        bullets: sanitized.bullets,
+        evidenceIds,
+        risks: sanitized.risks,
+        followUps: sanitized.followUps,
+      };
+      this.saveCueCard(card);
+      this.db.saveCachedCueCard(cacheKey, card, position.id);
+      const evidenceTrace = buildMergedEvidenceTrace(card.evidenceIds, state.profile.evidenceLibrary, retrieval.items);
+      const promptRun = buildPromptRun({
         skillId,
-        fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
         promptId: prompt.id,
+        model: this.llm.model,
         provider: this.llm.model,
-        evidenceTrace,
-        latencyMs: promptRun.latencyMs,
+        inputSummary: `${position.title}: ${request.questionText.slice(0, 80)}`,
+        outputJson: JSON.stringify({ ...result.data, ...sanitized, evidenceIds }),
+        status: result.status,
+        latencyMs: Date.now() - started,
         retrievalCount: retrieval.items.length,
         searchUsed: shouldSearch && searchResults.length > 0,
-      },
-    };
+        fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
+      });
+      this.db.savePromptRun(promptRun, this.currentUserId);
+      return {
+        card,
+        searchResults,
+        promptRun,
+        meta: {
+          backendStatus: result.status,
+          skillId,
+          fallbackReason: result.status === "success" ? "" : LOCAL_FALLBACK_REASON,
+          promptId: prompt.id,
+          provider: this.llm.model,
+          evidenceTrace,
+          latencyMs: promptRun.latencyMs,
+          retrievalCount: retrieval.items.length,
+          searchUsed: shouldSearch && searchResults.length > 0,
+        },
+      };
+    } finally {
+      clearTimeout(budgetTimer);
+    }
   }
 
   async reconstructCueCard(request: CueCardRequest & { feedback: string; originalCard: AnswerCueCard }): Promise<{ card: AnswerCueCard; promptRun: PromptRun; meta: AiRunMeta }> {
@@ -1600,6 +1615,34 @@ function normalizeMissingFields(
     .filter((item): item is Position["intake"]["missingFields"][number] => Boolean(item));
 }
 
+function normalizeConfirmedFields(
+  fields: Array<{ key?: string; label?: string; value?: string }> | undefined,
+): Position["intake"]["confirmedFields"] {
+  if (!Array.isArray(fields) || fields.length === 0) return [];
+  const allowedKeys = new Set(["company", "role", "interviewer", "difficulty", "duration", "hasJd"]);
+  const normalized: Position["intake"]["confirmedFields"] = [];
+  fields.forEach((field) => {
+    const key = field.key;
+    const value = field.value?.trim();
+    if (!key || !allowedKeys.has(key) || !value) return;
+    normalized.push({
+      key: key as Position["intake"]["confirmedFields"][number]["key"],
+      label: resolveIntakeFieldLabel(key),
+      value,
+      source: "confirmed",
+    });
+  });
+  return mergeConfirmedFields(normalized);
+}
+
+function mergeConfirmedFields(fields: Position["intake"]["confirmedFields"]): Position["intake"]["confirmedFields"] {
+  const latest = new Map<Position["intake"]["confirmedFields"][number]["key"], Position["intake"]["confirmedFields"][number]>();
+  fields.forEach((field) => {
+    if (field.value.trim()) latest.set(field.key, { ...field, label: resolveIntakeFieldLabel(field.key), source: "confirmed" });
+  });
+  return Array.from(latest.values());
+}
+
 function buildIntakeAssistantFallback(position: Position): IntakeFollowUpJson {
   const missing = position.intake.missingFields;
   return {
@@ -1608,6 +1651,7 @@ function buildIntakeAssistantFallback(position: Position): IntakeFollowUpJson {
         ? "当前 intake 关键信息已经基本齐了。你可以直接保存岗位，或者再补一轮更细的面试背景信息。"
         : `我先保留你的原文。当前还缺 ${missing.map((item) => item.label).join("、")}，继续补这些字段后，岗位卡和后续提词卡会更稳定。`,
     missingFields: missing.map((item) => ({ key: item.key, label: item.label })),
+    confirmedFields: [],
     suggestedPrompts:
       missing.length === 0
         ? ["这是最终确认版岗位信息，请帮我检查是否还缺关键信息", "我想直接进入模拟面试，先用当前 intake 配置", "继续用当前岗位生成题库和提词卡"]

@@ -1,9 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPosition, createProfile, toWorkspace } from "../lib/interviewEngine";
 import type { PositionMaterial } from "../types";
 import { QuestionsWorkspace } from "./questions";
+
+const importResumeFileMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../lib/resumeImport", () => ({
+  importResumeFile: importResumeFileMock,
+}));
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 function buildQuestionWorkspace() {
   const profile = createProfile("测试候选人\nAI 产品经理\n项目经历\n做过题词卡与增长分析");
@@ -142,6 +152,37 @@ describe("questions workspace", () => {
     await user.click(screen.getByRole("button", { name: "移除" }));
 
     expect(onUpdateMaterials).toHaveBeenCalledWith([] satisfies PositionMaterial[]);
+  });
+
+  it("shows parsing state while uploading material files", async () => {
+    const user = userEvent.setup();
+    const { workspace, position } = buildQuestionWorkspace();
+    let resolveImport: (value: { text: string }) => void = () => {};
+    importResumeFileMock.mockReturnValue(new Promise((resolve) => {
+      resolveImport = resolve;
+    }));
+
+    render(
+      <QuestionsWorkspace
+        workspace={workspace}
+        position={position}
+        onUpdateMaterials={vi.fn()}
+        onUpdateQuestion={vi.fn()}
+        onAddQuestion={vi.fn()}
+        isLoggedIn
+        onRequireLogin={vi.fn()}
+        onGoHome={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText("上传面试资料文件") as HTMLInputElement;
+    await user.upload(input, new File(["资料内容"], "material.txt", { type: "text/plain" }));
+
+    expect(screen.getAllByText("解析中...").length).toBeGreaterThan(0);
+    expect(input).toBeDisabled();
+
+    resolveImport({ text: "解析后的资料" });
+    expect(await screen.findByText("已解析 material.txt，并保存为当前岗位的资料卡。")).toBeInTheDocument();
   });
 
   it("shows the login gate instead of mutating data for guests", async () => {

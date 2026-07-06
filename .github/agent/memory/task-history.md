@@ -1,5 +1,84 @@
 # Task History
 
+## [TASK-2026-07-05-full-usability-fix]
+
+- Date: 2026-07-05
+- Type: feature/fix/test
+- Summary: 按“全站真实可用性修复实施计划”分 WS-0 到 WS-5 收口：移除登录/注册后的访客数据自动合并，登出清身份缓存但保留 UI 偏好；账户抽屉补齐登录态主入口、退出/切换账号、安全与更多数据能力；实时助手搜索和提词卡生成增加硬预算，移除单独搜索总结模型调用，提词卡重排并去重证据；新增 owner-scoped live cue session，多轮提词卡返回 `sessionId/history` 并在前端展示历史；模拟面试配置弹窗移除假题数/计时输入；首页改为不跳页的对话式岗位 intake；岗位标题/公司优先使用 confirmed fields；简历/资料上传增加解析中状态，简历 AI 建议改为普通文本排版。收口时修复 acceptance 中提词卡真实模型路径偶发 12 秒超时问题：DeepSeek 结构化调用启用 JSON mode，避免 JSON 修复重试拖过预算。
+- Files:
+  - `src/lib/store.ts`
+  - `src/lib/auth.ts`
+  - `src/components/auth/AuthPage.tsx`
+  - `src/components/records.tsx`
+  - `src/App.tsx`
+  - `server/search.ts`
+  - `server/orchestrator.ts`
+  - `server/ai/provider.ts`
+  - `server/db.ts`
+  - `server/types.ts`
+  - `server/index.ts`
+  - `server/migrations/001_init.sql`
+  - `server/migrations/003_user_id.sql`
+  - `server/prompts/registry.ts`
+  - `src/lib/apiClient.ts`
+  - `src/lib/interviewEngine.ts`
+  - `src/components/shared.tsx`
+  - `src/components/live.tsx`
+  - `src/components/positions.tsx`
+  - `src/components/resume.tsx`
+  - `src/components/questions.tsx`
+  - `src/styles.css`
+  - `server/index.test.ts`
+  - `server/ai/provider.test.ts`
+  - `server/search.test.ts`
+  - `src/App.test.tsx`
+  - `src/lib/store.test.ts`
+  - `src/lib/interviewEngine.test.ts`
+  - `src/components/shared.test.tsx`
+  - `src/components/positions.test.tsx`
+  - `src/components/resume.test.tsx`
+  - `src/components/questions.test.tsx`
+  - `.github/agent/memory/project-memory.md`
+  - `.github/agent/memory/decisions-log.md`
+  - `.github/agent/memory/task-history.md`
+- Verified:
+  - `npm.cmd run test:ai-success-smoke`：DeepSeek `cueCard/mockAnswer/resumeAi` 均为 `success`
+  - `npm.cmd run verify`：lint 0 error / 15 warnings，server typecheck 通过，18 test files / 118 tests passed，build 成功
+  - `npm.cmd run test:acceptance`：app 46 tests、server 40 tests、full-flow、真实 DeepSeek smoke 全通过
+- Notes:
+  - Codex Desktop 未调用 Browser/IAB/Chrome/Computer Use
+  - Codex 无渲染层验收；首页、实时助手、模拟面试、简历上传等视觉与点击路径仍需 Cursor 或人工浏览器补验
+  - full-flow 中 `cueCard/mock = fallback` 是离线脚本前提；同轮 `test:ai-success-smoke` 已验证真实模型成功路径
+
+## [TASK-2026-07-05-ai-voice-closure]
+
+- Date: 2026-07-05
+- Type: feature/fix/test
+- Summary: 按已确认的“AI 语音收口优化计划”完成实时助手与模拟面试主线体验收口：AI 额度改为按功能分组计数并保持旧字段兼容；`QUOTA_EXCEEDED` 不再被前端吞成通用服务失败；提词卡 SSE 阶段事件进入前端可见进度并支持取消，取消/失败保留本地练习卡；实时助手自动生成增加同一 final 文本去重；模拟面试语音作答按 `interim/final/editable` 分层，停止听取不清空；回答提交时明确显示模型面试官思考中与本地 fallback 状态。
+- Files:
+  - `server/domains/quota/quota.service.ts`
+  - `server/index.ts`
+  - `server/index.test.ts`
+  - `src/lib/apiClient.ts`
+  - `src/lib/requestError.ts`
+  - `src/components/live.tsx`
+  - `src/components/shared.tsx`
+  - `src/components/shared/QuotaBadge.tsx`
+  - `src/components/account/AccountPage.tsx`
+  - `src/App.test.tsx`
+  - `src/styles.css`
+  - `.github/agent/memory/project-memory.md`
+  - `.github/agent/memory/task-history.md`
+- Verified:
+  - `node node_modules/vitest/vitest.mjs run server/index.test.ts -t "quota" --configLoader runner`：2 tests passed
+  - `node node_modules/vitest/vitest.mjs run src/App.test.tsx -t "auto-generates|quota exhaustion|mock answer speech|mock interview flow" --configLoader runner`：4 tests passed
+  - `npm run build`：TypeScript build 与 Vite build 通过
+  - `npm run verify`：lint 0 error / 15 warnings，server typecheck 通过，16 test files / 103 tests passed，build 成功
+- Notes:
+  - 本轮不新增账号、邮箱、微信、支付、监控或合规实现
+  - 不做 DeepSeek token 级真流式；当前是 SSE 阶段进度可见化
+  - Codex 无渲染层验收；UI 仍建议 Cursor 或人工浏览器补走实时助手与模拟面试冒烟
+
 ## [TASK-2026-07-04-launch-blockers-clearance]
 
 - Date: 2026-07-04

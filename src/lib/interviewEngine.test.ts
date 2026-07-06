@@ -3,12 +3,15 @@ import {
   analyzeJob,
   analyzeResume,
   buildInterviewReport,
+  createPosition,
+  createProfile,
   createMatchReport,
   evaluateMockTurn,
   generateAnswerDrafts,
   generateCueCard,
   generateQuestions,
   prioritizeEvidenceForJob,
+  recomputePosition,
 } from "./interviewEngine";
 import { sampleJob, sampleResume } from "../data/sampleInputs";
 
@@ -67,6 +70,27 @@ describe("interviewEngine", () => {
 
     expect(job.company).toBe("北极星智能科技");
     expect(job.title).toBe("产品经理");
+  });
+
+  it("uses confirmed intake fields for position company and title", () => {
+    const profile = createProfile("候选人\n目标岗位：AI 产品经理");
+    const base = createPosition("北极星智能科技招聘产品经理，负责面试产品优化、RAG 召回和数据分析。", profile);
+    const position = createPosition("北极星智能科技招聘产品经理，负责面试产品优化、RAG 召回和数据分析。", profile, {
+      intake: {
+        ...base.intake,
+        confirmedFields: [
+          { key: "company", label: "公司", value: "确认科技", source: "confirmed" },
+          { key: "role", label: "岗位", value: "确认 AI 产品经理", source: "confirmed" },
+        ],
+      },
+    });
+
+    expect(position.company).toBe("确认科技");
+    expect(position.title).toBe("确认 AI 产品经理");
+
+    const recomputed = recomputePosition({ ...position, jobText: "一家创业公司招产品经理，负责增长和面试工具。" }, profile);
+    expect(recomputed.company).toBe("确认科技");
+    expect(recomputed.title).toBe("确认 AI 产品经理");
   });
 
   it("marks fallback evidence as synthetic when resume evidence is insufficient", () => {

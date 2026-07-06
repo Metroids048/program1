@@ -48,6 +48,14 @@ create table if not exists mock_sessions (
   created_at text not null
 );
 
+create table if not exists live_cue_sessions (
+  id text primary key,
+  position_id text not null,
+  json text not null,
+  updated_at text not null,
+  created_at text not null
+);
+
 create table if not exists cue_card_cache (
   cache_key text primary key,
   json text not null,

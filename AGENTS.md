@@ -32,7 +32,7 @@
   - 本项目允许存在“磁盘上已安装 skill”和“当前 Codex 会话实际暴露 skill”不完全一致的情况。
   - agent 必须先以“当前会话可见 skill 列表”为准，再按本节映射关系选用等价 skill，不能只因为本机目录里有文件就假设本轮可调用。
 - **浏览器验收按工具分流（硬门禁）**：
-  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`，但禁止通过脚本自动弹出浏览器或体验入口页。
+  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`，可以尝试通过浏览器或体验入口页来验证功能和模拟用户实际体验。
   - **Codex Desktop**：**禁止**调用 Browser / IAB / Chrome / Computer Use 插件、`control-in-app-browser`、`frontend-testing-debugging` 的浏览器路径、`node_repl` 的 `setupBrowserRuntime` / `agent.browsers` / `browser.tabs`、`Start-Process` 打开浏览器、或任何内置 Browser 面板。Windows 上 IAB 会导致 Codex 闪退。
   - **Codex 替代验收**：`npm run verify`、Vitest、Fastify inject 接口链路、真实样本导入脚本、代码审查；不得因缺 Browser 而伪造 UI 已验收。
 
@@ -71,13 +71,6 @@
 - 模拟面试追问、下一题、评价优先走后端模型；后端不可用时必须明确显示本地练习模式。
 - local fallback 不能伪装成模型成功。
 
-## 浏览器验收规则
-
-- 禁止通过启动脚本自动 `Start-Process` 打开 `http://127.0.0.1:5173/`。
-- 禁止因服务就绪自动弹出浏览器窗口、体验入口页或额外标签页。
-- **Cursor**：浏览器验收只允许手动打开新标签页，或通过受控 Browser / Playwright MCP 在新页面中检查，不得打断用户当前工作窗口。
-- **Codex Desktop**：完全禁止内置 Browser / IAB / Chrome / Computer Use 与相关 skill；已在 `~/.codex/config.toml` 关闭对应插件。UI 渲染层问题改在 Cursor 或人工浏览器验收。
-- 如果需要给出访问入口，只在终端或文档中输出本地地址与日志位置。
 
 ## 验证命令
 

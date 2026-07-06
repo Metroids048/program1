@@ -1,8 +1,10 @@
 import { type ChangeEvent, useMemo, useState } from "react";
-import { Check, Download, Filter, Timer, Trash2, Upload, Volume2 } from "lucide-react";
+import { Check, Download, Filter, LogOut, Mail, RefreshCw, ShieldCheck, Timer, Trash2, Upload, Volume2 } from "lucide-react";
 import { exportFromServer, importToServer } from "../lib/apiClient";
+import { apiFetch } from "../lib/authClient";
 import { repairText } from "../lib/copy";
 import { parseImportedState, serializeAppState } from "../lib/store";
+import type { AuthSession } from "../lib/auth";
 import type { AppState, InterviewRecord, Position } from "../types";
 import { AiStatusBadge, EmptyState, MetricCard, MetricGrid } from "./shared";
 
@@ -46,6 +48,12 @@ function getRecordsEmptyCopy(hasAnyRecords: boolean, mode: RecordsFilterMode, po
     title: "暂无符合条件的记录",
     detail: "当前筛选条件下没有记录，可以切换类型或选择全部岗位。",
   };
+}
+
+function maskPhone(phone?: string | null): string {
+  if (!phone) return "未绑定手机号";
+  if (phone.length < 7) return phone;
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
 }
 
 function getPracticePriorities(record: InterviewRecord, position?: Position) {
@@ -435,18 +443,34 @@ function RecordReportContent({
 
 export function AccountModal({
   state,
+  session,
+  isLoggedIn,
   onClose,
+  onLogout,
+  onSwitchAccount,
+  onUpdateSession,
   onImport,
   onRename,
   onClear,
 }: {
   state: AppState;
+  session: AuthSession | null;
+  isLoggedIn: boolean;
   onClose: () => void;
+  onLogout: () => void;
+  onSwitchAccount: () => void;
+  onUpdateSession: (next: AuthSession | null) => void;
   onImport: (next: AppState) => void;
   onRename: (name: string) => void;
   onClear: () => void;
 }) {
   const [message, setMessage] = useState<{ tone: "success" | "error" | "warn"; text: string } | null>(null);
+  const [email, setEmail] = useState(session?.email ?? "");
+  const [password, setPassword] = useState("");
+  const [deleteText, setDeleteText] = useState("");
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [sendingVerify, setSendingVerify] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const exportData = async () => {
     let exported = serializeAppState(state);
@@ -492,18 +516,130 @@ export function AccountModal({
     }
   };
 
+  const saveAccount = async () => {
+    if (!isLoggedIn || !session) {
+      setMessage({ tone: "warn", text: "请先登录后再修改账户安全信息。" });
+      return;
+    }
+    setSavingAccount(true);
+    try {
+      const response = await apiFetch("/api/account/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: state.profile.displayName.trim() || session.displayName,
+          email: email.trim() || undefined,
+          password: password.trim() || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage({ tone: "error", text: data.error ?? "账户信息保存失败，请稍后再试。" });
+        return;
+      }
+      const user = data.user as Partial<AuthSession>;
+      onUpdateSession({
+        ...session,
+        displayName: user.displayName ?? state.profile.displayName,
+        email: user.email ?? (email.trim() || null),
+        emailVerifiedAt: user.emailVerifiedAt ?? null,
+        notificationPrefs: user.notificationPrefs ?? session.notificationPrefs,
+      });
+      setPassword("");
+      setMessage({ tone: "success", text: "账户信息已保存。" });
+    } catch {
+      setMessage({ tone: "error", text: "网络异常，账户信息暂时没有保存。" });
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const resendVerification = async () => {
+    if (!email.trim()) {
+      setMessage({ tone: "warn", text: "请先填写邮箱地址。" });
+      return;
+    }
+    setSendingVerify(true);
+    try {
+      const response = await apiFetch("/api/auth/email/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), displayName: state.profile.displayName.trim() || session?.displayName }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage({ tone: "error", text: data.error ?? "验证邮件发送失败，请稍后再试。" });
+        return;
+      }
+      setMessage({ tone: "success", text: "验证邮件已发送，请检查收件箱。" });
+    } catch {
+      setMessage({ tone: "error", text: "网络异常，验证邮件暂时没有发出。" });
+    } finally {
+      setSendingVerify(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (deleteText !== "DELETE") {
+      setMessage({ tone: "warn", text: "请输入 DELETE 以确认删除账号。" });
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      const response = await apiFetch("/api/user", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmationText: deleteText }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage({ tone: "error", text: data.error ?? "删除账号失败，请稍后再试。" });
+        return;
+      }
+      onLogout();
+    } catch {
+      setMessage({ tone: "error", text: "网络异常，账号暂时没有删除。" });
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <div className="drawer-backdrop" role="presentation" onClick={onClose}>
       <aside className="drawer-panel narrow" role="dialog" aria-modal="true" aria-label="账户与数据" onClick={(event) => event.stopPropagation()}>
         <header className="drawer-header">
           <div>
             <span className="page-eyebrow">账户面板</span>
-            <h2>账户与导入导出</h2>
+            <h2>账户与数据</h2>
           </div>
           <button className="button ghost" type="button" onClick={onClose}>
             关闭
           </button>
         </header>
+
+        <div className="account-primary-actions">
+          <div className="account-current-line">
+            <ShieldCheck size={16} />
+            <span>{isLoggedIn ? `当前账号：${maskPhone(session?.phone)}` : "当前为访客模式"}</span>
+          </div>
+          {isLoggedIn ? (
+            <div className="drawer-actions two-up">
+              <button className="button danger" type="button" onClick={onLogout}>
+                <LogOut size={16} />
+                退出登录
+              </button>
+              <button className="button secondary" type="button" onClick={onSwitchAccount}>
+                <RefreshCw size={16} />
+                切换账号
+              </button>
+            </div>
+          ) : (
+            <button className="button primary" type="button" onClick={onSwitchAccount}>
+              <RefreshCw size={16} />
+              登录 / 注册
+            </button>
+          )}
+        </div>
 
         <label className="field-label" htmlFor="display-name">显示名称</label>
         <input
@@ -519,21 +655,57 @@ export function AccountModal({
           <article><span>证据</span><strong>{state.profile.evidenceLibrary.length}</strong></article>
         </div>
 
-        <div className="drawer-actions stacked">
-          <button className="button secondary" type="button" onClick={exportData}>
-            <Download size={16} />
-            导出数据
-          </button>
-          <label className="button secondary file-button">
-            <Upload size={16} />
-            导入备份
-            <input type="file" accept=".json,application/json" aria-label="导入备份文件" onChange={importData} />
-          </label>
-          <button className="button danger" type="button" onClick={onClear}>
-            <Trash2 size={16} />
-            清除本地数据
-          </button>
-        </div>
+        {isLoggedIn ? (
+          <details className="account-more-section">
+            <summary>账户安全</summary>
+            <label className="field-label" htmlFor="account-email">邮箱</label>
+            <input id="account-email" className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" />
+            <label className="field-label" htmlFor="account-password">新密码</label>
+            <input id="account-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="不修改可留空，至少 8 位" />
+            <div className="drawer-actions stacked">
+              <button className="button primary" type="button" onClick={saveAccount} disabled={savingAccount}>
+                <ShieldCheck size={16} />
+                {savingAccount ? "保存中..." : "保存账户信息"}
+              </button>
+              <button className="button secondary" type="button" onClick={resendVerification} disabled={sendingVerify || !email.trim()}>
+                <Mail size={16} />
+                {sendingVerify ? "发送中..." : "重新发送验证邮件"}
+              </button>
+            </div>
+            <div className="danger-zone-inline">
+              <p>删除账号会清空登录会话和服务端业务数据。请输入 DELETE 确认。</p>
+              <input className="input" value={deleteText} onChange={(event) => setDeleteText(event.target.value)} placeholder="DELETE" aria-label="删除账号确认文本" />
+              <button className="button danger" type="button" onClick={deleteAccount} disabled={deletingAccount}>
+                <Trash2 size={16} />
+                {deletingAccount ? "删除中..." : "删除账号"}
+              </button>
+            </div>
+          </details>
+        ) : null}
+
+        <details className="account-more-section">
+          <summary>更多</summary>
+          <div className="drawer-actions stacked">
+            <button className="button secondary" type="button" onClick={exportData}>
+              <Download size={16} />
+              导出数据
+            </button>
+            <label className="button secondary file-button">
+              <Upload size={16} />
+              导入备份
+              <input type="file" accept=".json,application/json" aria-label="导入备份文件" onChange={importData} />
+            </label>
+            {!isLoggedIn ? (
+              <>
+                <p className="form-hint">只清本机浏览器缓存，不会删除服务端已保存的岗位和记录。</p>
+                <button className="button danger" type="button" onClick={onClear}>
+                  <Trash2 size={16} />
+                  清除本机缓存
+                </button>
+              </>
+            ) : null}
+          </div>
+        </details>
 
         {message ? <div className={message.tone === "error" ? "inline-message error" : message.tone === "warn" ? "inline-message warn" : "inline-message success"}>{message.text}</div> : null}
       </aside>

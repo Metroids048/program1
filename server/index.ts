@@ -9,7 +9,7 @@ import { createLlmClient } from "./llm";
 import type { LlmClient } from "./llm";
 import { AiOrchestrator } from "./orchestrator";
 import { createSearchTool } from "./search";
-import type { AnswerCueCard, AppState, BackendState, InterviewRecord, Position } from "./types";
+import type { AnswerCueCard, AppState, BackendState, InterviewRecord, LiveCueSessionRecord, Position } from "./types";
 import { createAuthService } from "./domains/auth/auth.service";
 import { registerAuthRoutes } from "./domains/auth/auth.routes";
 import { createQuotaService } from "./domains/quota/quota.service";
@@ -32,6 +32,7 @@ const CueCardBody = z.object({
   source: z.enum(["live", "mock", "questionBank", "manual"]).optional(),
   enableSearch: z.boolean().optional(),
   recentHistory: z.array(z.object({ role: z.enum(["interviewer", "candidate"]), text: z.string() })).optional(),
+  sessionId: z.string().optional(),
 });
 
 const ReconstructCueCardBody = z.object({
@@ -372,7 +373,24 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
         message: error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
       });
     }
-    const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
+    const typedError = error as Error & {
+      statusCode?: number;
+      quotaInfo?: unknown;
+      quotaFeature?: string;
+      quotaFeatureInfo?: unknown;
+    };
+    const statusCode = typedError.statusCode ?? 500;
+    if (statusCode === 429 && typedError.message === "QUOTA_EXCEEDED") {
+      return reply.code(429).send({
+        error: "QUOTA_EXCEEDED",
+        message: "今日该功能的免费 AI 额度已用完，明天 0 点重置。",
+        quota: {
+          feature: typedError.quotaFeature,
+          info: typedError.quotaFeatureInfo,
+          summary: typedError.quotaInfo,
+        },
+      });
+    }
     if (statusCode >= 400 && statusCode < 500) {
       return reply.code(statusCode).send({ error: (error as Error).message });
     }
@@ -533,13 +551,33 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
       send("delta", { text: "已进入本地资料召回..." });
       if (body.enableSearch) send("stage", { label: "联网搜索公司与岗位信息", status: "running" });
       const result = await orchestrator.createCueCard(body);
+      const now = nowIso();
+      const sessionId = body.sessionId || makeId("live-cue-session");
+      const existingSession = body.sessionId ? db.getLiveCueSession(body.sessionId, ownerOf(request)) : undefined;
+      const session: LiveCueSessionRecord = {
+        id: sessionId,
+        positionId: body.positionId ?? existingSession?.positionId ?? "default",
+        history: [
+          ...(existingSession?.history ?? []),
+          {
+            id: makeId("live-cue-turn"),
+            questionText: body.questionText,
+            card: result.card,
+            meta: result.meta,
+            createdAt: now,
+          },
+        ],
+        createdAt: existingSession?.createdAt ?? now,
+        updatedAt: now,
+      };
+      db.saveLiveCueSession(session, ownerOf(request));
       send("stage", {
         label: body.enableSearch ? "搜索完成，生成提词卡" : "生成提词卡",
         status: result.promptRun.status,
         searchCount: result.searchResults.length,
       });
       send("delta", { text: result.meta.backendStatus === "success" ? "模型已返回结构化提词卡。" : "模型未就绪，保留本地练习模式结果。" });
-      send("card", result);
+      send("card", { ...result, sessionId: session.id, history: session.history });
       send("done", { ok: true, quotaUsed: quotaInfo.dailyUsed, quotaRemaining: quotaInfo.remaining });
     } catch (error) {
       send("error", { message: String(error) });

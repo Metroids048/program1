@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AiMessage, AiProvider } from "./ai/provider";
 import { LocalFallbackProvider } from "./ai/provider";
 import { createDb } from "./db";
 import { buildServer, resolveListenOptions } from "./index";
@@ -37,6 +38,22 @@ function testApp(dbPath = testDbPath()): FastifyInstance {
   const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
   apps.push(app);
   return app;
+}
+
+function readSseEvent<T>(body: string, event: string): T {
+  const match = body.match(new RegExp(`event: ${event}\\ndata: ([^\\n]+)`));
+  if (!match) throw new Error(`Missing SSE event: ${event}`);
+  return JSON.parse(match[1]) as T;
+}
+
+class CapturingProvider implements AiProvider {
+  model = "capturing-provider";
+  calls: Array<{ messages: AiMessage[]; signal?: AbortSignal }> = [];
+
+  async chatJson<T>(messages: AiMessage[], fallback: T, options?: { signal?: AbortSignal }): Promise<{ data: T; status: "fallback"; raw: string }> {
+    this.calls.push({ messages, signal: options?.signal });
+    return { data: fallback, status: "fallback", raw: "captured" };
+  }
 }
 
 async function registerAndLogin(app: FastifyInstance, phone: string, displayName?: string): Promise<{ token: string; userId: string }> {
@@ -117,6 +134,66 @@ describe("local backend API", () => {
     expect(response.body).toContain("event: delta");
     expect(response.body).toContain("event: card");
     expect(response.body).toContain("openingLine");
+  });
+
+  it("uses one budgeted model call for cue-card generation even when search is enabled", async () => {
+    const provider = new CapturingProvider();
+    const app = buildServer({ dbPath: testDbPath(), llmClient: provider });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/copilot/cue-card/stream",
+      payload: { questionText: "请结合最新行业趋势介绍你的增长项目", source: "live", enableSearch: true },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0].signal).toBeInstanceOf(AbortSignal);
+    expect(provider.calls[0].messages.at(-1)?.content).toContain("searchResults");
+  });
+
+  it("persists live cue-card history by session id", async () => {
+    const app = testApp();
+    const { token } = await registerAndLogin(app, "13800138130", "实时助手用户");
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/copilot/cue-card/stream",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { questionText: "请介绍一个增长项目", source: "live", enableSearch: false },
+    });
+    const firstCard = readSseEvent<{ sessionId: string; history: unknown[] }>(first.body, "card");
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/copilot/cue-card/stream",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sessionId: firstCard.sessionId, questionText: "这个项目最大的难点是什么", source: "live", enableSearch: false },
+    });
+    const secondCard = readSseEvent<{ sessionId: string; history: Array<{ questionText: string; card: unknown; meta: unknown }> }>(second.body, "card");
+
+    expect(firstCard.sessionId).toBeTruthy();
+    expect(secondCard.sessionId).toBe(firstCard.sessionId);
+    expect(secondCard.history).toHaveLength(2);
+    expect(secondCard.history.map((item) => item.questionText)).toEqual(["请介绍一个增长项目", "这个项目最大的难点是什么"]);
+    expect(secondCard.history[0].card).toBeTruthy();
+    expect(secondCard.history[0].meta).toBeTruthy();
+  });
+
+  it("deletes live cue-card sessions with position artifacts", async () => {
+    const db = createDb(testDbPath());
+    db.saveLiveCueSession({
+      id: "live-session-delete",
+      positionId: "position-delete",
+      history: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }, "user-delete");
+
+    db.deletePositionArtifacts("position-delete", "user-delete", "user:user-delete");
+
+    expect(db.getLiveCueSession("live-session-delete", "user-delete")).toBeUndefined();
+    db.db?.close();
   });
 
   it("keeps search explicit when provider credentials are missing", async () => {
@@ -925,6 +1002,8 @@ describe("local backend API", () => {
       expect(guestQuota.statusCode).toBe(200);
       expect(guestQuota.json().isGuest).toBe(true);
       expect(guestQuota.json().dailyLimit).toBe(3);
+      expect(guestQuota.json().features.cueCard.limit).toBeGreaterThan(guestQuota.json().dailyLimit);
+      expect(guestQuota.json().features.mock.remaining).toBeGreaterThan(0);
 
       const reg = await app.inject({
         method: "POST",
@@ -941,6 +1020,51 @@ describe("local backend API", () => {
       expect(userQuota.statusCode).toBe(200);
       expect(userQuota.json().isGuest).toBe(false);
       expect(userQuota.json().dailyLimit).toBe(10);
+      expect(userQuota.json().features.resume.limit).toBeGreaterThan(0);
+      expect(userQuota.json().features.positionAnalyze.limit).toBeGreaterThan(0);
+
+      await app.close();
+    });
+
+    it("limits AI quota by feature group without blocking other AI flows", async () => {
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const { token } = await registerAndLogin(app, "13800138010", "额度用户");
+
+      const quota = await app.inject({
+        method: "GET",
+        url: "/api/quota",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const cueLimit = quota.json().features.cueCard.limit as number;
+
+      for (let index = 0; index < cueLimit; index += 1) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/api/copilot/cue-card/stream",
+          headers: { authorization: `Bearer ${token}` },
+          payload: { questionText: `请介绍一个增长项目 ${index}`, source: "live", enableSearch: false },
+        });
+        expect(response.statusCode).toBe(200);
+      }
+
+      const exhaustedCueCard = await app.inject({
+        method: "POST",
+        url: "/api/copilot/cue-card/stream",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { questionText: "请再介绍一个增长项目", source: "live", enableSearch: false },
+      });
+      expect(exhaustedCueCard.statusCode).toBe(429);
+      expect(exhaustedCueCard.json().error).toBe("QUOTA_EXCEEDED");
+      expect(exhaustedCueCard.json().quota.feature).toBe("cueCard");
+
+      const mockSession = await app.inject({
+        method: "POST",
+        url: "/api/mock/session",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { config: { submitMode: "manual" } },
+      });
+      expect(mockSession.statusCode).toBe(200);
+      expect(mockSession.json().backendStatus).toBe("fallback");
 
       await app.close();
     });

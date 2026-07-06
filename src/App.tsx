@@ -46,7 +46,6 @@ import { AccountModal, RecordsView } from "./components/records";
 import { AuthPage } from "./components/auth/AuthPage";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./components/auth/RecoveryPages";
 import { OnboardingPage } from "./components/onboarding/OnboardingPage";
-import { AccountPage } from "./components/account/AccountPage";
 import { JdWorkspace } from "./components/jd";
 import { QuestionsWorkspace } from "./components/questions";
 import { ResumeWorkspacePage } from "./components/resume";
@@ -97,7 +96,7 @@ function replaceRecord(items: InterviewRecord[], nextRecord: InterviewRecord): I
 }
 
 export function App() {
-  const { isLoggedIn, loading: authLoading } = useAuth();
+  const { session, isLoggedIn, loading: authLoading, clearAuth, updateSession } = useAuth();
   const [appState, setAppState] = useState<AppState>(() => {
     const state = repairAppState(loadServerSnapshotCache());
     if (typeof window === "undefined") return state;
@@ -237,6 +236,15 @@ export function App() {
     }
     setRoutePath(new URL(path, window.location.origin).pathname);
   };
+
+  useEffect(() => {
+    if (route.name !== "account") return;
+    const timer = window.setTimeout(() => {
+      setAccountOpen(true);
+      openRoute("/", { replace: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [route.name]);
 
   const requireLoginFor = (path: string) => {
     if (isLoggedIn) {
@@ -547,7 +555,7 @@ export function App() {
   return (
     <AppShell
       activeNav={activeNav}
-      accountName={profile.displayName || "候选人"}
+      accountName={session?.displayName || profile.displayName || "候选人"}
       isLoggedIn={isLoggedIn}
       onNavigate={(nav) => {
         if (nav === "home") openRoute("/");
@@ -559,7 +567,7 @@ export function App() {
         if (nav === "records") openRoute("/records");
         if (nav === "authLogin") openRoute("/auth/login");
         if (nav === "authRegister") openRoute("/auth/register");
-        if (nav === "account") openRoute("/account");
+        if (nav === "account") setAccountOpen(true);
       }}
       onAccount={() => setAccountOpen(true)}
       onFeedback={() => setFeedbackOpen(true)}
@@ -590,8 +598,6 @@ export function App() {
         }
       }} />}
 
-      {route.name === "account" && <AccountPage journeyState={appState.journeyState} />}
-
       {route.name === "legalTerms" && <LegalPage type="terms" />}
 
       {route.name === "legalPrivacy" && <LegalPage type="privacy" />}
@@ -604,7 +610,7 @@ export function App() {
 
       {route.name === "serverError" && <ServerErrorPage />}
 
-      {route.name === "home" && (
+      {(route.name === "home" || route.name === "account") && (
         <HomeDashboard
           positions={positions}
           activePositionId={activePositionId}
@@ -768,7 +774,20 @@ export function App() {
       {accountOpen && (
         <AccountModal
           state={appState}
+          session={session}
+          isLoggedIn={isLoggedIn}
           onClose={() => setAccountOpen(false)}
+          onLogout={() => {
+            clearAuth();
+            setAccountOpen(false);
+            openRoute("/", { replace: true });
+          }}
+          onSwitchAccount={() => {
+            clearAuth();
+            setAccountOpen(false);
+            openRoute("/auth/login", { replace: true });
+          }}
+          onUpdateSession={updateSession}
           onImport={(next) => {
             setAppState(repairAppState(next));
             setAccountOpen(false);

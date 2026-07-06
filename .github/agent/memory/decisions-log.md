@@ -126,3 +126,18 @@
   - 公开部署时不会因容器绑定回环地址而无法访问
   - 多访客/多账号资料不会因无身份或 RAG 固定 id 互相覆盖
   - full-flow 验收脚本必须像浏览器一样保留服务端 cookie，并对关键 200/持久化结果硬失败
+
+## ADR-P011: 实时助手多轮提词卡采用 owner-scoped session 持久化
+
+- **Date**: 2026-07-05
+- **Status**: accepted
+- **Context**: 真实用户在实时助手中会连续生成 3-4 轮提词卡；原实现只保留当前卡片和本地前端列表，刷新、切换账号或复盘时缺少服务端可验证的多轮历史，也容易和账号/访客数据隔离要求冲突。
+- **Decision**:
+  1. 新增 `LiveCueSessionRecord` 服务端类型，记录 `positionId`、多轮 `history`、`createdAt/updatedAt`
+  2. SQLite 新增 `live_cue_sessions` 表，并通过 `user_id` 做 owner-scoped 访问；file fallback 新增 `userLiveCueSessions`
+  3. `/api/copilot/cue-card/stream` 请求体接受可选 `sessionId`，`card` SSE payload 返回 `sessionId/history`
+  4. 删除岗位相关数据时同步清理该 owner 下的 live cue session
+- **Consequences**:
+  - 实时助手多轮历史可以跨前端组件状态回传和展示，但仍不引入新的岗位字段 schema
+  - 账号/访客隔离沿用当前 owner 体系，避免提词卡历史串号
+  - 后续若做记录页复盘增强，可直接复用 session history，而不需要从前端临时状态反推

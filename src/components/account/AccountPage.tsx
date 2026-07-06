@@ -11,7 +11,15 @@ interface QuotaInfo {
   dailyLimit: number;
   remaining: number;
   isGuest: boolean;
+  features?: Record<"cueCard" | "mock" | "resume" | "positionAnalyze", { used: number; limit: number; remaining: number }>;
 }
+
+const QUOTA_FEATURE_LABELS: Array<{ key: keyof NonNullable<QuotaInfo["features"]>; label: string }> = [
+  { key: "cueCard", label: "提词卡" },
+  { key: "mock", label: "模拟面试" },
+  { key: "resume", label: "简历 AI" },
+  { key: "positionAnalyze", label: "岗位分析" },
+];
 
 type AccountMessage = {
   tone: "success" | "error";
@@ -327,8 +335,23 @@ function AccountWorkspace({
             <h2 className="account-card-title">使用额度</h2>
             <div className="account-quota-big">
               <span className="account-quota-num">{quota.remaining}</span>
-              <span className="account-quota-label">剩余 / {quota.dailyLimit} 次/天</span>
+              <span className="account-quota-label">兼容总额度 / {quota.dailyLimit} 次/天</span>
             </div>
+            {quota.features ? (
+              <div className="account-quota-grid">
+                {QUOTA_FEATURE_LABELS.map((item) => {
+                  const value = quota.features?.[item.key];
+                  if (!value) return null;
+                  return (
+                    <div className="account-quota-feature" key={item.key}>
+                      <span>{item.label}</span>
+                      <strong>{value.remaining}</strong>
+                      <small>剩余 / {value.limit}</small>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             <p className="account-card-hint">每日 0 点重置，当前仍是公开 MVP 免费额度。</p>
           </div>
         ) : null}

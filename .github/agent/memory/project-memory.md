@@ -1,6 +1,6 @@
 # Project Memory — 辅助面试 / AI 求职台
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 ## Project
 
@@ -69,9 +69,14 @@ Last updated: 2026-07-04
   - 条件搜索
   - DeepSeek / fallback 结构化输出
   - SSE `stage/delta/card/done/error`
+  - 前端可见阶段进度与取消生成；取消或失败时保留本地练习提词卡
+  - owner-scoped live cue session 持久化，SSE card payload 返回 `sessionId/history`，前端可展开查看完整多轮历史卡片
 - 模拟面试首题、追问、报告已接入统一 RAG + 模型编排
+- 模拟面试回答提交时会明确显示“模型面试官思考中 / 本地追问 / 请求失败后本地继续”，不把本地 fallback 伪装成模型成功
+- Web Speech 草稿在实时助手与模拟面试中按 `interim / final / editable` 分层；停止听取不清空已识别文本，只有清空/重录才清空
 - 简历页右侧 AI 对话已改为真实后端接口 `/api/resume/ai`
 - 当前仍为本地优先单进程实现；账号/访客数据已按 owner 分区，RAG 文档索引已 owner-scoped
+- AI 免费额度已按功能分组计数并保持旧字段兼容：`cueCard`、`mock`、`resume`、`positionAnalyze`；文件兜底存储模式也会做进程内额度计数
 
 ## 数据 owner
 

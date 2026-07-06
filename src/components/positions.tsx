@@ -1,4 +1,4 @@
-import { ArrowRight, BriefcaseBusiness, MessageCircle, Mic, Trash2, Upload } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, MessageCircle, Mic, Trash2 } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { repairText } from "../lib/copy";
 import { loadDraftState, saveDraftState } from "../lib/store";
@@ -103,7 +103,6 @@ export function HomeDashboard({
       }
       saveDraftState({ ...loadDraftState(), homeInput: "" });
       setInput("");
-      onOpenCreatedPosition(positionId);
     } catch {
       setSubmitError("保存失败，请检查网络后重试。");
     } finally {
@@ -135,7 +134,7 @@ export function HomeDashboard({
                 <div>
                   <span className="subtle-label">岗位输入</span>
                   <h2>先放一整段 JD 或面试背景</h2>
-                  <p>这里就是首页的主对话框。你可以直接粘贴一大段文本，系统会先承接原文，再带你继续补全当前岗位。</p>
+                  <p>直接贴真实 JD、HR 消息或你掌握的面试背景；AI 会保留原文，并继续追问缺失字段。</p>
                 </div>
               </div>
 
@@ -157,12 +156,8 @@ export function HomeDashboard({
                   <div className="home-dialog-footer">
                     <div className="home-dialog-footer-spacer" />
                     <div className="home-intake-actions">
-                      <button className="button secondary compact-button" type="button" onClick={() => updateInput(`${input}${input ? "\n" : ""}我会补充自定义 JD。`)}>
-                        <Upload size={14} />
-                        上传 JD
-                      </button>
                       <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim() || submitting}>
-                        {submitting ? "保存中..." : "保存当前岗位"}
+                        {submitting ? "发送中..." : "发送"}
                         <ArrowRight size={14} />
                       </button>
                     </div>

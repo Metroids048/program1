@@ -57,6 +57,7 @@ export interface CueCardRequest {
   source?: AnswerCueCard["source"];
   enableSearch?: boolean;
   recentHistory?: MockMessage[];
+  sessionId?: string;
 }
 
 export interface EvidenceTraceItem {
@@ -142,6 +143,7 @@ export interface ResumeAiResponse {
 export interface IntakeAssistantResponse {
   reply: string;
   missingFields: Array<{ key: Position["intake"]["missingFields"][number]["key"]; label: string }>;
+  confirmedFields: Position["intake"]["confirmedFields"];
   suggestedPrompts: string[];
   meta: AiRunMeta;
 }
@@ -155,6 +157,22 @@ export interface MockSessionRecord {
   updatedAt: string;
   completedAt?: string;
   aiMeta?: InterviewAiMeta;
+}
+
+export interface LiveCueSessionTurn {
+  id: string;
+  questionText: string;
+  card: AnswerCueCard;
+  meta: AiRunMeta;
+  createdAt: string;
+}
+
+export interface LiveCueSessionRecord {
+  id: string;
+  positionId: string;
+  history: LiveCueSessionTurn[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BackendState {

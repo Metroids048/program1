@@ -5,6 +5,7 @@ const KNOWN_ERROR_MESSAGES: Record<string, string> = {
   MOCK_SESSION_NOT_FOUND: "这场模拟面试已失效，请重新开始一轮。",
   INVALID_IMPORT: "导入文件不是有效的备份数据。",
   INTERNAL_ERROR: "服务端处理失败，请稍后重试。",
+  QUOTA_EXCEEDED: "今日该功能的免费 AI 额度已用完，明天 0 点重置。",
   DEEPSEEK_TIMEOUT: "模型响应超时",
   SAVE_FAILED: "记录保存失败",
 };

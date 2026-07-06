@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { clearIdentityLocalCache } from "./store";
 
 export interface AuthSession {
   userId: string;
@@ -133,6 +134,7 @@ export function useAuth() {
     clearAuth: () => {
       writeTokens(null);
       writeSession(null);
+      clearIdentityLocalCache();
       setSession(null);
     },
   };

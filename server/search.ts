@@ -1,6 +1,8 @@
 import type { SearchResult } from "./types";
 import { makeId, nowIso } from "./utils";
 
+const SEARCH_TIMEOUT_MS = 4000;
+
 export interface SearchTool {
   provider: SearchResult["provider"];
   search(query: string): Promise<SearchResult[]>;
@@ -38,7 +40,7 @@ export function createSearchTool(provider = process.env.SEARCH_PROVIDER ?? "", a
 }
 
 async function searchTavily(query: string, apiKey: string): Promise<SearchResult[]> {
-  const response = await fetch("https://api.tavily.com/search", {
+  const response = await fetchWithSearchTimeout("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ api_key: apiKey, query, max_results: 5, search_depth: "basic" }),
@@ -48,7 +50,7 @@ async function searchTavily(query: string, apiKey: string): Promise<SearchResult
 }
 
 async function searchBing(query: string, apiKey: string): Promise<SearchResult[]> {
-  const response = await fetch(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=5`, {
+  const response = await fetchWithSearchTimeout(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=5`, {
     headers: { "Ocp-Apim-Subscription-Key": apiKey },
   });
   const data = (await response.json()) as { webPages?: { value?: Array<{ name?: string; url?: string; snippet?: string }> } };
@@ -56,13 +58,23 @@ async function searchBing(query: string, apiKey: string): Promise<SearchResult[]
 }
 
 async function searchSerpApi(query: string, apiKey: string): Promise<SearchResult[]> {
-  const response = await fetch(`https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}&num=5`);
+  const response = await fetchWithSearchTimeout(`https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${apiKey}&num=5`);
   const data = (await response.json()) as { organic_results?: Array<{ title?: string; link?: string; snippet?: string }> };
   return mapResults(
     query,
     "serpapi",
     (data.organic_results ?? []).map((item) => ({ title: item.title, url: item.link, snippet: item.snippet })),
   );
+}
+
+async function fetchWithSearchTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("SEARCH_TIMEOUT")), SEARCH_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function mapResults(query: string, provider: SearchResult["provider"], items: Array<{ title?: string; name?: string; url?: string; link?: string; snippet?: string; content?: string }>): SearchResult[] {

@@ -7,6 +7,7 @@ import type {
   ApiStateSnapshot,
   BackendState,
   InterviewRecord,
+  LiveCueSessionRecord,
   MockSessionRecord,
   Position,
   PromptRun,
@@ -35,6 +36,8 @@ export interface AppDb {
   saveMockSession(session: MockSessionRecord, userId?: string): void;
   getMockSession(id: string, userId?: string): MockSessionRecord | undefined;
   getLatestActiveMockSession(positionId: string, userId?: string): MockSessionRecord | undefined;
+  saveLiveCueSession(session: LiveCueSessionRecord, userId?: string): void;
+  getLiveCueSession(id: string, userId?: string): LiveCueSessionRecord | undefined;
   getCachedCueCard(key: string): AnswerCueCard | undefined;
   saveCachedCueCard(key: string, card: AnswerCueCard, positionId: string): void;
   deleteCachedCueCardsByPosition(positionId: string): void;
@@ -106,6 +109,7 @@ type FileStore = {
   userPromptRuns?: Array<{ userId: string; run: PromptRun }>;
   mockSessions: MockSessionRecord[];
   userMockSessions?: Array<{ userId: string; session: MockSessionRecord }>;
+  userLiveCueSessions?: Array<{ userId: string; session: LiveCueSessionRecord }>;
   cueCardCache: Array<{ cacheKey: string; positionId: string; card: AnswerCueCard; createdAt: string }>;
   documents: RagDocument[];
   documentChunks: RagChunk[];
@@ -269,6 +273,22 @@ function createSqliteDb(db: Database.Database): AppDb {
         .map((row) => JSON.parse(row.json) as MockSessionRecord)
         .find((session) => !session.completedAt);
     },
+    saveLiveCueSession(session, userId) {
+      if (!userId) return;
+      db.prepare("insert or replace into live_cue_sessions(id, position_id, json, updated_at, created_at, user_id) values (?, ?, ?, ?, ?, ?)").run(
+        session.id,
+        session.positionId,
+        JSON.stringify(session),
+        session.updatedAt,
+        session.createdAt,
+        userId,
+      );
+    },
+    getLiveCueSession(id, userId) {
+      if (!userId) return undefined;
+      const row = db.prepare("select json from live_cue_sessions where id = ? and user_id = ?").get(id, userId) as { json: string } | undefined;
+      return row ? (JSON.parse(row.json) as LiveCueSessionRecord) : undefined;
+    },
     getCachedCueCard(key) {
       const row = db.prepare("select json from cue_card_cache where cache_key = ?").get(key) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as AnswerCueCard) : undefined;
@@ -283,6 +303,7 @@ function createSqliteDb(db: Database.Database): AppDb {
       db.prepare("delete from cue_card_cache where position_id = ?").run(positionId);
       if (userId) {
         db.prepare("delete from mock_sessions where position_id = ? and user_id = ?").run(positionId, userId);
+        db.prepare("delete from live_cue_sessions where position_id = ? and user_id = ?").run(positionId, userId);
         db.prepare("delete from interview_records where json_extract(json, '$.positionId') = ? and user_id = ?").run(positionId, userId);
       }
       this.deleteDocumentsBySource("jd", positionId, ownerKey);
@@ -571,6 +592,7 @@ function createFileDb(filePath: string): AppDb {
         userPromptRuns: [],
         mockSessions: [],
         userMockSessions: [],
+        userLiveCueSessions: [],
         cueCardCache: [],
         documents: [],
         documentChunks: [],
@@ -594,6 +616,7 @@ function createFileDb(filePath: string): AppDb {
       userPromptRuns: parsed.userPromptRuns ?? [],
       mockSessions: parsed.mockSessions ?? [],
       userMockSessions: parsed.userMockSessions ?? [],
+      userLiveCueSessions: parsed.userLiveCueSessions ?? [],
       cueCardCache: parsed.cueCardCache ?? [],
       documents: parsed.documents ?? [],
       documentChunks: parsed.documentChunks ?? [],
@@ -688,6 +711,20 @@ function createFileDb(filePath: string): AppDb {
         .map((item) => item.session)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
     },
+    saveLiveCueSession(session, userId) {
+      if (!userId) return;
+      replace((store) => ({
+        ...store,
+        userLiveCueSessions: [
+          { userId, session },
+          ...(store.userLiveCueSessions ?? []).filter((item) => !(item.userId === userId && item.session.id === session.id)),
+        ],
+      }));
+    },
+    getLiveCueSession(id, userId) {
+      if (!userId) return undefined;
+      return (readStore().userLiveCueSessions ?? []).find((item) => item.userId === userId && item.session.id === id)?.session;
+    },
     getCachedCueCard(key) {
       return readStore().cueCardCache.find((item) => item.cacheKey === key)?.card;
     },
@@ -717,6 +754,7 @@ function createFileDb(filePath: string): AppDb {
           ...store,
           userRecords: userId ? (store.userRecords ?? []).filter((item) => !(item.userId === userId && item.record.positionId === positionId)) : store.userRecords ?? [],
           userMockSessions: userId ? (store.userMockSessions ?? []).filter((item) => !(item.userId === userId && item.session.positionId === positionId)) : store.userMockSessions ?? [],
+          userLiveCueSessions: userId ? (store.userLiveCueSessions ?? []).filter((item) => !(item.userId === userId && item.session.positionId === positionId)) : store.userLiveCueSessions ?? [],
           cueCardCache: store.cueCardCache.filter((item) => item.positionId !== positionId),
           documents: store.documents.filter((item) => item.positionId !== positionId || (ownerKey && item.ownerKey !== ownerKey)),
           documentChunks: store.documentChunks.filter((item) => item.positionId !== positionId || (ownerKey && item.ownerKey !== ownerKey)),
@@ -902,6 +940,8 @@ function migrate(db: Database.Database): void {
   if (!columns.some((column) => column.name === "skill_id")) {
     db.exec("alter table prompt_runs add column skill_id text not null default ''");
   }
+  ensureColumn(db, "live_cue_sessions", "user_id", "alter table live_cue_sessions add column user_id text");
+  db.exec("create index if not exists idx_live_cue_sessions_user on live_cue_sessions(user_id)");
 }
 
 function ensureColumn(db: Database.Database, table: string, column: string, statement: string): void {

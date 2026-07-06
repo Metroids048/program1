@@ -807,6 +807,16 @@ function createIntakeState(job: JobAnalysis, jobText: string, previous?: Partial
   };
 }
 
+function applyConfirmedPositionFields(job: JobAnalysis, intake: PositionIntakeState): JobAnalysis {
+  const confirmedCompany = intake.confirmedFields.find((field) => field.key === "company")?.value.trim();
+  const confirmedRole = intake.confirmedFields.find((field) => field.key === "role")?.value.trim();
+  return {
+    ...job,
+    company: confirmedCompany || job.company,
+    title: confirmedRole || job.title,
+  };
+}
+
 export function createAnalysisContext(
   profile: CandidateProfile,
   job: JobAnalysis,
@@ -852,13 +862,18 @@ export function recomputeProfile(resumeText: string, previous?: CandidateProfile
 }
 
 export function normalizePosition(position: Position, profile: CandidateProfile): Position {
-  const job = position.job ?? analyzeJob(position.jobText);
+  const analyzedJob = position.job ?? analyzeJob(position.jobText);
+  const intake = createIntakeState(analyzedJob, position.jobText, position.intake);
+  const job = applyConfirmedPositionFields(analyzedJob, intake);
   const questions = Array.isArray(position.questions) ? position.questions : generateQuestions(withEvidenceLibrary(profile), job, 28);
   const matchReport = position.matchReport ?? createMatchReport(profile.resume, job, profile.resumeText);
   const materials = Array.isArray(position.materials) ? position.materials : [];
   return {
     ...position,
-    intake: createIntakeState(job, position.jobText, position.intake),
+    title: job.title,
+    company: job.company,
+    job,
+    intake,
     materials,
     interviewPreferences: { ...DEFAULT_INTERVIEW_PREFERENCES, ...(position.interviewPreferences ?? {}) },
     analysisContext: position.analysisContext ?? createAnalysisContext(profile, job, matchReport, questions, materials),
@@ -866,7 +881,9 @@ export function normalizePosition(position: Position, profile: CandidateProfile)
 }
 
 export function createPosition(jobText: string, profile: CandidateProfile, init?: Partial<Position>): Position {
-  const job = analyzeJob(jobText);
+  const analyzedJob = analyzeJob(jobText);
+  const intake = createIntakeState(analyzedJob, jobText, init?.intake);
+  const job = applyConfirmedPositionFields(analyzedJob, intake);
   const matchReport = createMatchReport(profile.resume, job, profile.resumeText);
   const resumeWithLibrary = withEvidenceLibrary(profile);
   const questions = generateQuestions(resumeWithLibrary, job, 28);
@@ -887,7 +904,7 @@ export function createPosition(jobText: string, profile: CandidateProfile, init?
     mockTurns,
     report,
     selectedQuestionId: questions[0]?.id ?? "",
-    intake: createIntakeState(job, jobText, init?.intake),
+    intake,
     materials,
     interviewPreferences: { ...DEFAULT_INTERVIEW_PREFERENCES, ...(init?.interviewPreferences ?? {}) },
     analysisContext: createAnalysisContext(profile, job, matchReport, questions, materials),
@@ -901,7 +918,9 @@ export function createPosition(jobText: string, profile: CandidateProfile, init?
 // Recompute one position against (possibly updated) JD or profile, keeping
 // status/notes/timeline and any still-valid mock turns.
 export function recomputePosition(position: Position, profile: CandidateProfile): Position {
-  const job = analyzeJob(position.jobText);
+  const analyzedJob = analyzeJob(position.jobText);
+  const intake = createIntakeState(analyzedJob, position.jobText, position.intake);
+  const job = applyConfirmedPositionFields(analyzedJob, intake);
   const matchReport = createMatchReport(profile.resume, job, profile.resumeText);
   const resumeWithLibrary = withEvidenceLibrary(profile);
 
@@ -931,7 +950,7 @@ export function recomputePosition(position: Position, profile: CandidateProfile)
     selectedQuestionId: questions.some((question) => question.id === position.selectedQuestionId)
       ? position.selectedQuestionId
       : questions[0]?.id ?? "",
-    intake: createIntakeState(job, position.jobText, position.intake),
+    intake,
     materials,
     interviewPreferences: { ...DEFAULT_INTERVIEW_PREFERENCES, ...(position.interviewPreferences ?? {}) },
     analysisContext: createAnalysisContext(profile, job, matchReport, questions, materials),

@@ -86,6 +86,20 @@ describe("DeepSeekProvider 超时与重试", () => {
     expect(result.data).toEqual(fallback);
   });
 
+  it("结构化输出请求启用 DeepSeek JSON mode", async () => {
+    const { DeepSeekProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    const fetchMock = vi.fn(async () => jsonResponse(chatPayload('{"ok":true}')));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new DeepSeekProvider("test-key", "deepseek-chat");
+    await provider.chatJson([{ role: "user", content: "只返回 JSON" }], { ok: false }, { schemaHint: '{"ok":"boolean"}' });
+
+    const calls = fetchMock.mock.calls as unknown as Array<[unknown, { body?: string }]>;
+    const init = calls[0]?.[1];
+    const body = JSON.parse(init?.body ?? "{}") as { response_format?: { type?: string } };
+    expect(body.response_format).toEqual({ type: "json_object" });
+  });
+
   it("未配置 DEEPSEEK_API_KEY 时输出明确启动日志", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { createProvider, LocalFallbackProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });

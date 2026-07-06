@@ -57,6 +57,15 @@ function normalizeResumeSuggestion(text: string): string {
   return repairText(text).trim();
 }
 
+function ResumeSuggestionText({ text }: { text: string }) {
+  const lines = normalizeResumeSuggestion(text).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return (
+    <div className="suggestion-text">
+      {lines.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+    </div>
+  );
+}
+
 function isStructuredFullResumeSuggestion(text: string, sections: Array<{ id: ResumeSectionId; title: string }>): boolean {
   const normalized = normalizeResumeSuggestion(text);
   if (!normalized) return false;
@@ -132,6 +141,7 @@ export function ResumeWorkspacePage({
   const [draftOverrides, setDraftOverrides] = useState<Partial<Record<ResumeSectionId, string>>>({});
   const [chatInput, setChatInput] = useState(() => loadDraftState().resumeChatInput ?? "");
   const [fileMessage, setFileMessage] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [chatMessages, setChatMessages] = useState<ResumeChatMessage[]>([
@@ -160,6 +170,8 @@ export function ResumeWorkspacePage({
       event.target.value = "";
       return;
     }
+    setFileParsing(true);
+    setFileMessage("解析中...");
     try {
       const result = await importResumeFile(file);
       onUpdateResume(result.text);
@@ -167,6 +179,7 @@ export function ResumeWorkspacePage({
     } catch {
       setFileMessage("导入失败，当前支持 txt / markdown / pdf / docx。");
     } finally {
+      setFileParsing(false);
       event.target.value = "";
     }
   };
@@ -355,10 +368,10 @@ export function ResumeWorkspacePage({
           <p>AI 实时优化你的简历，按岗位做匹配分析</p>
         </div>
         <div className="hero-actions">
-          <label className="button secondary file-button">
+          <label className={fileParsing ? "button secondary file-button disabled" : "button secondary file-button"}>
             <Upload size={16} />
-            上传简历
-            <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} />
+            {fileParsing ? "解析中..." : "上传简历"}
+            <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传简历文件" onChange={onFile} disabled={fileParsing} />
           </label>
         </div>
       </header>
@@ -521,13 +534,14 @@ export function ResumeWorkspacePage({
             <div className="chat-thread resume-chat-thread standard-chat-thread">
               {chatMessages.map((message) => (
                 <article key={message.id} className={message.role === "assistant" ? "chat-bubble assistant" : "chat-bubble user"}>
+                  <span className="chat-bubble-role">{message.role === "assistant" ? "AI" : "我"}</span>
                   {message.role === "assistant" && message.status ? <AiStatusBadge status={message.status} /> : null}
                   <p>{message.text}</p>
                   {message.metaNote ? <div className="inline-message">{message.metaNote}</div> : null}
                   {message.evidenceTrace?.length ? <EvidenceTrace trace={message.evidenceTrace} /> : null}
                   {message.suggestion ? (
                     <div className="suggestion-box">
-                      <pre>{message.suggestion}</pre>
+                      <ResumeSuggestionText text={message.suggestion} />
                       <button className="button primary" type="button" onClick={() => applySuggestion(message)}>
                         {message.applyTarget === "full" ? "应用到整份编辑区" : "应用到当前区块"}
                       </button>

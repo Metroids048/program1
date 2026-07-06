@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowRight, BriefcaseBusiness } from "lucide-react";
 import { useAuth } from "../../lib/auth";
 import { navigateTo } from "../../lib/router";
-import { migrateGuestDataToServer } from "../../lib/store";
 import { Seo } from "../system/Seo";
 
 type Mode = "login" | "register";
@@ -80,9 +79,6 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
       }
 
       setAuth(data.user, data.tokens);
-      if (data.tokens.accessToken) {
-        void migrateGuestDataToServer(data.tokens.accessToken);
-      }
 
       navigateTo(resolvedReturnTo, { replace: true });
     } catch {

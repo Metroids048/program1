@@ -81,6 +81,7 @@ export function QuestionsWorkspace({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedQuestionId, setExpandedQuestionId] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadParsing, setUploadParsing] = useState(false);
 
   const materials = position?.materials ?? [];
   const uploadMaterials = materials.filter((item) => item.kind === "upload");
@@ -122,6 +123,8 @@ export function QuestionsWorkspace({
       event.target.value = "";
       return;
     }
+    setUploadParsing(true);
+    setUploadMessage("解析中...");
     try {
       const result = await importResumeFile(file);
       saveMaterial(
@@ -137,6 +140,7 @@ export function QuestionsWorkspace({
     } catch {
       setUploadMessage("上传失败，当前支持 txt / markdown / pdf / docx。");
     } finally {
+      setUploadParsing(false);
       event.target.value = "";
     }
   };
@@ -196,10 +200,10 @@ export function QuestionsWorkspace({
                   <h2>文件解析为资料卡</h2>
                   <p>上传资料保留为次级能力，不再提供手动项目资料卡录入。</p>
                 </div>
-                <label className="button secondary file-button">
+                <label className={uploadParsing ? "button secondary file-button disabled" : "button secondary file-button"}>
                   <FileUp size={16} />
-                  上传文件
-                  <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传面试资料文件" onChange={onFile} />
+                  {uploadParsing ? "解析中..." : "上传文件"}
+                  <input type="file" accept=".txt,.md,.markdown,.pdf,.docx" aria-label="上传面试资料文件" onChange={onFile} disabled={uploadParsing} />
                 </label>
               </div>
 

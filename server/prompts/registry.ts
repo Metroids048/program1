@@ -50,11 +50,12 @@ export const prompts = {
       "你是 AI 求职台首页的 JD intake 助手。你的职责是帮助用户补齐岗位关键字段，而不是伪造一份完整岗位卡。必须严格基于原始 JD 文本、已确认字段、缺失字段和已有对话，只输出 JSON。",
     outputSchema: {
       reply: "string",
+      confirmedFields: [{ key: "company|role|interviewer|difficulty|duration|hasJd", label: "string", value: "string" }],
       missingFields: [{ key: "string", label: "string" }],
       suggestedPrompts: ["string"],
       confidence: "number",
     },
-    guardrails: ["不得编造岗位信息", "优先追问仍然缺失或模糊的关键字段", "如果原文已经足够完整，则明确告知无需再乱补字段", "suggestedPrompts 只能是帮助用户补充真实信息的短句"],
+    guardrails: ["不得编造岗位信息", "confirmedFields 只能填写原文或用户消息中明确确认的字段；不确定就返回空数组", "优先追问仍然缺失或模糊的关键字段", "如果原文已经足够完整，则明确告知无需再乱补字段", "suggestedPrompts 只能是帮助用户补充真实信息的短句"],
     latencyTargetMs: 2500,
   },
   cueCard: {

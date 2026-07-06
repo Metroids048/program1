@@ -1,6 +1,5 @@
 import { AppState, InterviewQuestion, InterviewRecord, MockTurn, UserJourneyState, WorkspaceState } from "../types";
 import { repairAppState } from "./copy";
-import { apiFetch } from "./authClient";
 import { buildInterviewReport, createInitialAppState, createPosition, createProfile, normalizePosition } from "./interviewEngine";
 
 const SNAPSHOT_KEY = "campus-interview-ai-workbench:serverSnapshotCache:v1";
@@ -170,6 +169,12 @@ export function clearCachedWorkspace(): void {
   window.localStorage.removeItem(LEGACY_KEY);
 }
 
+export function clearIdentityLocalCache(): void {
+  window.localStorage.removeItem(SNAPSHOT_KEY);
+  window.localStorage.removeItem(DRAFTS_KEY);
+  window.localStorage.removeItem(LEGACY_KEY);
+}
+
 export function loadUiPrefs(): UiPrefs {
   const stored = readJson<Partial<UiPrefs>>(UI_PREFS_KEY);
   if (!stored || stored.layoutVersion !== UI_PREFS_VERSION) {
@@ -228,34 +233,3 @@ export const localOnlyCloudSync: CloudSyncAdapter = {
     throw new Error("CLOUD_SYNC_NOT_CONFIGURED");
   },
 };
-
-/** Merge local guest data into the authenticated user's account on the server */
-export async function migrateGuestDataToServer(accessToken: string): Promise<{ mergedPositions: number; mergedRecords: number } | null> {
-  const cached = readJson<unknown>(SNAPSHOT_KEY);
-  if (!cached || !isAppState(cached)) return null;
-
-  const state = normalizeImportedState(cached);
-  const hasContent = state.positions.length > 0 || state.interviewRecords.length > 0 || state.profile.resumeText.trim().length > 0;
-  if (!hasContent) return null;
-
-  try {
-    const response = await apiFetch("/api/auth/merge-guest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({
-        profile: state.profile,
-        positions: state.positions,
-        records: state.interviewRecords,
-      }),
-    });
-    if (!response.ok) return null;
-    const result = await response.json() as { ok: boolean; mergedPositions: number; mergedRecords: number };
-    if (result.ok) {
-      // Clear local guest data after successful merge
-      window.localStorage.removeItem(SNAPSHOT_KEY);
-    }
-    return { mergedPositions: result.mergedPositions, mergedRecords: result.mergedRecords };
-  } catch {
-    return null;
-  }
-}

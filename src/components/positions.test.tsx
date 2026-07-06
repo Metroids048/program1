@@ -29,7 +29,8 @@ describe("positions pages", () => {
 
     expect(screen.getByRole("heading", { name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
     expect(screen.getByLabelText("首页主输入")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /保存当前岗位/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /发送/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /上传 JD/ })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "已保存岗位" })).toBeInTheDocument();
     expect(screen.getAllByText("当前岗位").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "进入实时助手" })).toBeInTheDocument();

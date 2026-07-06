@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialAppState, createPosition, createProfile } from "./interviewEngine";
-import { localOnlyCloudSync, parseImportedState, serializeAppState } from "./store";
+import { clearIdentityLocalCache, loadDraftState, loadServerSnapshotCache, loadUiPrefs, localOnlyCloudSync, parseImportedState, saveDraftState, saveServerSnapshotCache, saveUiPrefs, serializeAppState } from "./store";
 
 function createStateWithPosition() {
   const profile = createProfile("张晨\nAI 产品运营\n- 做过增长项目");
@@ -57,5 +57,19 @@ describe("store", () => {
 
   it("exposes a local-only cloud sync seam", async () => {
     await expect(localOnlyCloudSync.pull()).rejects.toThrow("CLOUD_SYNC_NOT_CONFIGURED");
+  });
+
+  it("clears identity-bound cache while preserving UI preferences", () => {
+    const state = createStateWithPosition();
+    saveServerSnapshotCache(state);
+    saveDraftState({ homeInput: "访客输入的岗位", resumeChatInput: "简历草稿" });
+    saveUiPrefs({ desktopSidebarExpanded: false, desktopSidebarTouched: true });
+
+    clearIdentityLocalCache();
+
+    expect(loadServerSnapshotCache().positions).toHaveLength(0);
+    expect(loadDraftState()).toEqual({ homeInput: "", resumeChatInput: "" });
+    expect(loadUiPrefs().desktopSidebarExpanded).toBe(false);
+    expect(loadUiPrefs().desktopSidebarTouched).toBe(true);
   });
 });
