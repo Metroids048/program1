@@ -37,7 +37,7 @@ Last updated: 2026-07-04
 - 桌面侧栏首次默认展开，且不因进入实时助手自动收起
 - 问题库重点是用户保存问题与项目资料
 - 简历页右侧必须是正常 AI 对话框
-- **Codex Desktop 禁止 IAB/Browser/Computer Use**（Windows 会闪退）；Codex 只做 `npm run verify` 与接口链路验收，渲染层 UI 在 Cursor 或人工浏览器验收（见 ADR-P009）
+- Codex Desktop 已重新启用 Browser / Chrome / Computer Use / build-web-apps，但全局后端固定为 Chrome-only（`BROWSER_USE_AVAILABLE_BACKENDS=chrome`）；本项目不得再用规则禁用 Codex 浏览器验收，也不得把 IAB 重新加入后端列表。若浏览器工具自身失败，记录工具故障并用外部 Playwright/系统浏览器兜底。
 - 任何大幅改动、跨页面改动、与已有内容冲突的改动，都必须先用通俗易懂的非技术语言向用户确认；说明“用户会看到什么变化、原来的入口/数据/流程会不会受影响、可选方案各自取舍”，确认后再做。
 - 忘记密码 / 验证邮箱当前仍是本地 outbox 记录模式，不会真实投递邮箱；本轮只做透明化与安全收口，不接真实发信服务
 

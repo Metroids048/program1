@@ -99,7 +99,7 @@
 ## ADR-P009: Codex Desktop 禁止 IAB Browser，验收分流到 Cursor
 
 - **Date**: 2026-06-20
-- **Status**: accepted
+- **Status**: superseded by ADR-P012
 - **Context**: 在 Windows + Codex Desktop `0.142.0-alpha.1` 上，调用内置 Browser（IAB）会在 `browser.tabs.new()` / `created browser use host` 阶段导致 Electron 进程重启，表现为 Codex 闪退；同线程多次 `interrupted`。
 - **Decision**:
   1. 在 `~/.codex/config.toml` 永久关闭 `browser`、`chrome`、`computer-use`、`build-web-apps` 插件，并清空 `BROWSER_USE_AVAILABLE_BACKENDS`
@@ -110,6 +110,22 @@
 - **Consequences**:
   - Codex 不再具备内置 Browser 能力，但可稳定完成代码与后端验收
   - 若 OpenAI 修复 Windows IAB 崩溃，需重新评估后再手动启用插件
+
+## ADR-P012: Codex 浏览器能力全局重新启用，强制 Chrome 后端
+
+- **Date**: 2026-07-06
+- **Status**: accepted
+- **Context**: 用户要求彻底删除全局禁用浏览器配置。另一个 Codex 线程的闪退发生在直接调用内置 `setupBrowserRuntime` / IAB 路径后；继续全局禁用 Browser/Chrome/Computer Use 会阻断真实渲染层验收，但保留 IAB 后端会再次触发 Codex Desktop 闪退。
+- **Decision**:
+  1. `~/.codex/config.toml` 中 `browser@openai-bundled`、`chrome@openai-bundled`、`computer-use@openai-bundled`、`build-web-apps@openai-api-curated` 全部启用
+  2. `BROWSER_USE_AVAILABLE_BACKENDS` 固定为 `chrome`，不再暴露 `iab` 后端给运行时选择
+  3. 删除项目级 `ensure-codex-browser-stability.*` 守卫脚本和“Codex 禁用浏览器”门禁
+  4. `~/.codex/tools/ensure-codex-plugins.ps1` 收窄为浏览器/网页能力健康检查，避免旧插件命名空间误报
+  5. 后续浏览器工具失败应记录为工具故障，不得重新写入全局禁用配置
+- **Consequences**:
+  - Codex 可以再次加载 Browser / Chrome / Computer Use 插件
+  - 真实浏览器验收恢复为默认交付要求，默认走系统 Chrome 后端
+  - 内置 IAB 闪退路径不再作为可选后端暴露；后续不得把 `chrome,iab` 写回全局配置
 
 ## ADR-P010: 上线阻塞项收口采用服务端访客 cookie 与 owner-scoped RAG
 

@@ -62,7 +62,7 @@
 - 提词卡输出完整逐字稿
 - 模拟面试做成纯文本表单（须语音/追问体验）
 - local fallback 伪装模型成功
-- 启动脚本自动打开浏览器
+- 启动脚本必须可以自动打开系统 Chrome / Edge；不得使用 Codex in-app Browser/IAB 自动打开
 
 ## 验证
 

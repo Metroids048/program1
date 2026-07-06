@@ -31,10 +31,10 @@
 - 说明：
   - 本项目允许存在“磁盘上已安装 skill”和“当前 Codex 会话实际暴露 skill”不完全一致的情况。
   - agent 必须先以“当前会话可见 skill 列表”为准，再按本节映射关系选用等价 skill，不能只因为本机目录里有文件就假设本轮可调用。
-- **浏览器验收按工具分流（硬门禁）**：
-  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`，但禁止通过脚本自动弹出浏览器或体验入口页。
-  - **Codex Desktop**：**禁止**调用 Browser / IAB / Chrome / Computer Use 插件、`control-in-app-browser`、`frontend-testing-debugging` 的浏览器路径、`node_repl` 的 `setupBrowserRuntime` / `agent.browsers` / `browser.tabs`、`Start-Process` 打开浏览器、或任何内置 Browser 面板。Windows 上 IAB 会导致 Codex 闪退。
-  - **Codex 替代验收**：`npm run verify`、Vitest、Fastify inject 接口链路、真实样本导入脚本、代码审查；不得因缺 Browser 而伪造 UI 已验收。
+- **浏览器验收**：
+  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`。
+  - **Codex Desktop**：允许使用 Browser / Chrome / Computer Use / Playwright 做真实渲染层验收；不得再用项目规则阻止 Codex 打开浏览器。Codex 自动打开页面时优先使用系统 Chrome / 外部 Playwright；禁止直接 import `openai-bundled/browser/**/browser-client.mjs`、调用 `setupBrowserRuntime` 或走 in-app Browser/IAB 后端。
+  - 若浏览器工具自身崩溃或连接失败，必须把它记录为工具故障并改用外部 Playwright/系统浏览器兜底，不得把“禁用浏览器”重新写回全局配置。
 
 ## UTF-8 与中文文件（硬门禁）
 
@@ -73,11 +73,10 @@
 
 ## 浏览器验收规则
 
-- 禁止通过启动脚本自动 `Start-Process` 打开 `http://127.0.0.1:5173/`。
-- 禁止因服务就绪自动弹出浏览器窗口、体验入口页或额外标签页。
-- **Cursor**：浏览器验收只允许手动打开新标签页，或通过受控 Browser / Playwright MCP 在新页面中检查，不得打断用户当前工作窗口。
-- **Codex Desktop**：完全禁止内置 Browser / IAB / Chrome / Computer Use 与相关 skill；已在 `~/.codex/config.toml` 关闭对应插件。UI 渲染层问题改在 Cursor 或人工浏览器验收。
-- 如果需要给出访问入口，只在终端或文档中输出本地地址与日志位置。
+- Codex / Cursor 都可以执行浏览器渲染层验收。
+- 优先使用受控 Chrome / Playwright 工具检查 `http://127.0.0.1:5173/`；需要可见窗口时可以使用外部系统浏览器脚本。Codex Desktop 中不得直接 import `openai-bundled/browser/**/browser-client.mjs`、调用 `setupBrowserRuntime` 或走 in-app Browser/IAB 后端。
+- 禁止再新增“Codex 禁用 Browser/IAB/Chrome/Computer Use”的项目门禁或全局守卫脚本。
+- 如果浏览器工具自身失败，必须说明具体工具错误，并用 `npm run verify` + 外部 Playwright/接口链路兜底。
 
 ## 验证命令
 
@@ -87,10 +86,10 @@
 npm run verify
 ```
 
-并完成 Browser 冒烟路径（**仅 Cursor 或人工浏览器**；Codex 不得执行）：
+并完成 Browser 冒烟路径（Codex / Cursor / 人工浏览器均可执行）：
 
 1. 首页 JD 卡与配置入口。
 2. 实时助手：输入或语音模拟文本，停止后文本保留，编辑后生成题词卡。
 3. 模拟面试：回答一题，生成模型/本地追问，结束后保存报告。
 
-Codex 会话交付时，以 `npm run verify` + 接口链路回归代替上述 Browser 冒烟，并在交付说明中标注「Codex 无渲染层验收」。
+Codex 会话交付时，优先执行 `npm run verify` + 浏览器真实用户流；浏览器工具不可用时才用接口链路回归兜底并标注工具故障。
