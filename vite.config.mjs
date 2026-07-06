@@ -3,6 +3,7 @@ import { loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
 const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
+const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8787";
 
 function deepseekProxy() {
   let apiKey = "";
@@ -58,7 +59,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: API_PROXY_TARGET,
         changeOrigin: true,
       },
     },

@@ -31,10 +31,11 @@
 - 说明：
   - 本项目允许存在“磁盘上已安装 skill”和“当前 Codex 会话实际暴露 skill”不完全一致的情况。
   - agent 必须先以“当前会话可见 skill 列表”为准，再按本节映射关系选用等价 skill，不能只因为本机目录里有文件就假设本轮可调用。
-- **浏览器验收按工具分流（硬门禁）**：
+- **浏览器验收按工具分流**：
   - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`，可以尝试通过浏览器或体验入口页来验证功能和模拟用户实际体验。
-  - **Codex Desktop**：**禁止**调用 Browser / IAB / Chrome / Computer Use 插件、`control-in-app-browser`、`frontend-testing-debugging` 的浏览器路径、`node_repl` 的 `setupBrowserRuntime` / `agent.browsers` / `browser.tabs`、`Start-Process` 打开浏览器、或任何内置 Browser 面板。Windows 上 IAB 会导致 Codex 闪退。
-  - **Codex 替代验收**：`npm run verify`、Vitest、Fastify inject 接口链路、真实样本导入脚本、代码审查；不得因缺 Browser 而伪造 UI 已验收。
+  - **Codex Desktop**：禁止调用会导致 Windows 闪退的内置 Browser / IAB / Chrome / Computer Use 插件、`control-in-app-browser`、`frontend-testing-debugging` 的内置浏览器路径、`node_repl` 的 `setupBrowserRuntime` / `agent.browsers` / `browser.tabs`，以及任何内置 Browser 面板。
+  - **Codex 外部浏览器自动化**：允许用项目脚本启动独立 Playwright/系统 Edge 进程做用户流验收，例如 `npm run test:browser-flow`；需要可见浏览器时由人工或 Cursor 运行 `npm run test:browser-flow:headed`。
+  - **Codex 兜底验收**：`npm run verify`、Vitest、Fastify inject 接口链路、真实样本导入脚本、代码审查；不得伪造 UI 已验收。
 
 ## UTF-8 与中文文件（硬门禁）
 
@@ -80,10 +81,10 @@
 npm run verify
 ```
 
-并完成 Browser 冒烟路径（**仅 Cursor 或人工浏览器**；Codex 不得执行）：
+并完成 Browser 冒烟路径（Cursor/人工浏览器，或 Codex 外部 Playwright 脚本；Codex 不得执行内置 Browser/IAB）：
 
 1. 首页 JD 卡与配置入口。
 2. 实时助手：输入或语音模拟文本，停止后文本保留，编辑后生成题词卡。
 3. 模拟面试：回答一题，生成模型/本地追问，结束后保存报告。
 
-Codex 会话交付时，以 `npm run verify` + 接口链路回归代替上述 Browser 冒烟，并在交付说明中标注「Codex 无渲染层验收」。
+Codex 会话交付时，优先运行 `npm run verify` + `npm run test:browser-flow`；如果外部浏览器不可用，再以接口链路回归替代 Browser 冒烟，并在交付说明中标注缺口。

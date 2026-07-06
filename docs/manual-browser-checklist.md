@@ -1,7 +1,7 @@
 # 人工浏览器验收清单
 
 > 执行环境：Cursor 或任何浏览器，`http://127.0.0.1:5173/`
-> Codex Desktop 严禁执行此清单（内置Browser会导致闪退）
+> Codex Desktop 严禁用内置 Browser/IAB 执行此清单；可用 `npm run test:browser-flow` 或 `npm run test:browser-flow:headed` 走外部 Playwright/系统浏览器自动验收。
 
 ## 前置条件
 

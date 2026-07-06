@@ -85,6 +85,14 @@ async function main() {
     console.log("\n── 2. AI 在线模型全接口（DeepSeek） ──");
 
     const app = buildServer({ dbPath });
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { phone: "13900000011", password: "TestPass123", displayName: "验证用户" },
+    });
+    const token = register.json().tokens?.accessToken as string | undefined;
+    const authHeaders = { authorization: `Bearer ${token}` };
+    if (!token) throw new Error("FULL_VERIFY_REGISTER_FAILED");
 
     // 检查模型状态
     const health = await app.inject({ method: "GET", url: "/api/health" });
@@ -99,6 +107,7 @@ async function main() {
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: authHeaders,
       payload: {
         rawJdText: "公司：字节跳动 | 岗位：AI 产品经理\n负责大模型应用落地、用户研究和数据分析。要求：3年产品经验，熟悉 LLM 和 RAG。",
       },
@@ -120,6 +129,7 @@ async function main() {
     await app.inject({
       method: "POST",
       url: "/api/profile",
+      headers: authHeaders,
       payload: {
         displayName: "验证候选人",
         resumeText: pdfImport.text,
@@ -134,6 +144,7 @@ async function main() {
     const cueCard = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍一个你做过的 AI 产品项目，重点说明技术方案和业务结果。",
         positionId,
@@ -175,6 +186,7 @@ async function main() {
     const session = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: authHeaders,
       payload: { positionId, config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const sessionBody = session.json();
@@ -189,6 +201,7 @@ async function main() {
     const answer = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      headers: authHeaders,
       payload: {
         positionId,
         answer: "我负责AI面试助手项目，先通过用户访谈明确面试中的真实痛点，然后设计了基于RAG的题词卡生成链路，用FTS5做资料检索，用DeepSeek做结构化生成。最终MVP上线后，用户练习效率提升40%。",
@@ -234,6 +247,7 @@ async function main() {
       const rai = await app.inject({
         method: "POST",
         url: "/api/resume/ai",
+        headers: authHeaders,
         payload: {
           positionId,
           action,
@@ -271,6 +285,7 @@ async function main() {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
+      headers: authHeaders,
       payload: {
         materials: [{
           id: "material-rag-verify",
@@ -289,12 +304,13 @@ async function main() {
     });
 
     // 3b. Reindex then retrieve
-    await app.inject({ method: "POST", url: "/api/rag/reindex" });
+    await app.inject({ method: "POST", url: "/api/rag/reindex", headers: authHeaders });
 
     // 3c. Search via the SSE cue card which internally uses RAG
     const ragCueCard = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍AI文本功能相关的项目经验。",
         positionId,
@@ -320,7 +336,7 @@ async function main() {
     });
 
     // 3d. 岗位上下文完整性
-    const ctx = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context` });
+    const ctx = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context`, headers: authHeaders });
     const ctxBody = ctx.json();
 
     t("岗位上下文包含 profile/position/questions/evidence", () => {
@@ -334,6 +350,7 @@ async function main() {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
+      headers: authHeaders,
       payload: {
         questions: [{
           id: "rag-test-q",
@@ -355,6 +372,7 @@ async function main() {
     const ragCueCard2 = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "NLP文本分类模型评估方法",
         positionId,
@@ -411,10 +429,11 @@ async function main() {
     const saveRes = await app.inject({
       method: "POST",
       url: "/api/records",
+      headers: authHeaders,
       payload: answerBody.record,
     });
 
-    const exportRes = await app.inject({ method: "POST", url: "/api/export" });
+    const exportRes = await app.inject({ method: "POST", url: "/api/export", headers: authHeaders });
     const exported = exportRes.json();
 
     t("在线模型报告可导出", () => {
@@ -426,8 +445,8 @@ async function main() {
     await app.close();
 
     const restarted = buildServer({ dbPath });
-    const stateAfter = await restarted.inject({ method: "GET", url: "/api/state" });
-    const recordsAfter = await restarted.inject({ method: "GET", url: "/api/records" });
+    const stateAfter = await restarted.inject({ method: "GET", url: "/api/state", headers: authHeaders });
+    const recordsAfter = await restarted.inject({ method: "GET", url: "/api/records", headers: authHeaders });
 
     t("重启后在线模型数据持久化一致", () => {
       const sRecs = stateAfter.json().records?.length ?? 0;

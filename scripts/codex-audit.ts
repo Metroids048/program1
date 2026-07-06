@@ -72,11 +72,20 @@ async function main() {
     const scene = "首页 intake";
 
     const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { phone: "13900000021", password: "TestPass123", displayName: "审计用户" },
+    });
+    const token = register.json().tokens?.accessToken as string | undefined;
+    const authHeaders = { authorization: `Bearer ${token}` };
+    if (!token) throw new Error("CODEX_AUDIT_REGISTER_FAILED");
 
     // 1a. 基本 intake
     const intake1 = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: authHeaders,
       payload: {
         rawJdText: [
           "公司名称：测试科技有限公司 | 岗位名称：AI 产品运营",
@@ -141,6 +150,7 @@ async function main() {
     const profileRes = await app.inject({
       method: "POST",
       url: "/api/profile",
+      headers: authHeaders,
       payload: {
         displayName: "审计候选人",
         resumeText: pdfImport.text,
@@ -152,6 +162,7 @@ async function main() {
     const materialsRes = await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
+      headers: authHeaders,
       payload: {
         materials: [
           {
@@ -181,6 +192,7 @@ async function main() {
     const questionsRes = await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
+      headers: authHeaders,
       payload: {
         questions: [
           {
@@ -209,7 +221,7 @@ async function main() {
     });
 
     // 2c. 获取岗位上下文
-    const ctxRes = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context` });
+    const ctxRes = await app.inject({ method: "GET", url: `/api/positions/${positionId}/context`, headers: authHeaders });
     record(sceneQB, "获取岗位上下文 /api/positions/:id/context", "返回 200，包含 profile/position/questions/evidence", () => {
       if (ctxRes.statusCode !== 200) return failDetail(`status=${ctxRes.statusCode}`, { severity: "P1" });
       const ctx = ctxRes.json();
@@ -218,7 +230,7 @@ async function main() {
     });
 
     // 2d. 不存在的岗位上下文
-    const badCtxRes = await app.inject({ method: "GET", url: "/api/positions/nonexistent/context" });
+    const badCtxRes = await app.inject({ method: "GET", url: "/api/positions/nonexistent/context", headers: authHeaders });
     record(sceneQB, "获取不存在的岗位上下文", "返回 404", () => {
       return badCtxRes.statusCode === 404 ? okDetail("404") : failDetail(`status=${badCtxRes.statusCode}`, { severity: "P1", impact: "前端可能崩溃" });
     });
@@ -229,6 +241,7 @@ async function main() {
     const cueCard1 = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍一个你做过最有挑战性的 AI 文本功能。",
         positionId,
@@ -279,6 +292,7 @@ async function main() {
     const cueCardNoSearch = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍你的项目经验。",
         positionId,
@@ -296,6 +310,7 @@ async function main() {
     const reconstructRes = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/reconstruct",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍一个你做过的 AI 文本功能。",
         positionId,
@@ -318,6 +333,7 @@ async function main() {
     const sessionNoPos = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: authHeaders,
       payload: { config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const sessionNoPosBody = sessionNoPos.json();
@@ -331,6 +347,7 @@ async function main() {
     const sessionRes = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: authHeaders,
       payload: { positionId, config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     const sessionBody = sessionRes.json();
@@ -352,6 +369,7 @@ async function main() {
     const answerRes = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      headers: authHeaders,
       payload: {
         positionId,
         answer: "我负责 AI 文本能力项目，通过用户访谈识别痛点，SQL 分析漏斗，推动策略上线后核心转化率提升。",
@@ -386,15 +404,16 @@ async function main() {
     const emptyAnswer = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      headers: authHeaders,
       payload: {
         positionId,
         answer: "",
         transcript: [{ role: "interviewer", text: sessionBody.question }, { role: "candidate", text: "" }],
       },
     });
-    record(sceneMock, "空字符串回答仍能返回追问", "返回 200，不崩溃", () => {
-      if (emptyAnswer.statusCode !== 200) return failDetail(`status=${emptyAnswer.statusCode}`, { severity: "P1" });
-      return okDetail("200，未崩溃");
+    record(sceneMock, "空字符串回答被后端校验拦截", "返回 400，不写入空回答", () => {
+      if (emptyAnswer.statusCode !== 400) return failDetail(`status=${emptyAnswer.statusCode}`, { severity: "P1" });
+      return okDetail("400，已拒绝空回答");
     });
 
     // ====== 5. 简历 AI ======
@@ -404,6 +423,7 @@ async function main() {
     const sectionAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: authHeaders,
       payload: {
         positionId,
         action: "section",
@@ -426,6 +446,7 @@ async function main() {
     const fullAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: authHeaders,
       payload: {
         positionId,
         action: "full",
@@ -449,6 +470,7 @@ async function main() {
     const matchAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: authHeaders,
       payload: {
         positionId,
         action: "match",
@@ -478,6 +500,7 @@ async function main() {
     const saveRes = await app.inject({
       method: "POST",
       url: "/api/records",
+      headers: authHeaders,
       payload: answerBody.record,
     });
     record(sceneRecords, "保存面试记录 POST /api/records", "返回 200，records 列表包含该记录", () => {
@@ -486,7 +509,7 @@ async function main() {
       return records?.length > 0 ? okDetail(`records count=${records.length}`) : failDetail("records 为空", { severity: "P1" });
     });
 
-    const listRes = await app.inject({ method: "GET", url: "/api/records" });
+    const listRes = await app.inject({ method: "GET", url: "/api/records", headers: authHeaders });
     record(sceneRecords, "获取记录列表 GET /api/records", "返回 200，列表非空", () => {
       if (listRes.statusCode !== 200) return failDetail(`status=${listRes.statusCode}`, { severity: "P1" });
       const data = listRes.json();
@@ -494,14 +517,14 @@ async function main() {
     });
 
     const recordId = listRes.json().records[0]?.id;
-    const detailRes = await app.inject({ method: "GET", url: `/api/records/${recordId}` });
+    const detailRes = await app.inject({ method: "GET", url: `/api/records/${recordId}`, headers: authHeaders });
     record(sceneRecords, "获取记录详情 GET /api/records/:id", "返回 200，record 非空", () => {
       if (detailRes.statusCode !== 200) return failDetail(`status=${detailRes.statusCode}`, { severity: "P1" });
       return detailRes.json().record ? okDetail("record 存在") : failDetail("record 为空", { severity: "P1" });
     });
 
     // 6d. 导出
-    const exportRes = await app.inject({ method: "POST", url: "/api/export" });
+    const exportRes = await app.inject({ method: "POST", url: "/api/export", headers: authHeaders });
     const exportedState = exportRes.json();
     record(sceneRecords, "导出 POST /api/export", "返回 200，包含 positions/records/profile", () => {
       if (exportRes.statusCode !== 200) return failDetail(`status=${exportRes.statusCode}`, { severity: "P0" });
@@ -513,6 +536,7 @@ async function main() {
     const badImport = await app.inject({
       method: "POST",
       url: "/api/import",
+      headers: authHeaders,
       payload: { garbage: true },
     });
     record(sceneRecords, "非法导入 payload 拒绝", "返回 400 INVALID_IMPORT", () => {
@@ -524,8 +548,8 @@ async function main() {
     // 6f. 服务重启后回显（先于任何可能覆盖数据的导入测试）
     await app.close();
     const restartedApp = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-    const stateAfterRestart = await restartedApp.inject({ method: "GET", url: "/api/state" });
-    const recordsAfterRestart = await restartedApp.inject({ method: "GET", url: "/api/records" });
+    const stateAfterRestart = await restartedApp.inject({ method: "GET", url: "/api/state", headers: authHeaders });
+    const recordsAfterRestart = await restartedApp.inject({ method: "GET", url: "/api/records", headers: authHeaders });
 
     record(sceneRecords, "服务重启后状态回显 GET /api/state", "records 数量与重启前一致", () => {
       if (stateAfterRestart.statusCode !== 200) return failDetail(`status=${stateAfterRestart.statusCode}`, { severity: "P0" });
@@ -543,11 +567,12 @@ async function main() {
 
     // 6g. 导入 round-trip（用已持久化的数据）
     const roundTripApp = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-    const exportForRoundTrip = await roundTripApp.inject({ method: "POST", url: "/api/export" });
+    const exportForRoundTrip = await roundTripApp.inject({ method: "POST", url: "/api/export", headers: authHeaders });
     const rtExported = exportForRoundTrip.json();
     const importRt = await roundTripApp.inject({
       method: "POST",
       url: "/api/import",
+      headers: authHeaders,
       payload: rtExported,
     });
     record(sceneRecords, "导入 round-trip POST /api/import（含真实records）", "返回 200，status=success，records 不变", () => {
@@ -558,15 +583,25 @@ async function main() {
 
     // 6h. 导入含无效指针（含空 records 验证不会崩溃，但用独立 db）
     const badPtApp = buildServer({ dbPath: join(tempDir, "badptr.sqlite"), llmClient: new LocalFallbackProvider() });
+    const badPtRegister = await badPtApp.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { phone: "13900000022", password: "TestPass123", displayName: "指针导入用户" },
+    });
+    const badPtToken = badPtRegister.json().tokens?.accessToken as string | undefined;
+    const badPtHeaders = { authorization: `Bearer ${badPtToken}` };
+    if (!badPtToken) throw new Error("CODEX_AUDIT_BAD_POINTER_REGISTER_FAILED");
     const badPtIntake = await badPtApp.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: badPtHeaders,
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品。" },
     });
     const badPtSnapshot = badPtIntake.json();
     const badPointersImport = await badPtApp.inject({
       method: "POST",
       url: "/api/import",
+      headers: badPtHeaders,
       payload: {
         profile: badPtSnapshot.profile,
         positions: badPtSnapshot.positions,
@@ -636,6 +671,7 @@ async function main() {
       },
     });
     record(sceneErr, "空问题文本 cue card", "返回 400 或 200 有提示（不崩溃）", () => {
+      if (cueCardEmpty.statusCode === 400) return okDetail("400，已拒绝空问题");
       const hasCard = cueCardEmpty.body.includes("event: card");
       const hasError = cueCardEmpty.body.includes("event: error");
       return hasCard || hasError ? okDetail(`card=${hasCard} error=${hasError}`) : failDetail("无 card 也无 error", { severity: "P2" });

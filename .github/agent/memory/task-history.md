@@ -1,5 +1,49 @@
 # Task History
 
+## [TASK-2026-07-06-codex-external-browser-flow]
+
+- Date: 2026-07-06
+- Type: tooling/test/config
+- Summary: 将 Codex 浏览器验收从“完全禁止渲染层”调整为“禁止内置 IAB/Browser 闪退路径，允许外部 Playwright/系统 Edge 自动化”。删除项目内 `ensure-codex-browser-stability.*` 守卫脚本，新增外部浏览器真实用户流脚本，支持无头和可见浏览器两种模式。
+- Files:
+  - `AGENTS.md`
+  - `.github/agent/memory/project-memory.md`
+  - `.github/agent/memory/decisions-log.md`
+  - `docs/manual-browser-checklist.md`
+  - `package.json`
+  - `package-lock.json`
+  - `vite.config.mjs`
+  - `scripts/external-browser-user-flow.ts`
+  - `web/artifacts/external-browser-flow/desktop-records-1280x720.png`
+  - `web/artifacts/external-browser-flow/mobile-records-390.png`
+- Verified:
+  - `npm.cmd run test:browser-flow`：Pass，外部无头浏览器完成注册、跳过引导、首页 JD、实时助手提词卡、模拟面试回答、保存记录与 390px 溢出检查
+  - `npm.cmd run test:browser-flow:headed`：Pass，外部可见浏览器完成同一真实用户流
+  - `npm.cmd run verify`：lint 0 error / 15 warnings，18 test files / 118 tests passed，build 成功
+- Notes:
+  - 本次没有调用 Codex 内置 Browser/IAB/Chrome/Computer Use 插件
+  - 临时前端 `15173` 与后端 `18787` 在脚本结束后已停止
+
+## [TASK-2026-07-06-real-user-acceptance-report]
+
+- Date: 2026-07-06
+- Type: test/docs
+- Summary: 按“全站真实用户闭环验收计划”完成 Codex 侧自动化验收、接口矩阵审计、首次用户脚本、AI+语音+RAG 专项验证，并产出 docs 报告与真实浏览器补验清单。修正 `scripts/codex-audit.ts` 与 `scripts/full-verify-ai-voice-rag.ts` 的验收口径：先注册真实用户并携带 Authorization 调用 owner-scoped 接口，避免把账号隔离后的 401/404 误判为产品缺陷；空回答/空问题按后端 400 校验拦截判定为通过。
+- Files:
+  - `scripts/codex-audit.ts`
+  - `scripts/full-verify-ai-voice-rag.ts`
+  - `docs/acceptance/真实用户全流程验收报告-2026-07-06.md`
+  - `docs/acceptance/真实浏览器补验清单-2026-07-06.md`
+  - `.github/agent/memory/task-history.md`
+- Verified:
+  - `node node_modules/tsx/dist/cli.mjs scripts/codex-audit.ts`：40/40 Pass，P0/P1/P2 均为 0
+  - `node node_modules/tsx/dist/cli.mjs scripts/full-verify-ai-voice-rag.ts`：32/32 Pass
+  - `npm.cmd run verify:acceptance`：lint 0 error / 15 warnings，18 test files / 118 tests passed，build 成功，app 46/server 40/full-flow/AI smoke 通过
+- Notes:
+  - Codex Desktop 未调用 Browser/IAB/Chrome/Computer Use
+  - Codex 无渲染层验收；真实点击、控制台、1280/390 视口仍需 Cursor 或人工浏览器按补验清单执行
+  - 本机 doctor 提示 SQLite native binding 不可用，本轮脚本运行走文件存储兜底；server tests 仍覆盖数据库行为
+
 ## [TASK-2026-07-05-full-usability-fix]
 
 - Date: 2026-07-05

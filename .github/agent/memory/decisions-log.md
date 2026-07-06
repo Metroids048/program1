@@ -99,7 +99,7 @@
 ## ADR-P009: Codex Desktop 禁止 IAB Browser，验收分流到 Cursor
 
 - **Date**: 2026-06-20
-- **Status**: accepted
+- **Status**: superseded by ADR-P012
 - **Context**: 在 Windows + Codex Desktop `0.142.0-alpha.1` 上，调用内置 Browser（IAB）会在 `browser.tabs.new()` / `created browser use host` 阶段导致 Electron 进程重启，表现为 Codex 闪退；同线程多次 `interrupted`。
 - **Decision**:
   1. 在 `~/.codex/config.toml` 永久关闭 `browser`、`chrome`、`computer-use`、`build-web-apps` 插件，并清空 `BROWSER_USE_AVAILABLE_BACKENDS`
@@ -110,6 +110,22 @@
 - **Consequences**:
   - Codex 不再具备内置 Browser 能力，但可稳定完成代码与后端验收
   - 若 OpenAI 修复 Windows IAB 崩溃，需重新评估后再手动启用插件
+
+## ADR-P012: Codex 浏览器验收改用外部 Playwright
+
+- **Date**: 2026-07-06
+- **Status**: accepted
+- **Context**: 用户要求解决 Codex 打开浏览器闪退问题，并让项目能自动打开浏览器模拟真实用户行为。复核后确认闪退风险来自 Codex Desktop 内置 Browser/IAB/Chrome/Computer Use 路径，而不是外部系统浏览器进程本身。
+- **Decision**:
+  1. 删除项目内反复写入全局禁用配置的 `scripts/ensure-codex-browser-stability.*`
+  2. 项目规则改为：Codex 禁止内置 Browser/IAB/Computer Use，但允许外部 Playwright/系统 Edge/Chrome 自动化
+  3. 新增 `npm run test:browser-flow` 跑无头外部浏览器，新增 `npm run test:browser-flow:headed` 打开可见外部浏览器窗口
+  4. 浏览器脚本使用临时后端端口、临时 Vite 端口与临时数据库，避免污染开发数据
+  5. 标准交付优先执行 `npm run verify` + `npm run test:browser-flow`
+- **Consequences**:
+  - Codex 不再因调用内置 IAB 而闪退
+  - 项目具备真实浏览器用户流自动验收能力
+  - 若系统未安装 Edge/Chrome 且 Playwright 浏览器未安装，需要先安装浏览器运行时
 
 ## ADR-P010: 上线阻塞项收口采用服务端访客 cookie 与 owner-scoped RAG
 
