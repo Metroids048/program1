@@ -27,8 +27,17 @@ function setup() {
     git(['init']);
     git(['branch', '-M', BRANCH]);
   }
-  if (!git(['remote', 'get-url', 'origin'], { allowFail: true }).out) {
+
+  const remote = git(['remote', 'get-url', 'origin'], { allowFail: true });
+  if (!remote.ok || !remote.out) {
     git(['remote', 'add', 'origin', REMOTE]);
+  } else if (!remote.out.includes('Metroids048/program1')) {
+    git(['remote', 'set-url', 'origin', REMOTE]);
+  }
+
+  const currentBranch = git(['branch', '--show-current'], { allowFail: true }).out;
+  if (currentBranch && currentBranch !== BRANCH) {
+    git(['checkout', '-B', BRANCH]);
   }
 }
 
@@ -72,9 +81,9 @@ try {
     process.exit(0);
   }
 
-  console.log('正在推送...');
+  console.log('正在推送 origin/main ...');
   push();
-  console.log('上传成功 -> https://github.com/Metroids048/program1');
+  console.log(`上传成功 -> ${REMOTE} (分支: ${BRANCH})`);
 } catch (error) {
   console.error('\n上传失败:', error.message || error);
   console.error('\n若是第一次在这台电脑上传，先在终端执行一次：');
