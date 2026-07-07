@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiMessage, AiProvider } from "./ai/provider";
 import { LocalFallbackProvider } from "./ai/provider";
 import { createDb } from "./db";
+import { createAuthService } from "./domains/auth/auth.service";
 import { buildServer, resolveListenOptions } from "./index";
 import { createRagRuntime } from "./rag";
 import { resetRateLimits } from "./security";
@@ -19,6 +20,8 @@ const originalMailOutboxLogPath = process.env.MAIL_OUTBOX_LOG_PATH;
 const originalAsrProvider = process.env.ASR_PROVIDER;
 const originalXfyunAppId = process.env.XFYUN_RTASR_APP_ID;
 const originalXfyunApiKey = process.env.XFYUN_RTASR_API_KEY;
+const originalJwtSecret = process.env.JWT_SECRET;
+const originalNodeEnv = process.env.NODE_ENV;
 
 function testDbPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "ai-job-server-"));
@@ -41,6 +44,10 @@ afterEach(async () => {
   else process.env.XFYUN_RTASR_APP_ID = originalXfyunAppId;
   if (originalXfyunApiKey === undefined) delete process.env.XFYUN_RTASR_API_KEY;
   else process.env.XFYUN_RTASR_API_KEY = originalXfyunApiKey;
+  if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+  else process.env.JWT_SECRET = originalJwtSecret;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
   resetRateLimits();
 });
 
@@ -907,6 +914,77 @@ describe("local backend API", () => {
       });
 
       expect(response.statusCode).toBe(201);
+      await app.close();
+    });
+
+    it("treats an empty JWT_SECRET placeholder as unconfigured in local mode", async () => {
+      process.env.JWT_SECRET = "";
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138023", password: "Password123" },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const token = response.json().tokens.accessToken as string;
+      expect(token).toBeTruthy();
+
+      const session = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(session.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("treats a whitespace JWT_SECRET as unconfigured in local mode", async () => {
+      process.env.JWT_SECRET = "   ";
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138024", password: "Password123" },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json().tokens.accessToken).toBeTruthy();
+      await app.close();
+    });
+
+    it("rejects production startup when JWT_SECRET is empty", () => {
+      process.env.NODE_ENV = "production";
+      process.env.JWT_SECRET = "";
+
+      expect(() => createAuthService({} as never, {} as never)).toThrow(/JWT_SECRET/);
+    });
+
+    it("uses a configured JWT_SECRET for registration, login, and session validation", async () => {
+      process.env.JWT_SECRET = "test-secret-with-enough-entropy";
+      const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+      const register = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { phone: "13800138025", password: "Password123" },
+      });
+      expect(register.statusCode).toBe(201);
+
+      const login = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { phone: "13800138025", password: "Password123" },
+      });
+      expect(login.statusCode).toBe(200);
+      const token = login.json().tokens.accessToken as string;
+
+      const session = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(session.statusCode).toBe(200);
+      expect(session.json().phone).toBe("13800138025");
       await app.close();
     });
 

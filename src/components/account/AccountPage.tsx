@@ -21,6 +21,29 @@ const QUOTA_FEATURE_LABELS: Array<{ key: keyof NonNullable<QuotaInfo["features"]
   { key: "positionAnalyze", label: "岗位分析" },
 ];
 
+function getQuotaSummary(quota: QuotaInfo) {
+  const featureItems = QUOTA_FEATURE_LABELS
+    .map((item) => {
+      const value = quota.features?.[item.key];
+      return value ? { label: item.label, remaining: value.remaining, limit: value.limit } : null;
+    })
+    .filter((item): item is { label: string; remaining: number; limit: number } => Boolean(item));
+
+  if (featureItems.length === 0) {
+    return {
+      remaining: quota.remaining,
+      limit: quota.dailyLimit,
+      label: "今日 AI 剩余",
+    };
+  }
+
+  return featureItems.reduce((current, next) => {
+    const currentRatio = current.limit > 0 ? current.remaining / current.limit : 0;
+    const nextRatio = next.limit > 0 ? next.remaining / next.limit : 0;
+    return nextRatio < currentRatio ? next : current;
+  });
+}
+
 type AccountMessage = {
   tone: "success" | "error";
   text: string;
@@ -277,6 +300,7 @@ function AccountWorkspace({
   };
 
   const emailVerified = Boolean(session.emailVerifiedAt);
+  const quotaSummary = quota ? getQuotaSummary(quota) : null;
 
   return (
     <section className="page account-page">
@@ -333,10 +357,14 @@ function AccountWorkspace({
         {quota ? (
           <div className="account-card">
             <h2 className="account-card-title">使用额度</h2>
-            <div className="account-quota-big">
-              <span className="account-quota-num">{quota.remaining}</span>
-              <span className="account-quota-label">兼容总额度 / {quota.dailyLimit} 次/天</span>
-            </div>
+            {quotaSummary ? (
+              <div className="account-quota-big">
+                <span className="account-quota-num">{quotaSummary.remaining}</span>
+                <span className="account-quota-label">
+                  {quota.features ? `${quotaSummary.label}剩余 / ${quotaSummary.limit} 次/天` : `${quotaSummary.label} / ${quotaSummary.limit} 次/天`}
+                </span>
+              </div>
+            ) : null}
             {quota.features ? (
               <div className="account-quota-grid">
                 {QUOTA_FEATURE_LABELS.map((item) => {

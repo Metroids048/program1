@@ -8,12 +8,24 @@ import { MAIL_TEMPLATES } from "../../mail/templates";
 import type { MailService } from "../../mail/service";
 
 const DEFAULT_JWT_SECRET = "ai-job-dev-secret-change-in-production";
-const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN = "24h";
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 64;
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+function getConfiguredJwtSecret(): string | null {
+  return process.env.JWT_SECRET?.trim() || null;
+}
+
+function resolveJwtSecret(): string {
+  const configured = getConfiguredJwtSecret();
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be configured in production.");
+  }
+  return DEFAULT_JWT_SECRET;
+}
 
 function hashPassword(password: string): string {
   const salt = randomBytes(SALT_LENGTH).toString("hex");
@@ -30,9 +42,9 @@ function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(computed, expected);
 }
 
-function signToken(userId: string, jti: string): string {
+function signToken(userId: string, jti: string, jwtSecret = resolveJwtSecret()): string {
   const payload: Omit<JwtPayload, "iat" | "exp"> = { sub: userId, jti };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN, issuer: "ai-job-platform" });
+  return jwt.sign(payload, jwtSecret, { expiresIn: JWT_EXPIRES_IN, issuer: "ai-job-platform" });
 }
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
@@ -62,12 +74,13 @@ function serializeNotificationPrefs(prefs: NotificationPrefs): string {
   });
 }
 
-function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, JWT_SECRET, { issuer: "ai-job-platform" }) as JwtPayload;
+function verifyToken(token: string, jwtSecret = resolveJwtSecret()): JwtPayload {
+  return jwt.verify(token, jwtSecret, { issuer: "ai-job-platform" }) as JwtPayload;
 }
 
 export function createAuthService(db: AppDb, mailer: MailService) {
-  if (!process.env.JWT_SECRET) {
+  const jwtSecret = resolveJwtSecret();
+  if (jwtSecret === DEFAULT_JWT_SECRET) {
     console.warn("[auth] JWT_SECRET 未配置，当前使用默认开发密钥。正式部署前请设置独立密钥。");
   }
 
@@ -167,7 +180,7 @@ export function createAuthService(db: AppDb, mailer: MailService) {
       expiresAt,
       createdAt: now,
     });
-    const accessToken = signToken(userId, jti);
+    const accessToken = signToken(userId, jti, jwtSecret);
     return { accessToken, expiresAt };
   }
 
@@ -269,7 +282,7 @@ export function createAuthService(db: AppDb, mailer: MailService) {
 
     async logout(token: string): Promise<void> {
       try {
-        const payload = verifyToken(token);
+        const payload = verifyToken(token, jwtSecret);
         db.deleteSessionByJti(payload.jti);
       } catch {
         // Token already invalid, nothing to do
@@ -279,7 +292,7 @@ export function createAuthService(db: AppDb, mailer: MailService) {
     validateSession(token: string): SessionInfo {
       let payload: JwtPayload;
       try {
-        payload = verifyToken(token);
+        payload = verifyToken(token, jwtSecret);
       } catch {
         throw Object.assign(new Error("INVALID_TOKEN"), { statusCode: 401 });
       }
