@@ -270,5 +270,30 @@ interface ResumeAiResponse {
 
 - 所有新接口都必须有 Zod schema
 - 所有 Prompt 只允许定义在统一 registry 中
-- 所有模型调用必须只经过一个 DeepSeek client
+- 所有模型调用必须只经过一个统一 AI client 入口，入口内部允许按 OpenRouter、GitHub Models、DeepSeek、本地 fallback 的顺序降级
 - 所有 AI 响应必须能说明成功、fallback 或失败
+
+## 14. 语音 ASR WebSocket
+
+### `GET /api/asr/xfyun/stream`
+
+用途：浏览器麦克风音频分片转写。服务端只转发音频到讯飞 RTASR，不落盘保存原始音频。
+
+客户端输入：
+
+- 二进制：16kHz、16-bit、mono PCM 分片
+- 文本控制：`{"end":true}`
+
+服务端输出事件：
+
+- `{"type":"ready","provider":"xfyun"}`
+- `{"type":"interim","text":"..."}`
+- `{"type":"final","text":"..."}`
+- `{"type":"error","code":"ASR_NOT_CONFIGURED"|"ASR_CONNECT_FAILED"|"ASR_UPSTREAM_ERROR","message":"..."}`
+- `{"type":"done"}`
+
+失败语义：
+
+- `ASR_NOT_CONFIGURED`：未配置讯飞实时语音转写密钥，前端回退 Web Speech 或文字输入
+- `ASR_CONNECT_FAILED`：讯飞连接失败，前端回退 Web Speech 或文字输入
+- `ASR_UPSTREAM_ERROR`：讯飞返回错误，前端保留已识别文本并提示降级

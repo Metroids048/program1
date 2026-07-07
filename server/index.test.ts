@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
+import WebSocket from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiMessage, AiProvider } from "./ai/provider";
 import { LocalFallbackProvider } from "./ai/provider";
@@ -15,6 +16,9 @@ const tempDirs: string[] = [];
 const apps: FastifyInstance[] = [];
 const originalMailOutboxPath = process.env.MAIL_OUTBOX_PATH;
 const originalMailOutboxLogPath = process.env.MAIL_OUTBOX_LOG_PATH;
+const originalAsrProvider = process.env.ASR_PROVIDER;
+const originalXfyunAppId = process.env.XFYUN_RTASR_APP_ID;
+const originalXfyunApiKey = process.env.XFYUN_RTASR_API_KEY;
 
 function testDbPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "ai-job-server-"));
@@ -31,6 +35,12 @@ afterEach(async () => {
   else process.env.MAIL_OUTBOX_PATH = originalMailOutboxPath;
   if (originalMailOutboxLogPath === undefined) delete process.env.MAIL_OUTBOX_LOG_PATH;
   else process.env.MAIL_OUTBOX_LOG_PATH = originalMailOutboxLogPath;
+  if (originalAsrProvider === undefined) delete process.env.ASR_PROVIDER;
+  else process.env.ASR_PROVIDER = originalAsrProvider;
+  if (originalXfyunAppId === undefined) delete process.env.XFYUN_RTASR_APP_ID;
+  else process.env.XFYUN_RTASR_APP_ID = originalXfyunAppId;
+  if (originalXfyunApiKey === undefined) delete process.env.XFYUN_RTASR_API_KEY;
+  else process.env.XFYUN_RTASR_API_KEY = originalXfyunApiKey;
   resetRateLimits();
 });
 
@@ -75,7 +85,43 @@ async function closeTestApp(app: FastifyInstance): Promise<void> {
   await app.close();
 }
 
+async function readWebSocketEvents(url: string): Promise<Array<Record<string, unknown>>> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    const events: Array<Record<string, unknown>> = [];
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error("ASR websocket test timed out"));
+    }, 1500);
+    ws.on("message", (raw) => {
+      events.push(JSON.parse(raw.toString()) as Record<string, unknown>);
+    });
+    ws.on("close", () => {
+      clearTimeout(timeout);
+      resolve(events);
+    });
+    ws.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
+
 describe("local backend API", () => {
+  it("ASR websocket reports ASR_NOT_CONFIGURED when XFYUN keys are absent", async () => {
+    delete process.env.XFYUN_RTASR_APP_ID;
+    delete process.env.XFYUN_RTASR_API_KEY;
+    process.env.ASR_PROVIDER = "xfyun";
+    const app = testApp();
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === "string") throw new Error("missing test server address");
+
+    const events = await readWebSocketEvents(`ws://127.0.0.1:${address.port}/api/asr/xfyun/stream`);
+
+    expect(events).toContainEqual(expect.objectContaining({ type: "error", code: "ASR_NOT_CONFIGURED" }));
+  });
+
   it("uses platform port and all-interface host in production listen options", () => {
     const oldNodeEnv = process.env.NODE_ENV;
     const oldPort = process.env.PORT;
@@ -449,24 +495,44 @@ describe("local backend API", () => {
 
   it("keeps profile RAG documents scoped per owner", () => {
     const db = createDb(testDbPath());
-    let ownerKey = "user:A";
-    const rag = createRagRuntime(db, () => ownerKey, () => ownerKey);
+    try {
+      let ownerKey = "user:A";
+      const rag = createRagRuntime(db, () => ownerKey, () => ownerKey);
 
-    const profileA = createInitialAppState().profile;
-    profileA.displayName = "Alice";
-    rag.reindexProfile(profileA);
-    expect(rag.retrieve("Alice").items.some((item) => item.ownerKey === "user:A")).toBe(true);
+      const profileA = createInitialAppState().profile;
+      profileA.displayName = "Alice";
+      profileA.highlights = ["用户增长 RAG 项目"];
+      rag.reindexProfile(profileA);
+      expect(
+        db.db
+          ?.prepare("select content from document_chunks where owner_key = ?")
+          .all("user:A")
+          .some((item) => String((item as { content?: string }).content ?? "").includes("用户增长")),
+      ).toBe(true);
 
-    ownerKey = "user:B";
-    const profileB = createInitialAppState().profile;
-    profileB.displayName = "Bob";
-    rag.reindexProfile(profileB);
+      ownerKey = "user:B";
+      const profileB = createInitialAppState().profile;
+      profileB.displayName = "Bob";
+      profileB.highlights = ["推荐系统 项目"];
+      rag.reindexProfile(profileB);
 
-    ownerKey = "user:A";
-    expect(rag.retrieve("Alice").items.some((item) => item.ownerKey === "user:A")).toBe(true);
-    ownerKey = "user:B";
-    expect(rag.retrieve("Bob").items.some((item) => item.ownerKey === "user:B")).toBe(true);
-    db.db?.close();
+      ownerKey = "user:A";
+      expect(
+        db.db
+          ?.prepare("select content from document_chunks where owner_key = ?")
+          .all("user:A")
+          .some((item) => String((item as { content?: string }).content ?? "").includes("推荐系统")),
+      ).toBe(false);
+      ownerKey = "user:B";
+      expect(
+        db.db
+          ?.prepare("select content from document_chunks where owner_key = ?")
+          .all("user:B")
+          .some((item) => String((item as { content?: string }).content ?? "").includes("推荐系统")),
+      ).toBe(true);
+    } finally {
+      db.db?.close();
+    }
   });
 
   it("indexes materials and questions into RAG, and resume AI returns evidence trace", async () => {

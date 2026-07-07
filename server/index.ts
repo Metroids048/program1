@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fastifyWebsocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { existsSync, createReadStream } from "node:fs";
 import { extname, resolve } from "node:path";
@@ -18,6 +19,7 @@ import { makeId, nowIso } from "./utils";
 import { createInitialAppState, createPosition } from "../src/lib/interviewEngine";
 import { createMailService } from "./mail/service";
 import { applyRateLimit, ensureGuestId, ownerOf, requireAuth, setCorsHeaders } from "./security";
+import { registerXfyunAsrRoute } from "./asr";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -203,6 +205,11 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.options("/*", async () => ({ ok: true }));
+
+  app.register(async (realtimeApp) => {
+    await realtimeApp.register(fastifyWebsocket, { options: { maxPayload: 1024 * 1024 } });
+    registerXfyunAsrRoute(realtimeApp);
+  });
 
   // Auth middleware: attach session if token present (optional — guests proceed without)
   app.addHook("onRequest", async (request, reply) => {

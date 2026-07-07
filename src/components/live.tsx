@@ -1,4 +1,5 @@
 import { ArrowRight, Check, ChevronDown, Mic, Play, Timer } from "lucide-react";
+import { useMicVAD } from "@ricky0123/vad-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiRunMeta, CueCardProgressEvent, LiveCueSessionTurn } from "../lib/apiClient";
 import { answerMockSessionOnServer, createMockSessionOnServer, streamCueCardFromServer } from "../lib/apiClient";
@@ -258,9 +259,27 @@ export function LiveAssistantView({
   const sttSupported = isSpeechRecognitionSupported();
   const speechSupport = getSpeechRecognitionSupport();
   const questionNumber = getQuestionNumber(transcript) + (recognizedDraft.editableText.trim() ? 1 : 0);
+  const vad = useMicVAD({
+    model: "v5",
+    startOnLoad: false,
+    baseAssetPath: "/vad/",
+    onnxWASMBasePath: "/onnx/",
+    onSpeechEnd: () => {
+      if (submitMode !== "auto" || !dictationRef.current) return;
+      setCaptureState("finalizing");
+      dictationRef.current.stop();
+      setListening(false);
+    },
+  });
+  const pauseVadRef = useRef(vad.pause);
+
+  useEffect(() => {
+    pauseVadRef.current = vad.pause;
+  }, [vad.pause]);
 
   useEffect(() => () => {
     dictationRef.current?.stop();
+    void pauseVadRef.current().catch(() => undefined);
     cueAbortRef.current?.abort();
   }, []);
 
@@ -381,6 +400,7 @@ export function LiveAssistantView({
     if (listening) {
       setCaptureState("finalizing");
       dictationRef.current?.stop();
+      void vad.pause().catch(() => undefined);
       setListening(false);
       return;
     }
@@ -409,10 +429,12 @@ export function LiveAssistantView({
         setVoiceError(message);
         setListening(false);
         setStartedAt(null);
+        void vad.pause().catch(() => undefined);
         setCaptureState("error");
       },
       onEnd: () => {
         setListening(false);
+        void vad.pause().catch(() => undefined);
         setCaptureState((current) => (current === "error" ? "error" : "ready"));
       },
     });
@@ -421,7 +443,9 @@ export function LiveAssistantView({
       setListening(false);
       setStartedAt(null);
       setCaptureState("error");
+      return;
     }
+    if (!vad.errored) void vad.start().catch(() => undefined);
   };
 
   const clearDraft = () => {
@@ -493,6 +517,7 @@ export function LiveAssistantView({
 
             {voiceError ? <div className="inline-message error">{repairText(voiceError)}</div> : null}
             {!sttSupported ? <p className="form-hint">当前浏览器不支持语音识别，已自动降级为文本输入。</p> : null}
+            {vad.errored ? <p className="form-hint">语音活动检测加载失败，已切换为手动停止模式。</p> : null}
 
             <div className="recognized-box live-recognition-box">
               <span>{recognizedDraft.finalText || recognizedDraft.editableText ? "已识别，可继续编辑" : listening ? "正在听取问题" : "等待输入问题"}</span>
@@ -654,6 +679,23 @@ export function InterviewRoomView({
   const dictationRef = useRef<DictationHandle | null>(null);
   const cueAbortRef = useRef<AbortController | null>(null);
   const sttSupported = isSpeechRecognitionSupported();
+  const vad = useMicVAD({
+    model: "v5",
+    startOnLoad: false,
+    baseAssetPath: "/vad/",
+    onnxWASMBasePath: "/onnx/",
+    onSpeechEnd: () => {
+      if (interviewConfig.submitMode !== "auto" || !dictationRef.current) return;
+      dictationRef.current.stop();
+      setListening(false);
+    },
+  });
+  const pauseVadRef = useRef(vad.pause);
+
+  useEffect(() => {
+    pauseVadRef.current = vad.pause;
+  }, [vad.pause]);
+
   const currentQuestion = questionPlan[questionIndex] ?? workspace.questions[0];
   const currentAnswer = workspace.answers.find((item) => item.questionId === currentQuestion?.id);
   const currentPrompt = transcript.filter((message) => message.role === "interviewer").at(-1)?.text ?? currentQuestion?.question ?? "";
@@ -663,6 +705,7 @@ export function InterviewRoomView({
 
   useEffect(() => () => {
     dictationRef.current?.stop();
+    void pauseVadRef.current().catch(() => undefined);
     cueAbortRef.current?.abort();
   }, []);
 
@@ -717,6 +760,7 @@ export function InterviewRoomView({
   const toggleDictation = () => {
     if (listening) {
       dictationRef.current?.stop();
+      void vad.pause().catch(() => undefined);
       setListening(false);
       return;
     }
@@ -738,13 +782,19 @@ export function InterviewRoomView({
       onError: (message) => {
         setVoiceError(message);
         setListening(false);
+        void vad.pause().catch(() => undefined);
       },
-      onEnd: () => setListening(false),
+      onEnd: () => {
+        setListening(false);
+        void vad.pause().catch(() => undefined);
+      },
     });
     if (!dictationRef.current) {
       setVoiceError("麦克风启动失败，请重试或直接输入文字。");
       setListening(false);
+      return;
     }
+    if (!vad.errored) void vad.start().catch(() => undefined);
   };
 
   const showCueCard = () => {
@@ -985,6 +1035,7 @@ export function InterviewRoomView({
                 {answerDraft.interimText ? <p className="recognized-interim">{answerDraft.interimText}</p> : null}
                 {voiceError ? <div className="inline-message error">{repairText(voiceError)}</div> : null}
                 {!sttSupported ? <p className="form-hint">当前浏览器不支持语音识别，已自动降级为文本输入。</p> : null}
+                {vad.errored ? <p className="form-hint">语音活动检测加载失败，已切换为手动停止模式。</p> : null}
                 {instantFeedback ? <div className="inline-message success">{instantFeedback}</div> : null}
                 {questionSourceLabel ? <p className="form-hint">题目来源：{questionSourceLabel}</p> : null}
                 {backendHint ? <div className={sessionBackendStatus === "success" ? "inline-message success" : "inline-message warn"}>{backendHint}</div> : null}

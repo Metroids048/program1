@@ -22,6 +22,13 @@ describe("DeepSeekProvider 超时与重试", () => {
     vi.unstubAllGlobals();
     delete process.env.DEEPSEEK_TIMEOUT_MS;
     delete process.env.DEEPSEEK_MAX_RETRIES;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_MODEL_POOL;
+    delete process.env.GITHUB_MODELS_TOKEN;
+    delete process.env.GITHUB_MODELS_MODEL_POOL;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.DEEPSEEK_MODEL;
   });
 
   it("瞬时网络错误后重试一次并成功", async () => {
@@ -108,5 +115,97 @@ describe("DeepSeekProvider 超时与重试", () => {
 
     expect(provider).toBeInstanceOf(LocalFallbackProvider);
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("按 OpenRouter -> GitHub Models -> DeepSeek -> local fallback 顺序自动降级", async () => {
+    process.env.OPENROUTER_API_KEY = "openrouter-test-key";
+    process.env.OPENROUTER_MODEL_POOL = "openrouter/free";
+    process.env.GITHUB_MODELS_TOKEN = "github-test-token";
+    process.env.GITHUB_MODELS_MODEL_POOL = "openai/gpt-4.1-mini";
+    process.env.DEEPSEEK_API_KEY = "deepseek-test-key";
+    const { createProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        if (url.includes("openrouter.ai")) return new Response("rate limited", { status: 429 });
+        if (url.includes("models.github.ai")) return new Response("quota exhausted", { status: 429 });
+        return jsonResponse({ model: "deepseek-chat", choices: [{ message: { content: '{"ok":true}' } }] });
+      }),
+    );
+
+    const provider = createProvider();
+    const result = await provider.chatJson([{ role: "user", content: "hi" }], { ok: false });
+
+    expect(result.status).toBe("success");
+    expect(result.data).toEqual({ ok: true });
+    expect(provider.model).toBe("deepseek-chat");
+    expect(urls).toEqual([
+      "https://openrouter.ai/api/v1/chat/completions",
+      "https://models.github.ai/inference/chat/completions",
+      "https://api.deepseek.com/chat/completions",
+    ]);
+  });
+
+  it("OpenRouter 展示名前缀不传给上游 model 字段", async () => {
+    const { OpenRouterProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    const fetchMock = vi.fn(async () => jsonResponse({ model: "meta-llama/llama-3.3-8b-instruct:free", choices: [{ message: { content: '{"ok":true}' } }] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OpenRouterProvider("test-key", "openrouter/free");
+    const result = await provider.chatJson([{ role: "user", content: "只返回 JSON" }], { ok: false });
+
+    const calls = fetchMock.mock.calls as unknown as Array<[unknown, { body?: string }]>;
+    const body = JSON.parse(calls[0]?.[1]?.body ?? "{}") as { model?: string };
+    expect(body.model).toBe("openrouter/free");
+    expect(provider.model).toBe("openrouter:meta-llama/llama-3.3-8b-instruct:free");
+    expect(result.status).toBe("success");
+  });
+
+  it("4xx 不重试同一 provider，但会尝试下一个 provider", async () => {
+    process.env.OPENROUTER_API_KEY = "openrouter-test-key";
+    process.env.OPENROUTER_MODEL_POOL = "openrouter/free";
+    process.env.GITHUB_MODELS_TOKEN = "github-test-token";
+    process.env.GITHUB_MODELS_MODEL_POOL = "openai/gpt-4.1-mini";
+    const { createProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "1" });
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        if (url.includes("openrouter.ai")) return new Response("bad request", { status: 400 });
+        return jsonResponse({ model: "openai/gpt-4.1-mini", choices: [{ message: { content: '{"ok":true}' } }] });
+      }),
+    );
+
+    const provider = createProvider("", "deepseek-chat");
+    const result = await provider.chatJson([{ role: "user", content: "hi" }], { ok: false });
+
+    expect(result.status).toBe("success");
+    expect(provider.model).toBe("github:openai/gpt-4.1-mini");
+    expect(urls).toEqual([
+      "https://openrouter.ai/api/v1/chat/completions",
+      "https://models.github.ai/inference/chat/completions",
+    ]);
+  });
+
+  it("全部远程 provider 失败后明确使用 local fallback", async () => {
+    process.env.OPENROUTER_API_KEY = "openrouter-test-key";
+    process.env.OPENROUTER_MODEL_POOL = "openrouter/free";
+    process.env.GITHUB_MODELS_TOKEN = "github-test-token";
+    process.env.GITHUB_MODELS_MODEL_POOL = "openai/gpt-4.1-mini";
+    process.env.DEEPSEEK_API_KEY = "deepseek-test-key";
+    const { createProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+
+    const fallback = { ok: false, source: "local" };
+    const provider = createProvider();
+    const result = await provider.chatJson([{ role: "user", content: "hi" }], fallback);
+
+    expect(result.status).toBe("fallback");
+    expect(result.data).toEqual(fallback);
+    expect(provider.model).toBe("local-fallback");
+    expect(result.raw).toBe("LLM_NOT_CONFIGURED");
   });
 });

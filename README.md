@@ -71,7 +71,15 @@ AI_JOB_DB_PATH=.data/ai-job-platform.sqlite
 APP_BASE_URL=http://127.0.0.1:5173
 APP_CORS_ORIGIN=http://127.0.0.1:5173
 JWT_SECRET=replace-with-a-long-random-secret
+OPENROUTER_API_KEY=your_openrouter_key
+OPENROUTER_MODEL_POOL=openrouter/free
+GITHUB_MODELS_TOKEN=your_github_models_token
+GITHUB_MODELS_MODEL_POOL=openai/gpt-4.1-mini
 DEEPSEEK_API_KEY=your_deepseek_key
+ASR_PROVIDER=xfyun
+XFYUN_RTASR_APP_ID=your_xfyun_app_id
+XFYUN_RTASR_API_KEY=your_xfyun_api_key
+XFYUN_RTASR_ENDPOINT=wss://rtasr.xfyun.cn/v1/ws
 SEARCH_PROVIDER=tavily # tavily | bing | serpapi
 SEARCH_API_KEY=your_search_key
 ```
@@ -97,9 +105,9 @@ SEARCH_API_KEY=your_search_key
 
 ## AI 与语音边界
 
-语音能力使用浏览器麦克风和 Web Speech API；不捕获桌面系统音频，不抓会议软件系统声。浏览器不支持或授权失败时，实时助手和模拟练习都会降级为文字输入。
+语音能力使用浏览器麦克风，优先走服务端讯飞 RTASR 流式转写；未配置密钥、连接失败或浏览器录音不可用时，回退到 Web Speech API 或文字输入。不捕获桌面系统音频，不抓会议软件系统声。
 
-Web Speech 转写保留 interim、final、editable 文本分离；停止听取不会清空已识别文本，只有用户点击清空/重录才清空。
+语音转写保留 interim、final、editable 文本分离；停止听取不会清空已识别文本，只有用户点击清空/重录才清空。VAD 只辅助自动模式判断说话结束，手动停止按钮仍保留。
 
 ## 验证
 

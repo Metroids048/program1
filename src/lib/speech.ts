@@ -45,7 +45,7 @@ function getRecognitionCtor(): SpeechRecognitionCtor | undefined {
 }
 
 export function isSpeechRecognitionSupported(): boolean {
-  return getRecognitionCtor() !== undefined;
+  return getRecognitionCtor() !== undefined || isServerAsrSupported();
 }
 
 export function getSpeechRecognitionSupport(): { supported: boolean; fullySupported: boolean } {
@@ -58,7 +58,7 @@ export function getSpeechRecognitionSupport(): { supported: boolean; fullySuppor
   const isEdge = /Edg/i.test(ua);
   return {
     supported,
-    fullySupported: supported && (isChrome || isEdge),
+    fullySupported: supported && (isServerAsrSupported() || isChrome || isEdge),
   };
 }
 
@@ -86,6 +86,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function startDictation(options: DictationOptions): DictationHandle | null {
+  if (isServerAsrSupported()) {
+    return startServerAsrDictation(options);
+  }
+  return startWebSpeechDictation(options);
+}
+
+function startWebSpeechDictation(options: DictationOptions): DictationHandle | null {
   const Ctor = getRecognitionCtor();
   if (!Ctor) return null;
 
@@ -112,6 +119,157 @@ export function startDictation(options: DictationOptions): DictationHandle | nul
     return null;
   }
   return { stop: () => recognition.stop() };
+}
+
+function isServerAsrSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    typeof WebSocket !== "undefined" &&
+    typeof window.navigator.mediaDevices?.getUserMedia === "function" &&
+    getAudioContextCtor() !== undefined
+  );
+}
+
+function startServerAsrDictation(options: DictationOptions): DictationHandle {
+  const fallbackToWebSpeech = () => startWebSpeechDictation(options);
+  const socket = new WebSocket(resolveAsrSocketUrl());
+  socket.binaryType = "arraybuffer";
+  let stopped = false;
+  let ended = false;
+  let audioContext: AudioContext | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let stream: MediaStream | null = null;
+  let activeFallback: DictationHandle | null = null;
+
+  const finish = () => {
+    if (ended) return;
+    ended = true;
+    options.onEnd();
+  };
+
+  const cleanupAudio = () => {
+    processor?.disconnect();
+    source?.disconnect();
+    processor = null;
+    source = null;
+    stream?.getTracks().forEach((track) => track.stop());
+    stream = null;
+    void audioContext?.close().catch(() => undefined);
+    audioContext = null;
+  };
+
+  const stopSocket = () => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ end: true }));
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+  };
+
+  const startAudio = async () => {
+    if (stopped || stream) return;
+    const AudioContextCtor = getAudioContextCtor();
+    if (!AudioContextCtor) throw new Error("AUDIO_CONTEXT_UNSUPPORTED");
+    stream = await window.navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    audioContext = new AudioContextCtor();
+    source = audioContext.createMediaStreamSource(stream);
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = (event) => {
+      if (stopped || socket.readyState !== WebSocket.OPEN || !audioContext) return;
+      const input = event.inputBuffer.getChannelData(0);
+      const pcm = downsampleTo16kPcm(input, audioContext.sampleRate);
+      sendPcmChunks(socket, pcm);
+    };
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+  };
+
+  const fallBackOrError = (message: string) => {
+    cleanupAudio();
+    const fallback = fallbackToWebSpeech();
+    if (fallback) {
+      socket.onclose = null;
+      socket.onerror = null;
+      stopSocket();
+      activeFallback = fallback;
+      return;
+    }
+    stopSocket();
+    options.onError(message);
+    finish();
+  };
+
+  socket.onmessage = (event) => {
+    const payload = safeJsonParse<{ type?: string; text?: string; code?: string; message?: string }>(String(event.data));
+    if (!payload?.type) return;
+    if (payload.type === "ready") {
+      void startAudio().catch(() => fallBackOrError("麦克风启动失败，请重试或直接输入文字。"));
+      return;
+    }
+    if ((payload.type === "interim" || payload.type === "final") && payload.text) {
+      options.onText(payload.text, payload.type === "final");
+      return;
+    }
+    if (payload.type === "error") {
+      fallBackOrError(payload.message || "云端语音识别不可用，已切换到浏览器语音或文字输入。");
+    }
+  };
+  socket.onerror = () => fallBackOrError("云端语音识别连接失败，已切换到浏览器语音或文字输入。");
+  socket.onclose = () => {
+    cleanupAudio();
+    if (!activeFallback) finish();
+  };
+
+  return {
+    stop: () => {
+      stopped = true;
+      if (activeFallback) {
+        activeFallback.stop();
+        return;
+      }
+      cleanupAudio();
+      stopSocket();
+    },
+  };
+}
+
+function resolveAsrSocketUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/asr/xfyun/stream`;
+}
+
+type AudioContextCtor = new (options?: AudioContextOptions) => AudioContext;
+
+function getAudioContextCtor(): AudioContextCtor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const scope = window as unknown as { AudioContext?: AudioContextCtor; webkitAudioContext?: AudioContextCtor };
+  return scope.AudioContext ?? scope.webkitAudioContext;
+}
+
+function downsampleTo16kPcm(input: Float32Array, inputSampleRate: number): ArrayBuffer {
+  const targetSampleRate = 16000;
+  const sampleRateRatio = inputSampleRate / targetSampleRate;
+  const outputLength = Math.max(1, Math.floor(input.length / sampleRateRatio));
+  const output = new Int16Array(outputLength);
+  for (let i = 0; i < outputLength; i += 1) {
+    const sourceIndex = Math.floor(i * sampleRateRatio);
+    const sample = Math.max(-1, Math.min(1, input[sourceIndex] ?? 0));
+    output[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return output.buffer;
+}
+
+function sendPcmChunks(socket: WebSocket, pcm: ArrayBuffer): void {
+  const chunkSize = 1280;
+  for (let offset = 0; offset < pcm.byteLength; offset += chunkSize) {
+    socket.send(pcm.slice(offset, Math.min(offset + chunkSize, pcm.byteLength)));
+  }
+}
+
+function safeJsonParse<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function speak(text: string, lang = "zh-CN"): void {

@@ -31,7 +31,8 @@
    - 技术栈：better-sqlite3 + SQLite
    - 责任：业务快照、记录、运行日志、RAG 文档和 FTS 检索
 4. 外部能力
-   - DeepSeek：唯一主模型通道
+   - OpenRouter / GitHub Models / DeepSeek：统一 AI client 内部降级
+   - 讯飞 RTASR：可选流式 ASR 通道
    - Search Provider：按需启用的条件工具
 
 ## 4. 模块分层
@@ -47,7 +48,7 @@
 - `rag`
   - 负责文档切块、FTS 入库、召回、重排、evidenceTrace
 - `ai`
-  - 负责 DeepSeek client、Prompt registry、结构化输出修复、运行日志
+  - 负责统一 AI client、provider 降级、Prompt registry、结构化输出修复、运行日志
 - `search`
   - 负责 provider 适配、超时控制、结果归一化
 
@@ -74,7 +75,7 @@
 3. 后端执行：
    - RAG 召回当前岗位上下文
    - 条件判断是否触发搜索
-   - 调用 DeepSeek 生成结构化提词卡
+   - 调用统一 AI client 生成结构化提词卡
    - 通过 SSE 回传进度和最终卡片
 4. 前端用模型卡覆盖本地卡；失败则停留在本地练习模式
 
@@ -130,7 +131,8 @@ RAG 输入来源固定为：
 
 ## 8. 语音与实时边界
 
-- 输入：Web Speech API 三态转写 + 手动文本输入
+- 输入：优先服务端讯飞 RTASR 流式转写；未配置、连接失败或浏览器录音不可用时，回退到 Web Speech API 三态转写与手动文本输入
+- VAD：使用前端 Silero VAD 判断说话结束，只触发自动模式下的停止/生成，不替代手动按钮
 - 输出：浏览器原生 TTS，默认关闭，仅手动触发
 - 不做系统音频捕获
 - 不做后台偷听式能力
