@@ -60,12 +60,18 @@ function commitAll() {
 }
 
 function push() {
-  let result = git(['push', '-u', 'origin', BRANCH], { allowFail: true });
+  const result = git(['push', '-u', 'origin', `${BRANCH}:${BRANCH}`], { allowFail: true });
   if (result.ok) return;
 
-  git(['pull', '--rebase', 'origin', BRANCH]);
-  result = git(['push', '-u', 'origin', BRANCH]);
-  if (!result.ok) throw new Error(result.out || '推送失败');
+  if (/non-fast-forward|rejected/i.test(result.out)) {
+    git(['fetch', 'origin', BRANCH]);
+    git(['merge', '--no-edit', `origin/${BRANCH}`], { allowFail: true });
+    const retry = git(['push', '-u', 'origin', `${BRANCH}:${BRANCH}`], { allowFail: true });
+    if (retry.ok) return;
+    throw new Error(retry.out || '推送失败');
+  }
+
+  throw new Error(result.out || '推送失败');
 }
 
 try {
