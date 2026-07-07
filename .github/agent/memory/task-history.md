@@ -422,6 +422,10 @@
 - Date: 2026-06-20
 - Type: fix
 - Summary: 根治 Codex Desktop 在 Windows 上调用 IAB Browser 导致闪退：全局关闭 browser/chrome/computer-use/build-web-apps 插件，清空 browser backends，更新 AGENTS 分流 Cursor/Codex 验收，并新增可重复执行的稳定性守卫脚本。
+
+## 2026-07-07 Codex 浏览器闪退复盘修正
+- Summary: 上一条“全局关闭浏览器插件”的方案已废弃。当前正确策略是保留 Browser / Chrome / Computer Use / build-web-apps 插件启用，但 `~/.codex/config.toml` 固定 `BROWSER_USE_AVAILABLE_BACKENDS="chrome"`，`js_repl=true`；项目规则允许启动脚本自动打开系统 Chrome / Edge，禁止直接 import `openai-bundled/browser/**/browser-client.mjs`、调用 `setupBrowserRuntime` 或走 Codex in-app Browser/IAB。
+- Verification: 旧 `node_repl.exe` 进程需要在配置修改后终止重启，否则旧环境仍可能继续触发 IAB。
 - Files:
   - `~/.codex/config.toml`
   - `AGENTS.md`

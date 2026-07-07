@@ -111,21 +111,23 @@
   - Codex 不再具备内置 Browser 能力，但可稳定完成代码与后端验收
   - 若 OpenAI 修复 Windows IAB 崩溃，需重新评估后再手动启用插件
 
-## ADR-P012: Codex 浏览器验收改用外部 Playwright
+## ADR-P012: Codex 浏览器能力全局重新启用，强制 Chrome 后端
 
 - **Date**: 2026-07-06
 - **Status**: accepted
-- **Context**: 用户要求解决 Codex 打开浏览器闪退问题，并让项目能自动打开浏览器模拟真实用户行为。复核后确认闪退风险来自 Codex Desktop 内置 Browser/IAB/Chrome/Computer Use 路径，而不是外部系统浏览器进程本身。
+- **Context**: 用户要求彻底删除全局禁用浏览器配置。另一个 Codex 线程的闪退发生在直接调用内置 `setupBrowserRuntime` / IAB 路径后；继续全局禁用 Browser/Chrome/Computer Use 会阻断真实渲染层验收，但保留 IAB 后端会再次触发 Codex Desktop 闪退。
 - **Decision**:
-  1. 删除项目内反复写入全局禁用配置的 `scripts/ensure-codex-browser-stability.*`
-  2. 项目规则改为：Codex 禁止内置 Browser/IAB/Computer Use，但允许外部 Playwright/系统 Edge/Chrome 自动化
-  3. 新增 `npm run test:browser-flow` 跑无头外部浏览器，新增 `npm run test:browser-flow:headed` 打开可见外部浏览器窗口
-  4. 浏览器脚本使用临时后端端口、临时 Vite 端口与临时数据库，避免污染开发数据
-  5. 标准交付优先执行 `npm run verify` + `npm run test:browser-flow`
+  1. `~/.codex/config.toml` 中 `browser@openai-bundled`、`chrome@openai-bundled`、`computer-use@openai-bundled`、`build-web-apps@openai-api-curated` 全部启用
+  2. `BROWSER_USE_AVAILABLE_BACKENDS` 固定为 `chrome`，不再暴露 `iab` 后端给运行时选择
+  3. 删除项目级 `ensure-codex-browser-stability.*` 守卫脚本和“Codex 禁用浏览器”门禁
+  4. `~/.codex/tools/ensure-codex-plugins.ps1` 收窄为浏览器/网页能力健康检查，避免旧插件命名空间误报
+  5. 后续浏览器工具失败应记录为工具故障，不得重新写入全局禁用配置
+  6. 新增 `npm run test:browser-flow` / `test:browser-flow:headed` 作为外部 Playwright 用户流验收脚本（来自 `codex/full-usability-fix`）
 - **Consequences**:
-  - Codex 不再因调用内置 IAB 而闪退
-  - 项目具备真实浏览器用户流自动验收能力
-  - 若系统未安装 Edge/Chrome 且 Playwright 浏览器未安装，需要先安装浏览器运行时
+  - Codex 可以再次加载 Browser / Chrome / Computer Use 插件
+  - 真实浏览器验收恢复为默认交付要求，默认走系统 Chrome 后端
+  - 内置 IAB 闪退路径不再作为可选后端暴露；后续不得把 `chrome,iab` 写回全局配置
+  - 项目同时保留外部 Playwright 脚本作为兜底与自动化验收路径
 
 ## ADR-P010: 上线阻塞项收口采用服务端访客 cookie 与 owner-scoped RAG
 

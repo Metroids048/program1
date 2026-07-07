@@ -31,11 +31,11 @@
 - 说明：
   - 本项目允许存在“磁盘上已安装 skill”和“当前 Codex 会话实际暴露 skill”不完全一致的情况。
   - agent 必须先以“当前会话可见 skill 列表”为准，再按本节映射关系选用等价 skill，不能只因为本机目录里有文件就假设本轮可调用。
-- **浏览器验收按工具分流**：
-  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`，可以尝试通过浏览器或体验入口页来验证功能和模拟用户实际体验。
-  - **Codex Desktop**：禁止调用会导致 Windows 闪退的内置 Browser / IAB / Chrome / Computer Use 插件、`control-in-app-browser`、`frontend-testing-debugging` 的内置浏览器路径、`node_repl` 的 `setupBrowserRuntime` / `agent.browsers` / `browser.tabs`，以及任何内置 Browser 面板。
+- **浏览器验收**：
+  - **Cursor**：本地页面验收使用 Browser / Playwright MCP 检查 `http://127.0.0.1:5173/`。
+  - **Codex Desktop**：允许使用 Browser / Chrome / Computer Use / Playwright 做真实渲染层验收；不得再用项目规则阻止 Codex 打开浏览器。Codex 自动打开页面时优先使用系统 Chrome / 外部 Playwright；禁止直接 import `openai-bundled/browser/**/browser-client.mjs`、调用 `setupBrowserRuntime` 或走 in-app Browser/IAB 后端。
   - **Codex 外部浏览器自动化**：允许用项目脚本启动独立 Playwright/系统 Edge 进程做用户流验收，例如 `npm run test:browser-flow`；需要可见浏览器时由人工或 Cursor 运行 `npm run test:browser-flow:headed`。
-  - **Codex 兜底验收**：`npm run verify`、Vitest、Fastify inject 接口链路、真实样本导入脚本、代码审查；不得伪造 UI 已验收。
+  - 若浏览器工具自身崩溃或连接失败，必须把它记录为工具故障并改用外部 Playwright/系统浏览器兜底，不得把“禁用浏览器”重新写回全局配置。
 
 ## UTF-8 与中文文件（硬门禁）
 
@@ -72,6 +72,12 @@
 - 模拟面试追问、下一题、评价优先走后端模型；后端不可用时必须明确显示本地练习模式。
 - local fallback 不能伪装成模型成功。
 
+## 浏览器验收规则
+
+- Codex / Cursor 都可以执行浏览器渲染层验收。
+- 优先使用受控 Chrome / Playwright 工具检查 `http://127.0.0.1:5173/`；需要可见窗口时可以使用外部系统浏览器脚本。Codex Desktop 中不得直接 import `openai-bundled/browser/**/browser-client.mjs`、调用 `setupBrowserRuntime` 或走 in-app Browser/IAB 后端。
+- 禁止再新增“Codex 禁用 Browser/IAB/Chrome/Computer Use”的项目门禁或全局守卫脚本。
+- 如果浏览器工具自身失败，必须说明具体工具错误，并用 `npm run verify` + 外部 Playwright/接口链路兜底。
 
 ## 验证命令
 
@@ -81,10 +87,10 @@
 npm run verify
 ```
 
-并完成 Browser 冒烟路径（Cursor/人工浏览器，或 Codex 外部 Playwright 脚本；Codex 不得执行内置 Browser/IAB）：
+并完成 Browser 冒烟路径（Codex / Cursor / 人工浏览器均可执行）：
 
 1. 首页 JD 卡与配置入口。
 2. 实时助手：输入或语音模拟文本，停止后文本保留，编辑后生成题词卡。
 3. 模拟面试：回答一题，生成模型/本地追问，结束后保存报告。
 
-Codex 会话交付时，优先运行 `npm run verify` + `npm run test:browser-flow`；如果外部浏览器不可用，再以接口链路回归替代 Browser 冒烟，并在交付说明中标注缺口。
+Codex 会话交付时，优先执行 `npm run verify` + 浏览器真实用户流（含 `npm run test:browser-flow`）；浏览器工具不可用时才用接口链路回归兜底并标注工具故障。
