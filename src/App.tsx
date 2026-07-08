@@ -172,12 +172,32 @@ export function App() {
 
   useEffect(() => {
     saveServerSnapshotCache(appState);
+    appStateRef.current = appState;
   }, [appState]);
 
   const prevLoggedInRef = useRef(isLoggedIn);
+  const appStateRef = useRef(appState);
+
   useEffect(() => {
     if (!prevLoggedInRef.current && isLoggedIn) {
-      void fetchStateSnapshot()
+      // 登录成功时，先把游客期间产生的岗位/记录合并到用户账户，再拉取服务端快照。
+      // 这样游客在注册前创建的数据不会因登录后被服务端快照覆盖而丢失。
+      const guestState = appStateRef.current;
+      const hasGuestData = guestState.positions.length > 0 || guestState.interviewRecords.length > 0;
+      const mergeStep = hasGuestData
+        ? apiFetch("/api/auth/merge-guest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              profile: guestState.profile,
+              positions: guestState.positions,
+              records: guestState.interviewRecords,
+              journeyState: guestState.journeyState,
+            }),
+          }).catch(() => null)
+        : Promise.resolve(null);
+      void mergeStep
+        .then(() => fetchStateSnapshot())
         .then((snapshot) => {
           if (!snapshot?.profile || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.records)) return;
           setAppState((current) => {
@@ -245,6 +265,19 @@ export function App() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [route.name]);
+
+  // 路由级登录守卫：业务路由未登录直接跳登录页并保留原路径，避免直接输 URL 绕过按钮软拦截。
+  // 首页与岗位详情/对话对游客开放（游客可体验 JD intake 与查看自己创建的岗位）。
+  useEffect(() => {
+    if (authLoading) return;
+    const protectedRouteNames = new Set([
+      "live", "mock", "mockPositionList", "mockSetup", "mockRoom",
+      "jd", "questions", "resume", "records", "recordDetail",
+    ]);
+    if (!isLoggedIn && protectedRouteNames.has(route.name)) {
+      navigateTo(`/auth/login?returnTo=${encodeURIComponent(routePath)}`, { replace: true });
+    }
+  }, [route.name, routePath, isLoggedIn, authLoading]);
 
   const requireLoginFor = (path: string) => {
     if (isLoggedIn) {
@@ -384,8 +417,10 @@ export function App() {
       .catch((error) => notifySyncError("保存问题修改失败", error, "请稍后重试。"));
   };
 
-  const addQuestion = (payload: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string }) => {
-    if (!activePosition) return;
+  const addQuestion = (payload: Pick<InterviewQuestion, "question" | "category" | "difficulty"> & { answer?: string; notes?: string; positionId?: string }) => {
+    // 支持显式指定目标岗位：复盘沉淀时应沉淀到记录所属岗位，而非依赖当前 activePosition。
+    const targetPosition = payload.positionId ? positions.find((item) => item.id === payload.positionId) ?? activePosition : activePosition;
+    if (!targetPosition) return;
     const question: InterviewQuestion = {
       id: makeId("q-manual"),
       category: repairText(payload.category),
@@ -401,7 +436,7 @@ export function App() {
       lastReviewedAt: nowIso(),
       tags: ["用户保存"],
     };
-    void updatePositionQuestionsOnServer(activePosition.id, [question, ...activePosition.questions])
+    void updatePositionQuestionsOnServer(targetPosition.id, [question, ...targetPosition.questions])
       .then(({ position }) => {
         patchState((current) => ({
           ...current,
@@ -512,7 +547,21 @@ export function App() {
           interviewRecords: Array.isArray(response.records) && response.records.length > 0 ? response.records : current.interviewRecords,
         }));
       })
-      .catch((error) => notifySyncError("保存面试记录失败", error, "当前仅保留本地结果，请稍后重试同步。"));
+      .catch((error) => {
+        // 保存失败：回滚本地乐观更新，避免留下无法同步的幽灵记录。
+        // 新建记录直接移除；更新已有记录则恢复为旧版本。
+        patchState((current) => ({
+          ...current,
+          interviewRecords: baseRecord
+            ? replaceRecord(current.interviewRecords.filter((item) => item.id !== record.id), baseRecord)
+            : current.interviewRecords.filter((item) => item.id !== record.id),
+          activeRecordId:
+            current.activeRecordId === record.id
+              ? baseRecord?.id ?? current.interviewRecords.find((item) => item.id !== record.id)?.id ?? ""
+              : current.activeRecordId,
+        }));
+        notifySyncError("保存面试记录失败", error, "记录未能同步到服务端，已回滚本地，请稍后重试。");
+      });
     if (payload.mode === "mock") {
       void getLatestMockSessionOnServer(activePosition.id)
         .then(({ session }) => completeMockSessionOnServer(session.id))
@@ -748,17 +797,25 @@ export function App() {
               requireLoginFor("/mock");
               return;
             }
-            openMockPositionList();
+            // 再练一次：直接对当前复盘记录所属岗位开模拟，而非跳岗位列表。
+            const currentRecord = interviewRecords.find((item) => item.id === selectedRecordId);
+            if (currentRecord?.positionId) {
+              openMockSetup(currentRecord.positionId);
+            } else {
+              openMockPositionList();
+            }
           }}
           onOpenQuestions={() => openRoute("/questions")}
           onOpenResume={() => openRoute("/resume")}
           onOpenJd={() => openRoute("/jd")}
           onSaveQuestionNote={({ question, notes }) => {
+            const currentRecord = interviewRecords.find((item) => item.id === selectedRecordId);
             addQuestion({
               question,
               category: "复盘沉淀",
               difficulty: "进阶",
               notes,
+              positionId: currentRecord?.positionId,
             });
           }}
         />

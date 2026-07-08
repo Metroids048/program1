@@ -8,7 +8,7 @@ type Mode = "login" | "register";
 
 type AuthResponse = {
   user: {
-    userId: string;
+    id: string;
     phone: string | null;
     email?: string | null;
     emailVerifiedAt?: string | null;
@@ -78,7 +78,7 @@ export function AuthPage({ mode: initialMode, returnTo }: { mode: Mode; returnTo
         return;
       }
 
-      setAuth(data.user, data.tokens);
+      setAuth({ ...data.user, userId: data.user.id }, data.tokens);
 
       navigateTo(resolvedReturnTo, { replace: true });
     } catch {

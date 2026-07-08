@@ -484,7 +484,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("新密码"), "NewPassword123");
     await user.type(screen.getByLabelText("确认密码"), "NewPassword123");
     await user.click(screen.getByRole("button", { name: "确认重置" }));
-    expect(await screen.findByText("密码已更新，现在可以使用新密码登录。")).toBeInTheDocument();
+    expect(await screen.findByText("密码已更新，即将跳转登录页...")).toBeInTheDocument();
 
     renderApp("/verify-email?token=test-token");
     await user.click(screen.getByRole("button", { name: "开始验证" }));

@@ -42,7 +42,7 @@ export function ForgotPasswordPage() {
             <MailCheck size={24} />
           </span>
           <h1 className="auth-title">找回密码</h1>
-          <p className="auth-subtitle">输入已验证邮箱，我们会发送一封带有效期的重置邮件。</p>
+          <p className="auth-subtitle">输入已验证邮箱，我们会发送一封带有效期的重置邮件。使用手机号注册的用户，请先在账户设置中验证邮箱以启用找回。</p>
         </div>
         <div className="auth-form">
           <label className="auth-field">
@@ -97,7 +97,8 @@ export function ResetPasswordPage({ token }: { token?: string }) {
         setError(data.error ?? "重置失败，请重新申请");
         return;
       }
-      setMessage("密码已更新，现在可以使用新密码登录。");
+      setMessage("密码已更新，即将跳转登录页...");
+      window.setTimeout(() => navigateTo("/auth/login"), 1500);
     } catch {
       setError("网络异常，请稍后再试");
     } finally {

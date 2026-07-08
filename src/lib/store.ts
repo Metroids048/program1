@@ -154,7 +154,8 @@ export function loadServerSnapshotCache(): AppState {
 }
 
 export function saveServerSnapshotCache(state: AppState): void {
-  const hasContent = state.profile.resumeText.trim().length > 0 || state.positions.length > 0;
+  // 缓存保留条件包含面试记录：游客只做模拟练习但未建岗位/填简历时，记录也不应被清空。
+  const hasContent = state.profile.resumeText.trim().length > 0 || state.positions.length > 0 || state.interviewRecords.length > 0;
   if (!hasContent) {
     window.localStorage.removeItem(SNAPSHOT_KEY);
     return;

@@ -56,7 +56,17 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     if (guestId) headers.set("x-guest-id", guestId);
   }
   try {
-    return await fetch(input, { ...init, headers });
+    const response = await fetch(input, { ...init, headers });
+    // 登录态过期（401）：清本地登录态并跳登录页保留原路径，避免静默失效。
+    // 仅当本次请求携带了 token 时才跳转，游客访问受保护接口的 401 属预期行为。
+    if (response.status === 401 && typeof window !== "undefined" && token) {
+      window.localStorage.removeItem(TOKENS_KEY);
+      window.localStorage.removeItem("ai-job:session:v1");
+      window.dispatchEvent(new Event("ai-job:auth-change"));
+      const currentPath = window.location.pathname + window.location.search;
+      redirectToLogin(currentPath);
+    }
+    return response;
   } catch (error) {
     // 网络层失败（断网、超时、CORS）统一提示，避免各处静默失败。
     notify("网络连接失败，请检查网络后重试", "error");

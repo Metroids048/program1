@@ -17,7 +17,7 @@ export interface AiProvider {
 const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
 const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const GITHUB_MODELS_ENDPOINT = "https://models.github.ai/inference/chat/completions";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const DEFAULT_OPENROUTER_MODELS = ["openrouter/free"];
 const DEFAULT_GITHUB_MODELS = ["openai/gpt-4.1-mini", "deepseek/DeepSeek-V3-0324", "meta/Meta-Llama-3.1-8B-Instruct"];
 const DEFAULT_TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS) > 0 ? Number(process.env.DEEPSEEK_TIMEOUT_MS) : 45000;

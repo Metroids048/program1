@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { ArrowRight, ArrowLeft, Check } from "lucide-react";
 import { apiFetch } from "../../lib/authClient";
+import { importResumeFile } from "../../lib/resumeImport";
 import { navigateTo } from "../../lib/router";
 import type { OnboardingPayload, Position } from "../../types";
 import { Seo } from "../system/Seo";
@@ -36,6 +37,7 @@ export function OnboardingPage({
   const [stepIndex, setStepIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [nextStep, setNextStep] = useState<"intake_jd" | "import_resume" | "start_mock">("intake_jd");
 
   const step = STEPS[stepIndex];
@@ -43,6 +45,20 @@ export function OnboardingPage({
 
   const setValue = (key: string, val: string) => {
     setValues((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = await importResumeFile(file);
+      setValue("resumeText", imported.text);
+      setSubmitError("");
+    } catch {
+      setSubmitError("简历解析失败，请尝试直接粘贴文字。");
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const next = () => {
@@ -76,8 +92,10 @@ export function OnboardingPage({
       if (data.nextStep) setNextStep(data.nextStep);
       onComplete?.(data.position);
     } catch {
-      // Best effort
+      setSubmitError("引导信息提交失败，请检查网络后重试。");
+      return;
     }
+    setSubmitError("");
     setDone(true);
   };
 
@@ -113,8 +131,8 @@ export function OnboardingPage({
           <p className="onboarding-done-text">
             {nextStepHint[nextStep] || "现在可以创建你的第一个岗位，开始面试练习。"}
           </p>
-          <button type="button" className="onboarding-done-btn" onClick={() => navigateTo("/", { replace: true })}>
-            进入岗位台
+          <button type="button" className="onboarding-done-btn" onClick={() => navigateTo(nextStep === "import_resume" ? "/resume" : nextStep === "start_mock" ? "/mock" : "/", { replace: true })}>
+            {nextStep === "import_resume" ? "去导入简历" : nextStep === "start_mock" ? "开始模拟面试" : "进入岗位台"}
             <ArrowRight size={16} />
           </button>
         </div>
@@ -166,6 +184,12 @@ export function OnboardingPage({
               value={currentValue}
               onChange={(e) => setValue(step.field, e.target.value)}
             />
+            {step.key === "resume" ? (
+              <label className="onboarding-upload-btn">
+                上传简历文件（.pdf / .docx / .txt）
+                <input type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={handleResumeUpload} />
+              </label>
+            ) : null}
           </div>
         )}
 
@@ -181,6 +205,8 @@ export function OnboardingPage({
             <ArrowRight size={16} />
           </button>
         </div>
+
+        {submitError ? <p className="auth-error" style={{ marginTop: 12, textAlign: "center" }}>{submitError}</p> : null}
 
         <button type="button" className="onboarding-skip" onClick={handleSkip}>
           跳过引导，直接开始

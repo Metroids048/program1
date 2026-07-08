@@ -471,6 +471,11 @@ export function AccountModal({
   const [savingAccount, setSavingAccount] = useState(false);
   const [sendingVerify, setSendingVerify] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState<{ product: boolean; marketing: boolean }>({
+    product: session?.notificationPrefs?.product ?? true,
+    marketing: session?.notificationPrefs?.marketing ?? false,
+  });
+  const [savingNotif, setSavingNotif] = useState(false);
 
   const exportData = async () => {
     let exported = serializeAppState(state);
@@ -513,6 +518,34 @@ export function AccountModal({
       setMessage({ tone: "error", text: "导入失败：不是有效的备份 JSON。" });
     } finally {
       event.target.value = "";
+    }
+  };
+
+  const saveNotifPrefs = async () => {
+    if (!isLoggedIn) {
+      setMessage({ tone: "warn", text: "请先登录后再修改通知偏好。" });
+      return;
+    }
+    setSavingNotif(true);
+    try {
+      const response = await apiFetch("/api/account/notification-preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notifPrefs),
+      });
+      if (!response.ok) {
+        setMessage({ tone: "error", text: "通知偏好保存失败，请稍后重试。" });
+        return;
+      }
+      const data = await response.json().catch(() => ({})) as { notificationPrefs?: { product?: boolean; marketing?: boolean } };
+      if (session && data.notificationPrefs) {
+        onUpdateSession({ ...session, notificationPrefs: data.notificationPrefs });
+      }
+      setMessage({ tone: "success", text: "通知偏好已保存。" });
+    } catch {
+      setMessage({ tone: "error", text: "网络异常，通知偏好未保存。" });
+    } finally {
+      setSavingNotif(false);
     }
   };
 
@@ -678,6 +711,25 @@ export function AccountModal({
               <button className="button danger" type="button" onClick={deleteAccount} disabled={deletingAccount}>
                 <Trash2 size={16} />
                 {deletingAccount ? "删除中..." : "删除账号"}
+              </button>
+            </div>
+          </details>
+        ) : null}
+
+        {isLoggedIn ? (
+          <details className="account-more-section">
+            <summary>通知设置</summary>
+            <label className="account-checkbox-row">
+              <input type="checkbox" checked={notifPrefs.product} onChange={(event) => setNotifPrefs((current) => ({ ...current, product: event.target.checked }))} />
+              <span>接收产品更新与提醒邮件</span>
+            </label>
+            <label className="account-checkbox-row">
+              <input type="checkbox" checked={notifPrefs.marketing} onChange={(event) => setNotifPrefs((current) => ({ ...current, marketing: event.target.checked }))} />
+              <span>接收活动与欢迎类邮件</span>
+            </label>
+            <div className="drawer-actions">
+              <button className="button primary" type="button" onClick={saveNotifPrefs} disabled={savingNotif}>
+                {savingNotif ? "保存中..." : "保存通知偏好"}
               </button>
             </div>
           </details>

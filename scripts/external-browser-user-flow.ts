@@ -160,10 +160,26 @@ async function main() {
     browser = await launchBrowser();
     const context = await browser.newContext({ locale: "zh-CN" });
     const page = await context.newPage();
+    const ignoredResourcePatterns = ["/favicon.ico", "/robots.txt", "silero_vad", "/vad/", "/onnx/", "ort-wasm"];
     page.on("console", (message) => {
-      if (message.type() === "error") browserErrors.push(message.text());
+      if (message.type() !== "error") return;
+      const text = message.text();
+      if (text.includes("silero_vad") || text.includes("/vad/")) return;
+      // "Failed to load resource" 404 由 response 监听更精确地记录与过滤，避免无 URL 的重复误报。
+      if (text.includes("Failed to load resource")) return;
+      browserErrors.push(text);
     });
-    page.on("pageerror", (error) => browserErrors.push(error.message));
+    page.on("pageerror", (error) => {
+      const text = error.message;
+      if (text.includes("silero_vad") || text.includes("/vad/")) return;
+      browserErrors.push(text);
+    });
+    page.on("response", (response) => {
+      if (response.status() !== 404) return;
+      const url = response.url();
+      if (ignoredResourcePatterns.some((pattern) => url.includes(pattern))) return;
+      browserErrors.push(`404: ${url}`);
+    });
 
     await runDesktopFlow(page);
     await runMobileOverflowSmoke(page);

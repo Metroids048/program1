@@ -1,9 +1,12 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { BookOpenCheck, Check, ClipboardList, GraduationCap, RefreshCw, Target, UserRound } from "lucide-react";
+import { BookOpenCheck, Check, ClipboardList, GraduationCap, RefreshCw, Target, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
 import type { AiRunMeta } from "../lib/apiClient";
+import { apiFetch } from "../lib/authClient";
 import { generateHighlightsLocal } from "../lib/coach";
 import { prioritizeEvidenceForJob } from "../lib/interviewEngine";
+import { notify } from "../lib/toast";
 import type {
   AnswerCueCard,
   CandidateProfile,
@@ -214,12 +217,50 @@ export function CueCardPanel({ card, meta, onSaveQuestion }: { card?: AnswerCueC
 
         <footer className="cue-card-actions">
           <span className="cue-meta">{modelLabel}{meta?.latencyMs ? ` · ${meta.latencyMs}ms` : ""}</span>
+          <CueCardRating card={card} meta={meta} />
           <button className="button secondary compact-button" type="button" onClick={() => onSaveQuestion(card)}>
             记录到面试资料
           </button>
         </footer>
       </article>
     </Panel>
+  );
+}
+
+function CueCardRating({ card, meta }: { card: AnswerCueCard; meta?: AiRunMeta | null }) {
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const rate = (value: "up" | "down") => {
+    if (rating) return;
+    setRating(value);
+    // 采集用户对提词卡的认可度，作为 AI 输出质量评估的上游信号（复用 /api/feedback）。
+    void apiFetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: "cue-card-rating",
+        content: JSON.stringify({
+          rating: value,
+          skill: meta?.skillId ?? "cueCard",
+          promptId: meta?.promptId ?? "",
+          backendStatus: meta?.backendStatus ?? "fallback",
+          question: card.questionText,
+        }),
+      }),
+    }).catch(() => undefined);
+    notify(value === "up" ? "感谢反馈，已记录这张卡片有帮助" : "感谢反馈，我们会持续改进", "success");
+  };
+  return (
+    <span className="cue-rating-bar">
+      <span className="cue-rating-label">有帮助？</span>
+      <span className="cue-rating-actions">
+        <button type="button" className={`cue-rating-button${rating === "up" ? " active" : ""}`} aria-label="有帮助" aria-pressed={rating === "up"} disabled={rating !== null} onClick={() => rate("up")}>
+          <ThumbsUp size={14} />
+        </button>
+        <button type="button" className={`cue-rating-button${rating === "down" ? " active" : ""}`} aria-label="没帮助" aria-pressed={rating === "down"} disabled={rating !== null} onClick={() => rate("down")}>
+          <ThumbsDown size={14} />
+        </button>
+      </span>
+    </span>
   );
 }
 

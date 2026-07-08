@@ -8,7 +8,7 @@ import { MAIL_TEMPLATES } from "../../mail/templates";
 import type { MailService } from "../../mail/service";
 
 const DEFAULT_JWT_SECRET = "ai-job-dev-secret-change-in-production";
-const JWT_EXPIRES_IN = "24h";
+const JWT_EXPIRES_IN = "30d";
 const SALT_LENGTH = 32;
 const KEY_LENGTH = 64;
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
