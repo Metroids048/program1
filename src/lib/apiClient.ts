@@ -471,3 +471,91 @@ export async function reconstructCueCard(input: {
   if (!card) throw new Error("RECONSTRUCT_EMPTY");
   return { card, stages, backendStatus, searchCount: 0, fallbackReason, evidenceTrace, latencyMs };
 }
+
+export interface AudioBridgePairingResult {
+  pairingCode: string;
+  expiresAt: string;
+}
+
+export async function requestAudioBridgePairingCode(deviceName?: string): Promise<AudioBridgePairingResult> {
+  const response = await apiFetch("/api/audio-bridge/pair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(deviceName ? { deviceName } : {}),
+  });
+  return readJson(response);
+}
+
+export interface AudioBridgeDevice {
+  id: string;
+  deviceName: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+export async function listAudioBridgeDevicesOnServer(): Promise<{ devices: AudioBridgeDevice[] }> {
+  const response = await apiFetch("/api/audio-bridge/devices");
+  return readJson(response);
+}
+
+export async function revokeAudioBridgeDeviceOnServer(id: string): Promise<{ ok: true }> {
+  const response = await apiFetch(`/api/audio-bridge/devices/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  return readJson(response);
+}
+
+export type AudioBridgeStreamEvent =
+  | { type: "ready"; provider: string }
+  | { type: "interim"; text: string }
+  | { type: "final"; text: string }
+  | { type: "error"; code: string; message: string }
+  | { type: "done" }
+  | { type: "bridge_status"; connected: boolean; deviceName?: string };
+
+// 长连接订阅：与 streamCueCardFromServer 共用 SSE 分块解析逻辑，但流不会自然结束，
+// 靠返回的取消函数主动中断（而不是等 done 事件）。
+export function subscribeToAudioBridgeEvents(onEvent: (event: AudioBridgeStreamEvent) => void): () => void {
+  const controller = new AbortController();
+  let cancelled = false;
+
+  const consumeBlock = (block: string) => {
+    const event = block.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+    const dataText = block.match(/^data:\s*(.+)$/m)?.[1];
+    if (!event || !dataText) return;
+    try {
+      onEvent(JSON.parse(dataText) as AudioBridgeStreamEvent);
+    } catch {
+      // 忽略格式异常的单条事件，不中断整条订阅
+    }
+  };
+
+  (async () => {
+    try {
+      const response = await apiFetch("/api/audio-bridge/events", { signal: controller.signal });
+      if (!response.ok || !response.body) throw new Error("AUDIO_BRIDGE_EVENTS_FAILED");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (!cancelled) {
+        const { value, done } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: !done });
+          const blocks = buffer.split(/\n\n/);
+          buffer = blocks.pop() ?? "";
+          blocks.forEach(consumeBlock);
+        }
+        if (done) break;
+      }
+    } catch {
+      if (!cancelled) onEvent({ type: "bridge_status", connected: false });
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
+}

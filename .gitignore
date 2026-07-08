@@ -16,3 +16,7 @@ logs/
 .env
 .env.*
 !.env.example
+
+# .NET build output for the Windows audio-bridge desktop app
+audio-bridge/bin/
+audio-bridge/obj/

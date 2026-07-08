@@ -20,6 +20,7 @@ import { createInitialAppState, createPosition } from "../src/lib/interviewEngin
 import { createMailService } from "./mail/service";
 import { applyRateLimit, ensureGuestId, ownerOf, requireAuth, setCorsHeaders } from "./security";
 import { registerXfyunAsrRoute } from "./asr";
+import { registerAudioBridgeIngestRoute, registerAudioBridgePairingRoutes } from "./audioBridge";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -209,6 +210,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   app.register(async (realtimeApp) => {
     await realtimeApp.register(fastifyWebsocket, { options: { maxPayload: 1024 * 1024 } });
     registerXfyunAsrRoute(realtimeApp);
+    registerAudioBridgeIngestRoute(realtimeApp, db);
   });
 
   // Auth middleware: attach session if token present (optional — guests proceed without)
@@ -230,6 +232,9 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
 
   // Register auth routes
   registerAuthRoutes(app, auth);
+
+  // Audio bridge pairing + device management + transcript SSE (needs request.session from auth hook above)
+  registerAudioBridgePairingRoutes(app, db);
 
   app.get("/api/mail/outbox", async (request, reply) => {
     if (process.env.NODE_ENV === "production") {

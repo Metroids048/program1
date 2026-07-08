@@ -61,6 +61,12 @@ export interface AppDb {
   deleteSessionByJti(jti: string): void;
   deleteSessionsByUserId(userId: string): void;
   getSessionByJti(jti: string, afterDate: string): SessionRow | undefined;
+  // Audio bridge devices
+  insertAudioBridgeDevice(device: AudioBridgeDeviceRow): void;
+  getAudioBridgeDeviceByTokenHash(tokenHash: string): AudioBridgeDeviceRow | undefined;
+  touchAudioBridgeDevice(id: string, lastSeenAt: string): void;
+  listAudioBridgeDevices(userId: string): AudioBridgeDeviceRow[];
+  revokeAudioBridgeDevice(id: string, userId: string, revokedAt: string): void;
 }
 
 export interface UserRow {
@@ -96,6 +102,16 @@ export interface SessionRow {
   createdAt: string;
 }
 
+export interface AudioBridgeDeviceRow {
+  id: string;
+  userId: string;
+  deviceName: string;
+  tokenHash: string;
+  createdAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+}
+
 const DEFAULT_DB_PATH = ".data/ai-job-platform.sqlite";
 
 type FileStore = {
@@ -118,6 +134,7 @@ type FileStore = {
   users: UserRow[];
   authIdentities: AuthIdentityRow[];
   sessions: SessionRow[];
+  audioBridgeDevices?: AudioBridgeDeviceRow[];
 };
 
 export function createDb(dbPath = process.env.AI_JOB_DB_PATH ?? DEFAULT_DB_PATH): AppDb {
@@ -573,6 +590,42 @@ function createSqliteDb(db: Database.Database): AppDb {
       if (!row) return undefined;
       return { id: String(row.id ?? ""), userId: String(row.user_id ?? ""), tokenJti: String(row.token_jti ?? ""), expiresAt: String(row.expires_at ?? ""), createdAt: String(row.created_at ?? "") };
     },
+    insertAudioBridgeDevice(device) {
+      db.prepare(
+        "insert into audio_bridge_devices(id, user_id, device_name, token_hash, created_at, last_seen_at, revoked_at) values (?, ?, ?, ?, ?, ?, ?)",
+      ).run(device.id, device.userId, device.deviceName, device.tokenHash, device.createdAt, device.lastSeenAt, device.revokedAt);
+    },
+    getAudioBridgeDeviceByTokenHash(tokenHash) {
+      const row = db
+        .prepare("select id, user_id, device_name, token_hash, created_at, last_seen_at, revoked_at from audio_bridge_devices where token_hash = ? and revoked_at is null")
+        .get(tokenHash) as Record<string, unknown> | undefined;
+      if (!row) return undefined;
+      return mapAudioBridgeDeviceRow(row);
+    },
+    touchAudioBridgeDevice(id, lastSeenAt) {
+      db.prepare("update audio_bridge_devices set last_seen_at = ? where id = ?").run(lastSeenAt, id);
+    },
+    listAudioBridgeDevices(userId) {
+      const rows = db
+        .prepare("select id, user_id, device_name, token_hash, created_at, last_seen_at, revoked_at from audio_bridge_devices where user_id = ? and revoked_at is null order by last_seen_at desc")
+        .all(userId) as Array<Record<string, unknown>>;
+      return rows.map(mapAudioBridgeDeviceRow);
+    },
+    revokeAudioBridgeDevice(id, userId, revokedAt) {
+      db.prepare("update audio_bridge_devices set revoked_at = ? where id = ? and user_id = ?").run(revokedAt, id, userId);
+    },
+  };
+}
+
+function mapAudioBridgeDeviceRow(row: Record<string, unknown>): AudioBridgeDeviceRow {
+  return {
+    id: String(row.id ?? ""),
+    userId: String(row.user_id ?? ""),
+    deviceName: String(row.device_name ?? ""),
+    tokenHash: String(row.token_hash ?? ""),
+    createdAt: String(row.created_at ?? ""),
+    lastSeenAt: String(row.last_seen_at ?? ""),
+    revokedAt: row.revoked_at == null ? null : String(row.revoked_at),
   };
 }
 
@@ -601,6 +654,7 @@ function createFileDb(filePath: string): AppDb {
         users: [],
         authIdentities: [],
         sessions: [],
+        audioBridgeDevices: [],
       };
     }
     const parsed = JSON.parse(readFileSync(filePath, "utf8")) as Partial<FileStore>;
@@ -625,6 +679,7 @@ function createFileDb(filePath: string): AppDb {
       users: (parsed.users ?? []).map((item) => normalizeUserRow(item)),
       authIdentities: parsed.authIdentities ?? [],
       sessions: parsed.sessions ?? [],
+      audioBridgeDevices: parsed.audioBridgeDevices ?? [],
     };
   };
   const writeStore = (store: FileStore) => {
@@ -865,6 +920,27 @@ function createFileDb(filePath: string): AppDb {
     getSessionByJti(jti, afterDate) {
       return readStore().sessions.find((s) => s.tokenJti === jti && s.expiresAt > afterDate);
     },
+    insertAudioBridgeDevice(device) {
+      replace((store) => ({ ...store, audioBridgeDevices: [...(store.audioBridgeDevices ?? []), device] }));
+    },
+    getAudioBridgeDeviceByTokenHash(tokenHash) {
+      return readStore().audioBridgeDevices?.find((d) => d.tokenHash === tokenHash && !d.revokedAt);
+    },
+    touchAudioBridgeDevice(id, lastSeenAt) {
+      replace((store) => ({
+        ...store,
+        audioBridgeDevices: (store.audioBridgeDevices ?? []).map((d) => (d.id === id ? { ...d, lastSeenAt } : d)),
+      }));
+    },
+    listAudioBridgeDevices(userId) {
+      return (readStore().audioBridgeDevices ?? []).filter((d) => d.userId === userId && !d.revokedAt);
+    },
+    revokeAudioBridgeDevice(id, userId, revokedAt) {
+      replace((store) => ({
+        ...store,
+        audioBridgeDevices: (store.audioBridgeDevices ?? []).map((d) => (d.id === id && d.userId === userId ? { ...d, revokedAt } : d)),
+      }));
+    },
   };
 }
 
@@ -916,6 +992,16 @@ function migrate(db: Database.Database): void {
   if (accountSql.trim()) {
     try {
       db.exec(accountSql);
+    } catch {
+      // Table/index creation may already exist
+    }
+  }
+
+  const audioBridgeMigrationPath = resolve("server/migrations/007_audio_bridge.sql");
+  const audioBridgeSql = existsSync(audioBridgeMigrationPath) ? readFileSync(audioBridgeMigrationPath, "utf8") : "";
+  if (audioBridgeSql.trim()) {
+    try {
+      db.exec(audioBridgeSql);
     } catch {
       // Table/index creation may already exist
     }

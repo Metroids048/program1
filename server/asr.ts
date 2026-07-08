@@ -2,12 +2,18 @@ import { createHash, createHmac } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import WebSocket from "ws";
 
-type AsrEvent =
+export type AsrEvent =
   | { type: "ready"; provider: "xfyun" }
   | { type: "interim"; text: string }
   | { type: "final"; text: string }
   | { type: "error"; code: "ASR_NOT_CONFIGURED" | "ASR_CONNECT_FAILED" | "ASR_UPSTREAM_ERROR"; message: string }
   | { type: "done" };
+
+export interface XfyunRelay {
+  feedAudio(chunk: Buffer): void;
+  feedEnd(): void;
+  close(): void;
+}
 
 interface XfyunPayload {
   action?: "started" | "result" | "error";
@@ -16,67 +22,86 @@ interface XfyunPayload {
   desc?: string;
 }
 
+// 讯飞上游连接与协议解析：供浏览器麦克风路由和音频桥路由共用，避免重复实现同一份中转逻辑。
+export function createXfyunRelay(onEvent: (event: AsrEvent) => void): XfyunRelay | null {
+  const config = getXfyunConfig();
+  if (!config) {
+    onEvent({ type: "error", code: "ASR_NOT_CONFIGURED", message: "讯飞实时语音转写未配置，已回退到浏览器语音或文字输入。" });
+    return null;
+  }
+
+  const upstream = new WebSocket(buildXfyunUrl(config));
+  let upstreamReady = false;
+
+  upstream.on("open", () => {
+    upstreamReady = true;
+  });
+
+  upstream.on("message", (raw) => {
+    const parsed = safeJsonParse<XfyunPayload>(raw.toString());
+    if (!parsed) return;
+    if (parsed.action === "started") {
+      onEvent({ type: "ready", provider: "xfyun" });
+      return;
+    }
+    if (parsed.action === "error" || (parsed.code && parsed.code !== "0")) {
+      onEvent({ type: "error", code: "ASR_UPSTREAM_ERROR", message: parsed.desc || `讯飞转写失败：${parsed.code ?? "UNKNOWN"}` });
+      return;
+    }
+    if (parsed.action === "result" && parsed.data) {
+      const result = parseXfyunResult(parsed.data);
+      if (!result.text) return;
+      onEvent({ type: result.final ? "final" : "interim", text: result.text });
+    }
+  });
+
+  upstream.on("error", () => {
+    onEvent({ type: "error", code: "ASR_CONNECT_FAILED", message: "讯飞实时语音转写连接失败，已回退到浏览器语音或文字输入。" });
+  });
+
+  upstream.on("close", () => {
+    onEvent({ type: "done" });
+  });
+
+  return {
+    feedAudio(chunk: Buffer) {
+      if (upstream.readyState === WebSocket.OPEN) upstream.send(chunk);
+    },
+    feedEnd() {
+      if (upstream.readyState === WebSocket.OPEN) upstream.send(JSON.stringify({ end: true }));
+    },
+    close() {
+      if (upstreamReady && upstream.readyState === WebSocket.OPEN) upstream.send(JSON.stringify({ end: true }));
+      upstream.close();
+    },
+  };
+}
+
 export function registerXfyunAsrRoute(app: FastifyInstance): void {
   app.get("/api/asr/xfyun/stream", { websocket: true }, (socket) => {
-    const config = getXfyunConfig();
     const send = (event: AsrEvent) => {
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
+      if (event.type === "done") socket.close();
     };
 
-    if (!config) {
-      send({ type: "error", code: "ASR_NOT_CONFIGURED", message: "讯飞实时语音转写未配置，已回退到浏览器语音或文字输入。" });
+    const relay = createXfyunRelay(send);
+    if (!relay) {
       socket.close();
       return;
     }
 
-    const upstream = new WebSocket(buildXfyunUrl(config));
-    let upstreamReady = false;
-
-    upstream.on("open", () => {
-      upstreamReady = true;
-    });
-
-    upstream.on("message", (raw) => {
-      const parsed = safeJsonParse<XfyunPayload>(raw.toString());
-      if (!parsed) return;
-      if (parsed.action === "started") {
-        send({ type: "ready", provider: "xfyun" });
-        return;
-      }
-      if (parsed.action === "error" || (parsed.code && parsed.code !== "0")) {
-        send({ type: "error", code: "ASR_UPSTREAM_ERROR", message: parsed.desc || `讯飞转写失败：${parsed.code ?? "UNKNOWN"}` });
-        return;
-      }
-      if (parsed.action === "result" && parsed.data) {
-        const result = parseXfyunResult(parsed.data);
-        if (!result.text) return;
-        send({ type: result.final ? "final" : "interim", text: result.text });
-      }
-    });
-
-    upstream.on("error", () => {
-      send({ type: "error", code: "ASR_CONNECT_FAILED", message: "讯飞实时语音转写连接失败，已回退到浏览器语音或文字输入。" });
-    });
-
-    upstream.on("close", () => {
-      send({ type: "done" });
-      socket.close();
-    });
-
     socket.on("message", (message, isBinary) => {
-      if (upstream.readyState !== WebSocket.OPEN) return;
       if (!isBinary) {
         const text = message.toString();
         const control = safeJsonParse<{ end?: boolean }>(text);
-        if (control?.end) upstream.send(JSON.stringify({ end: true }));
+        if (control?.end) relay.feedEnd();
         return;
       }
-      upstream.send(message);
+      relay.feedAudio(message as Buffer);
     });
 
     socket.on("close", () => {
-      if (upstreamReady && upstream.readyState === WebSocket.OPEN) upstream.send(JSON.stringify({ end: true }));
-      upstream.close();
+      relay.close();
     });
   });
 }
