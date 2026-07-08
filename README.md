@@ -84,7 +84,14 @@ SEARCH_PROVIDER=tavily # tavily | bing | serpapi
 SEARCH_API_KEY=your_search_key
 ```
 
-生产部署时不要启动 Vite dev server 对外服务。先构建前端，再运行 Fastify 服务返回 `dist` 静态文件与 `/api/*` 接口；容器或云平台可使用 `PORT` 覆盖端口，生产默认监听 `0.0.0.0`。`.env` 和 `.env.*` 不会进入 Docker 构建上下文，密钥应由部署平台以环境变量注入。
+生产部署时不要启动 Vite dev server 对外服务。先构建前端，再运行 Fastify 服务返回 `dist` 静态文件与 `/api/*` 接口；容器或云平台可使用 `PORT` 覆盖端口，生产默认监听 `0.0.0.0`。`.env` 和 `.env.*` 不会进入 Docker 构建上下文，密钥应由部署平台以环境变量注入；`NODE_ENV=production` 时必须配置 `JWT_SECRET`（建议 ≥32 位）。
+
+内测数据库手动备份（Windows 示例）：
+
+```powershell
+mkdir backups -Force
+Copy-Item .data\ai-job-platform.sqlite backups\ai-job-platform-$(Get-Date -Format yyyyMMdd-HHmmss).sqlite
+```
 
 主要 API：
 

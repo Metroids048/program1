@@ -5,6 +5,41 @@ import { loadDraftState, saveDraftState } from "../lib/store";
 import type { Position } from "../types";
 import { QuotaBadge, configFromPreferences, DEFAULT_CONFIG, type InterviewConfig } from "./shared";
 
+export function AuthLandingPage({
+  onLogin,
+  onRegister,
+}: {
+  onLogin: () => void;
+  onRegister: () => void;
+}) {
+  return (
+    <section className="page page-home desktop-page">
+      <div className="home-stage home-stage-product">
+        <header className="home-hero home-hero-product">
+          <span className="page-eyebrow">面试准备</span>
+          <h1>AI 求职台</h1>
+          <p>围绕真实 JD、简历和面试记录，完成从准备到复盘的 AI 面试闭环。注册后即可开始内测，每位用户每天各功能 5 次免费 AI 额度。</p>
+        </header>
+        <div className="home-product-shell">
+          <section className="surface-card home-hero-input-card">
+            <div className="surface-card-inner">
+              <div className="drawer-actions two-up">
+                <button type="button" className="button primary" onClick={onRegister}>
+                  注册并开始
+                </button>
+                <button type="button" className="button secondary" onClick={onLogin}>
+                  已有账号，登录
+                </button>
+              </div>
+              <p className="muted-copy">登录后可粘贴 JD、生成提词卡、模拟面试并保存记录。</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function summarizePositionStatus(position: Position) {
   if (position.mockTurns.length > 0 || position.report.overallScore > 0) return "已练习";
   if (position.intake.configuredInterview) return "已配置";
@@ -227,7 +262,6 @@ export function HomeDashboard({
                 </button>
               </div>
 
-              {!isLoggedIn ? <p className="home-guest-hint">页面可以先看；点击进入、生成、保存、上传或开始练习时再登录。</p> : null}
             </div>
           </section>
 

@@ -139,6 +139,18 @@ function checkSqliteRuntime() {
   log("SQLite native binding still unavailable. Backend will fall back to file storage.");
 }
 
+function checkProductionSecrets() {
+  if (process.env.NODE_ENV !== "production") return;
+  const jwtSecret = process.env.JWT_SECRET?.trim();
+  if (!jwtSecret) {
+    fail("NODE_ENV=production requires JWT_SECRET to be set.");
+  }
+  if (jwtSecret.length < 32) {
+    fail("JWT_SECRET should be at least 32 characters in production.");
+  }
+  log("Production JWT_SECRET configured");
+}
+
 function main() {
   process.chdir(root);
   ensureNodeVersion();
@@ -146,6 +158,7 @@ function main() {
   ensureDirs();
   ensureDependencies();
   checkSqliteRuntime();
+  checkProductionSecrets();
   log("Environment is ready");
 }
 

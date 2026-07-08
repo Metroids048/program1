@@ -34,6 +34,7 @@ describe("AccountPage quota display", () => {
 
   it("shows feature quota instead of the legacy total quota when feature buckets are available", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
+      ok: true,
       json: async () => ({
         dailyUsed: 3,
         dailyLimit: 3,
@@ -42,8 +43,8 @@ describe("AccountPage quota display", () => {
         features: {
           cueCard: { used: 1, limit: 5, remaining: 4 },
           mock: { used: 0, limit: 5, remaining: 5 },
-          resume: { used: 0, limit: 3, remaining: 3 },
-          positionAnalyze: { used: 0, limit: 3, remaining: 3 },
+          resume: { used: 0, limit: 5, remaining: 5 },
+          positionAnalyze: { used: 0, limit: 5, remaining: 5 },
         },
       }),
     } as Response);

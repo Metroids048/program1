@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
-import { HomeDashboard, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
+import { HomeDashboard, AuthLandingPage, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
 import { DEFAULT_CONFIG, type InterviewConfig, makeId, nowIso } from "./components/shared";
 import { useAuth } from "./lib/auth";
 import {
@@ -266,13 +266,13 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [route.name]);
 
-  // 路由级登录守卫：业务路由未登录直接跳登录页并保留原路径，避免直接输 URL 绕过按钮软拦截。
-  // 首页与岗位详情/对话对游客开放（游客可体验 JD intake 与查看自己创建的岗位）。
+  // 路由级登录守卫：业务路由未登录直接跳登录页并保留原路径。
   useEffect(() => {
     if (authLoading) return;
     const protectedRouteNames = new Set([
       "live", "mock", "mockPositionList", "mockSetup", "mockRoom",
       "jd", "questions", "resume", "records", "recordDetail",
+      "positionDetail", "positionConversation", "onboarding",
     ]);
     if (!isLoggedIn && protectedRouteNames.has(route.name)) {
       navigateTo(`/auth/login?returnTo=${encodeURIComponent(routePath)}`, { replace: true });
@@ -660,16 +660,23 @@ export function App() {
       {route.name === "serverError" && <ServerErrorPage />}
 
       {(route.name === "home" || route.name === "account") && (
-        <HomeDashboard
-          positions={positions}
-          activePositionId={activePositionId}
-          onSubmitJd={createOrUpdatePosition}
-          onOpenCreatedPosition={openPositionConversation}
-          onOpenMockList={openMockPositionList}
-          onOpenLive={() => openRoute("/live")}
-          onRequireLogin={requireLoginFor}
-          isLoggedIn={isLoggedIn}
-        />
+        isLoggedIn ? (
+          <HomeDashboard
+            positions={positions}
+            activePositionId={activePositionId}
+            onSubmitJd={createOrUpdatePosition}
+            onOpenCreatedPosition={openPositionConversation}
+            onOpenMockList={openMockPositionList}
+            onOpenLive={() => openRoute("/live")}
+            onRequireLogin={requireLoginFor}
+            isLoggedIn={isLoggedIn}
+          />
+        ) : route.name === "home" ? (
+          <AuthLandingPage
+            onLogin={() => openRoute("/auth/login")}
+            onRegister={() => openRoute("/auth/register")}
+          />
+        ) : null
       )}
 
       {route.name === "positionDetail" && activePosition && (

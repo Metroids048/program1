@@ -1,5 +1,5 @@
 import { type ChangeEvent, useMemo, useState } from "react";
-import { Check, Download, Filter, LogOut, Mail, RefreshCw, ShieldCheck, Timer, Trash2, Upload, Volume2 } from "lucide-react";
+import { Check, Download, Filter, LogOut, RefreshCw, ShieldCheck, Timer, Trash2, Upload, Volume2 } from "lucide-react";
 import { exportFromServer, importToServer } from "../lib/apiClient";
 import { apiFetch } from "../lib/authClient";
 import { repairText } from "../lib/copy";
@@ -7,6 +7,7 @@ import { parseImportedState, serializeAppState } from "../lib/store";
 import type { AuthSession } from "../lib/auth";
 import type { AppState, InterviewRecord, Position } from "../types";
 import { AiStatusBadge, EmptyState, MetricCard, MetricGrid } from "./shared";
+import { QuotaPanel } from "./account/QuotaPanel";
 
 type RecordsFilterMode = "all" | "live" | "mock";
 
@@ -469,13 +470,7 @@ export function AccountModal({
   const [password, setPassword] = useState("");
   const [deleteText, setDeleteText] = useState("");
   const [savingAccount, setSavingAccount] = useState(false);
-  const [sendingVerify, setSendingVerify] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [notifPrefs, setNotifPrefs] = useState<{ product: boolean; marketing: boolean }>({
-    product: session?.notificationPrefs?.product ?? true,
-    marketing: session?.notificationPrefs?.marketing ?? false,
-  });
-  const [savingNotif, setSavingNotif] = useState(false);
 
   const exportData = async () => {
     let exported = serializeAppState(state);
@@ -521,34 +516,6 @@ export function AccountModal({
     }
   };
 
-  const saveNotifPrefs = async () => {
-    if (!isLoggedIn) {
-      setMessage({ tone: "warn", text: "请先登录后再修改通知偏好。" });
-      return;
-    }
-    setSavingNotif(true);
-    try {
-      const response = await apiFetch("/api/account/notification-preferences", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(notifPrefs),
-      });
-      if (!response.ok) {
-        setMessage({ tone: "error", text: "通知偏好保存失败，请稍后重试。" });
-        return;
-      }
-      const data = await response.json().catch(() => ({})) as { notificationPrefs?: { product?: boolean; marketing?: boolean } };
-      if (session && data.notificationPrefs) {
-        onUpdateSession({ ...session, notificationPrefs: data.notificationPrefs });
-      }
-      setMessage({ tone: "success", text: "通知偏好已保存。" });
-    } catch {
-      setMessage({ tone: "error", text: "网络异常，通知偏好未保存。" });
-    } finally {
-      setSavingNotif(false);
-    }
-  };
-
   const saveAccount = async () => {
     if (!isLoggedIn || !session) {
       setMessage({ tone: "warn", text: "请先登录后再修改账户安全信息。" });
@@ -584,31 +551,6 @@ export function AccountModal({
       setMessage({ tone: "error", text: "网络异常，账户信息暂时没有保存。" });
     } finally {
       setSavingAccount(false);
-    }
-  };
-
-  const resendVerification = async () => {
-    if (!email.trim()) {
-      setMessage({ tone: "warn", text: "请先填写邮箱地址。" });
-      return;
-    }
-    setSendingVerify(true);
-    try {
-      const response = await apiFetch("/api/auth/email/send-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), displayName: state.profile.displayName.trim() || session?.displayName }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setMessage({ tone: "error", text: data.error ?? "验证邮件发送失败，请稍后再试。" });
-        return;
-      }
-      setMessage({ tone: "success", text: "验证邮件已发送，请检查收件箱。" });
-    } catch {
-      setMessage({ tone: "error", text: "网络异常，验证邮件暂时没有发出。" });
-    } finally {
-      setSendingVerify(false);
     }
   };
 
@@ -688,21 +630,20 @@ export function AccountModal({
           <article><span>证据</span><strong>{state.profile.evidenceLibrary.length}</strong></article>
         </div>
 
+        {isLoggedIn ? <QuotaPanel variant="compact" /> : null}
+
         {isLoggedIn ? (
           <details className="account-more-section">
             <summary>账户安全</summary>
-            <label className="field-label" htmlFor="account-email">邮箱</label>
+            <label className="field-label" htmlFor="account-email">联系邮箱（选填）</label>
             <input id="account-email" className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" />
             <label className="field-label" htmlFor="account-password">新密码</label>
             <input id="account-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="不修改可留空，至少 8 位" />
+            <p className="form-hint">内测阶段不会发送验证邮件。忘记密码请在此直接设置新密码。</p>
             <div className="drawer-actions stacked">
               <button className="button primary" type="button" onClick={saveAccount} disabled={savingAccount}>
                 <ShieldCheck size={16} />
                 {savingAccount ? "保存中..." : "保存账户信息"}
-              </button>
-              <button className="button secondary" type="button" onClick={resendVerification} disabled={sendingVerify || !email.trim()}>
-                <Mail size={16} />
-                {sendingVerify ? "发送中..." : "重新发送验证邮件"}
               </button>
             </div>
             <div className="danger-zone-inline">
@@ -711,25 +652,6 @@ export function AccountModal({
               <button className="button danger" type="button" onClick={deleteAccount} disabled={deletingAccount}>
                 <Trash2 size={16} />
                 {deletingAccount ? "删除中..." : "删除账号"}
-              </button>
-            </div>
-          </details>
-        ) : null}
-
-        {isLoggedIn ? (
-          <details className="account-more-section">
-            <summary>通知设置</summary>
-            <label className="account-checkbox-row">
-              <input type="checkbox" checked={notifPrefs.product} onChange={(event) => setNotifPrefs((current) => ({ ...current, product: event.target.checked }))} />
-              <span>接收产品更新与提醒邮件</span>
-            </label>
-            <label className="account-checkbox-row">
-              <input type="checkbox" checked={notifPrefs.marketing} onChange={(event) => setNotifPrefs((current) => ({ ...current, marketing: event.target.checked }))} />
-              <span>接收活动与欢迎类邮件</span>
-            </label>
-            <div className="drawer-actions">
-              <button className="button primary" type="button" onClick={saveNotifPrefs} disabled={savingNotif}>
-                {savingNotif ? "保存中..." : "保存通知偏好"}
               </button>
             </div>
           </details>

@@ -86,6 +86,10 @@ async function registerAndLogin(app: FastifyInstance, phone: string, displayName
   };
 }
 
+function bearer(token: string): { authorization: string } {
+  return { authorization: `Bearer ${token}` };
+}
+
 async function closeTestApp(app: FastifyInstance): Promise<void> {
   const index = apps.indexOf(app);
   if (index >= 0) apps.splice(index, 1);
@@ -162,9 +166,11 @@ describe("local backend API", () => {
 
   it("analyzes a JD and returns persisted position context", async () => {
     const app = testApp();
+    const { token } = await registerAndLogin(app, "13800138140", "岗位分析用户");
     const response = await app.inject({
       method: "POST",
       url: "/api/positions/analyze",
+      headers: bearer(token),
       payload: { jobText: "公司：测试科技\n岗位：AI 产品运营\n负责用户访谈、SQL 数据分析和增长复盘。" },
     });
 
@@ -176,9 +182,11 @@ describe("local backend API", () => {
 
   it("streams cue-card stages and a final card with local fallback when AI is not configured", async () => {
     const app = testApp();
+    const { token } = await registerAndLogin(app, "13800138141", "提词卡用户");
     const response = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: bearer(token),
       payload: { questionText: "请介绍一个最能证明你适合岗位的项目", source: "live", enableSearch: false },
     });
 
@@ -193,10 +201,12 @@ describe("local backend API", () => {
     const provider = new CapturingProvider();
     const app = buildServer({ dbPath: testDbPath(), llmClient: provider });
     apps.push(app);
+    const { token } = await registerAndLogin(app, "13800138142", "搜索提词用户");
 
     const response = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: bearer(token),
       payload: { questionText: "请结合最新行业趋势介绍你的增长项目", source: "live", enableSearch: true },
     });
 
@@ -430,49 +440,27 @@ describe("local backend API", () => {
     expect(sessionB.statusCode).toBe(404);
   });
 
-  it("isolates data between two different guest sessions via x-guest-id", async () => {
+  it("rejects guest intake and AI endpoints without authentication", async () => {
     const app = testApp();
 
-    const intakeG1 = await app.inject({
+    const guestIntake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
       headers: { "x-guest-id": "guest-one" },
       payload: { rawJdText: "公司：访客一公司\n岗位：数据分析\n负责报表。" },
     });
-    expect(intakeG1.statusCode).toBe(200);
-    const positionIdG1 = intakeG1.json().positions[0].id as string;
+    expect(guestIntake.statusCode).toBe(401);
 
-    // 访客二建立自己的岗位，应当看不到访客一的数据。
-    const intakeG2 = await app.inject({
+    const guestCueCard = await app.inject({
       method: "POST",
-      url: "/api/positions/intake",
-      headers: { "x-guest-id": "guest-two" },
-      payload: { rawJdText: "公司：访客二公司\n岗位：运营\n负责活动。" },
-    });
-    expect(intakeG2.statusCode).toBe(200);
-
-    const stateG1 = await app.inject({ method: "GET", url: "/api/state", headers: { "x-guest-id": "guest-one" } });
-    const stateG2 = await app.inject({ method: "GET", url: "/api/state", headers: { "x-guest-id": "guest-two" } });
-    const titlesG1 = (stateG1.json().positions as Array<{ id: string }>).map((p) => p.id);
-    const titlesG2 = (stateG2.json().positions as Array<{ id: string }>).map((p) => p.id);
-    expect(titlesG1).toContain(positionIdG1);
-    expect(titlesG2).not.toContain(positionIdG1);
-
-    // 访客二访问访客一的岗位上下文应当 404。
-    const contextCross = await app.inject({
-      method: "GET",
-      url: `/api/positions/${positionIdG1}/context`,
-      headers: { "x-guest-id": "guest-two" },
-    });
-    expect(contextCross.statusCode).toBe(404);
-
-    // 访客一访问自己的岗位上下文应当成功。
-    const contextSelf = await app.inject({
-      method: "GET",
-      url: `/api/positions/${positionIdG1}/context`,
+      url: "/api/copilot/cue-card/stream",
       headers: { "x-guest-id": "guest-one" },
+      payload: { questionText: "请介绍项目", source: "live", enableSearch: false },
     });
-    expect(contextSelf.statusCode).toBe(200);
+    expect(guestCueCard.statusCode).toBe(401);
+
+    const guestQuota = await app.inject({ method: "GET", url: "/api/quota", headers: { "x-guest-id": "guest-one" } });
+    expect(guestQuota.statusCode).toBe(401);
   });
 
   it("uses a server-issued cookie for guests without x-guest-id instead of a shared data bucket", async () => {
@@ -483,21 +471,11 @@ describe("local backend API", () => {
       url: "/api/positions/intake",
       payload: { rawJdText: "公司：无痕访客公司\n岗位：产品经理\n负责访谈和复盘。" },
     });
-    expect(intake.statusCode).toBe(200);
-    const positionId = intake.json().positions[0].id as string;
-    const setCookie = intake.headers["set-cookie"];
-    const cookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
-    expect(cookie).toContain("ai_job_guest_id=");
-
-    const sameGuest = await app.inject({
-      method: "GET",
-      url: "/api/state",
-      headers: { cookie: String(cookie).split(";")[0] },
-    });
-    expect((sameGuest.json().positions as Array<{ id: string }>).map((position) => position.id)).toContain(positionId);
+    expect(intake.statusCode).toBe(401);
 
     const freshAnonymous = await app.inject({ method: "GET", url: "/api/state" });
-    expect((freshAnonymous.json().positions as Array<{ id: string }>).map((position) => position.id)).not.toContain(positionId);
+    expect(freshAnonymous.statusCode).toBe(200);
+    expect((freshAnonymous.json().positions as Array<{ id: string }>)).toHaveLength(0);
   });
 
   it("keeps profile RAG documents scoped per owner", () => {
@@ -544,9 +522,11 @@ describe("local backend API", () => {
 
   it("indexes materials and questions into RAG, and resume AI returns evidence trace", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138143", "RAG 用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: bearer(token),
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const positionId = intake.json().positions[0].id as string;
@@ -554,6 +534,7 @@ describe("local backend API", () => {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
+      headers: bearer(token),
       payload: {
         materials: [
           {
@@ -576,6 +557,7 @@ describe("local backend API", () => {
     await app.inject({
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
+      headers: bearer(token),
       payload: {
         questions: [
           {
@@ -598,6 +580,7 @@ describe("local backend API", () => {
     const resumeAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: bearer(token),
       payload: {
         positionId,
         action: "match",
@@ -669,9 +652,11 @@ describe("local backend API", () => {
 
   it("returns structured full-resume fallback blocks that the frontend can map back into sections", async () => {
     const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
+    const { token } = await registerAndLogin(app, "13800138144", "整份简历用户");
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: bearer(token),
       payload: { rawJdText: "公司：北极星科技\n岗位：AI 产品经理\n负责面试产品、RAG、增长分析。" },
     });
     const positionId = intake.json().positions[0].id as string;
@@ -679,6 +664,7 @@ describe("local backend API", () => {
     const resumeAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: bearer(token),
       payload: {
         positionId,
         action: "full",
@@ -1139,15 +1125,11 @@ describe("local backend API", () => {
       await app.close();
     });
 
-    it("returns quota info for guest and authenticated user", async () => {
+    it("returns quota info for authenticated users only", async () => {
       const app = buildServer({ dbPath: testDbPath(), llmClient: new LocalFallbackProvider() });
 
       const guestQuota = await app.inject({ method: "GET", url: "/api/quota" });
-      expect(guestQuota.statusCode).toBe(200);
-      expect(guestQuota.json().isGuest).toBe(true);
-      expect(guestQuota.json().dailyLimit).toBe(3);
-      expect(guestQuota.json().features.cueCard.limit).toBeGreaterThan(guestQuota.json().dailyLimit);
-      expect(guestQuota.json().features.mock.remaining).toBeGreaterThan(0);
+      expect(guestQuota.statusCode).toBe(401);
 
       const reg = await app.inject({
         method: "POST",
@@ -1159,13 +1141,14 @@ describe("local backend API", () => {
       const userQuota = await app.inject({
         method: "GET",
         url: "/api/quota",
-        headers: { authorization: `Bearer ${token}` },
+        headers: bearer(token),
       });
       expect(userQuota.statusCode).toBe(200);
       expect(userQuota.json().isGuest).toBe(false);
-      expect(userQuota.json().dailyLimit).toBe(10);
-      expect(userQuota.json().features.resume.limit).toBeGreaterThan(0);
-      expect(userQuota.json().features.positionAnalyze.limit).toBeGreaterThan(0);
+      expect(userQuota.json().dailyLimit).toBe(20);
+      expect(userQuota.json().features.cueCard.limit).toBe(5);
+      expect(userQuota.json().features.resume.limit).toBe(5);
+      expect(userQuota.json().features.positionAnalyze.limit).toBe(5);
 
       await app.close();
     });

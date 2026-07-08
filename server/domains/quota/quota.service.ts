@@ -1,27 +1,24 @@
 import type { AppDb } from "../../db";
 import { makeId, nowIso } from "../../utils";
 
-// Hardcoded quotas for beta testing (no payment yet)
-const GUEST_DAILY_LIMIT = 3;
-const USER_DAILY_LIMIT = 10;
-const GUEST_POSITION_LIMIT = 1;
 const USER_POSITION_LIMIT = 3;
+
+function parseQuotaLimit(envKey: string, fallback: number): number {
+  const raw = process.env[envKey]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+// Registered-user daily limits for MVP beta (no payment yet).
 const FEATURE_LIMITS = {
-  guest: {
-    cueCard: 5,
-    mock: 5,
-    resume: 3,
-    positionAnalyze: 3,
-  },
-  user: {
-    cueCard: 30,
-    mock: 30,
-    resume: 20,
-    positionAnalyze: 10,
-  },
+  cueCard: parseQuotaLimit("QUOTA_USER_CUE_CARD", 5),
+  mock: parseQuotaLimit("QUOTA_USER_MOCK", 5),
+  resume: parseQuotaLimit("QUOTA_USER_RESUME", 5),
+  positionAnalyze: parseQuotaLimit("QUOTA_USER_POSITION_ANALYZE", 5),
 } as const;
 
-type QuotaFeature = keyof typeof FEATURE_LIMITS.user;
+type QuotaFeature = keyof typeof FEATURE_LIMITS;
 
 const FEATURE_ENDPOINTS: Record<QuotaFeature, string[]> = {
   cueCard: ["cue-card", "cue-card-reconstruct"],
@@ -34,6 +31,8 @@ const ENDPOINT_FEATURES: Record<string, QuotaFeature> = Object.fromEntries(
   Object.entries(FEATURE_ENDPOINTS).flatMap(([feature, endpoints]) => endpoints.map((endpoint) => [endpoint, feature])),
 ) as Record<string, QuotaFeature>;
 
+const USER_DAILY_LIMIT = Object.values(FEATURE_LIMITS).reduce((sum, limit) => sum + limit, 0);
+
 export interface QuotaInfo {
   dailyUsed: number;
   dailyLimit: number;
@@ -41,16 +40,18 @@ export interface QuotaInfo {
   positionLimit: number;
   remaining: number;
   isGuest: boolean;
-  resetAt: string; // ISO date when daily quota resets
+  resetAt: string;
   features: Record<QuotaFeature, { used: number; limit: number; remaining: number }>;
+}
+
+function assertRegisteredUser(userId: string | undefined): asserts userId is string {
+  if (!userId || userId.startsWith("guest_")) {
+    throw Object.assign(new Error("UNAUTHORIZED"), { statusCode: 401 });
+  }
 }
 
 export function createQuotaService(db: AppDb) {
   const memoryLedger: Array<{ userId: string; endpoint: string; createdAt: string }> = [];
-
-  function isGuestOwner(userId: string | undefined): boolean {
-    return !userId || userId.startsWith("guest_");
-  }
 
   function getDailyResetAt(): string {
     const tomorrow = new Date();
@@ -98,28 +99,25 @@ export function createQuotaService(db: AppDb) {
     memoryLedger.push({ userId, endpoint, createdAt: now });
   }
 
-  function getQuotaInfo(userId: string | undefined, positionsCount?: number): QuotaInfo {
-    const isGuest = isGuestOwner(userId);
-    const dailyLimit = isGuest ? GUEST_DAILY_LIMIT : USER_DAILY_LIMIT;
-    const positionLimit = isGuest ? GUEST_POSITION_LIMIT : USER_POSITION_LIMIT;
-    const dailyUsed = userId ? countDailyUsage(userId) : 0;
-    const positionsUsed = positionsCount ?? (userId ? countUserPositions(userId) : 0);
-    const featureLimits = isGuest ? FEATURE_LIMITS.guest : FEATURE_LIMITS.user;
+  function getQuotaInfo(userId: string, positionsCount?: number): QuotaInfo {
+    assertRegisteredUser(userId);
+    const dailyUsed = countDailyUsage(userId);
+    const positionsUsed = positionsCount ?? countUserPositions(userId);
     const features = Object.fromEntries(
       (Object.keys(FEATURE_ENDPOINTS) as QuotaFeature[]).map((feature) => {
-        const used = userId ? countDailyUsage(userId, FEATURE_ENDPOINTS[feature]) : 0;
-        const limit = featureLimits[feature];
+        const used = countDailyUsage(userId, FEATURE_ENDPOINTS[feature]);
+        const limit = FEATURE_LIMITS[feature];
         return [feature, { used, limit, remaining: Math.max(0, limit - used) }];
       }),
     ) as QuotaInfo["features"];
 
     return {
       dailyUsed,
-      dailyLimit,
+      dailyLimit: USER_DAILY_LIMIT,
       positionsUsed,
-      positionLimit,
-      remaining: Math.max(0, dailyLimit - dailyUsed),
-      isGuest,
+      positionLimit: USER_POSITION_LIMIT,
+      remaining: Math.max(0, USER_DAILY_LIMIT - dailyUsed),
+      isGuest: false,
       resetAt: getDailyResetAt(),
       features,
     };
@@ -129,6 +127,7 @@ export function createQuotaService(db: AppDb) {
     getQuotaInfo,
     recordUsage,
     checkAndRecord(userId: string | undefined, endpoint: string, positionsCount?: number): QuotaInfo {
+      assertRegisteredUser(userId);
       const info = getQuotaInfo(userId, positionsCount);
       const feature = ENDPOINT_FEATURES[endpoint];
       const featureQuota = feature ? info.features[feature] : null;
@@ -140,9 +139,7 @@ export function createQuotaService(db: AppDb) {
           quotaFeatureInfo: featureQuota,
         });
       }
-      if (userId) {
-        recordUsage(userId, endpoint);
-      }
+      recordUsage(userId, endpoint);
       if (!feature || !featureQuota) {
         return { ...info, dailyUsed: info.dailyUsed + 1, remaining: Math.max(0, info.remaining - 1) };
       }

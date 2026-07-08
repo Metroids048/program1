@@ -439,25 +439,22 @@ describe("App", () => {
     };
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
-      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
-      return mockJsonResponse(mockStateWithPosition());
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateResponse());
+      return mockJsonResponse(mockStateResponse());
     });
 
     const user = userEvent.setup();
     renderApp("/");
 
-    await screen.findByRole("heading", { name: "告诉 AI 你想面试的岗位" });
-    expect(screen.getByText("页面可以先看；点击进入、生成、保存、上传或开始练习时再登录。")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AI 求职台" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("首页主输入")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "注册并开始" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "进入实时助手" }));
-    expect(await screen.findByRole("dialog", { name: "登录后继续" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "去登录" }));
+    await user.click(screen.getByRole("button", { name: "已有账号，登录" }));
     await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
-    expect(new URLSearchParams(window.location.search).get("returnTo")).toBe("/live");
   });
 
   it("covers the supporting routes for auth, onboarding, account and status pages", async () => {
-    const user = userEvent.setup();
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
@@ -476,19 +473,14 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "注册并开始使用" })).toBeInTheDocument();
 
     renderApp("/forgot-password");
-    await user.type(screen.getByLabelText("邮箱"), "test@example.com");
-    await user.click(screen.getByRole("button", { name: "发送重置邮件" }));
-    expect(await screen.findByText("如果该邮箱已验证，我们已经发送了重置链接。")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "内测阶段暂不支持邮件找回" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "去登录" })).toBeInTheDocument();
 
     renderApp("/reset-password?token=test-token");
-    await user.type(screen.getByLabelText("新密码"), "NewPassword123");
-    await user.type(screen.getByLabelText("确认密码"), "NewPassword123");
-    await user.click(screen.getByRole("button", { name: "确认重置" }));
-    expect(await screen.findByText("密码已更新，即将跳转登录页...")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "内测阶段暂不支持邮件重置" })).toBeInTheDocument();
 
     renderApp("/verify-email?token=test-token");
-    await user.click(screen.getByRole("button", { name: "开始验证" }));
-    expect(await screen.findByRole("button", { name: "已验证" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "内测阶段暂不支持邮箱验证" })).toBeInTheDocument();
 
     resetDom();
     renderApp("/onboarding");

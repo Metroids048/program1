@@ -1,48 +1,11 @@
-import { useEffect, useState } from "react";
-import { Bell, Download, LifeBuoy, Mail, Shield, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Download, LifeBuoy, Shield, Trash2 } from "lucide-react";
 import { useAuth, type AuthSession } from "../../lib/auth";
 import { apiFetch } from "../../lib/authClient";
 import { navigateTo } from "../../lib/router";
 import type { UserJourneyState } from "../../types";
 import { Seo } from "../system/Seo";
-
-interface QuotaInfo {
-  dailyUsed: number;
-  dailyLimit: number;
-  remaining: number;
-  isGuest: boolean;
-  features?: Record<"cueCard" | "mock" | "resume" | "positionAnalyze", { used: number; limit: number; remaining: number }>;
-}
-
-const QUOTA_FEATURE_LABELS: Array<{ key: keyof NonNullable<QuotaInfo["features"]>; label: string }> = [
-  { key: "cueCard", label: "提词卡" },
-  { key: "mock", label: "模拟面试" },
-  { key: "resume", label: "简历 AI" },
-  { key: "positionAnalyze", label: "岗位分析" },
-];
-
-function getQuotaSummary(quota: QuotaInfo) {
-  const featureItems = QUOTA_FEATURE_LABELS
-    .map((item) => {
-      const value = quota.features?.[item.key];
-      return value ? { label: item.label, remaining: value.remaining, limit: value.limit } : null;
-    })
-    .filter((item): item is { label: string; remaining: number; limit: number } => Boolean(item));
-
-  if (featureItems.length === 0) {
-    return {
-      remaining: quota.remaining,
-      limit: quota.dailyLimit,
-      label: "今日 AI 剩余",
-    };
-  }
-
-  return featureItems.reduce((current, next) => {
-    const currentRatio = current.limit > 0 ? current.remaining / current.limit : 0;
-    const nextRatio = next.limit > 0 ? next.remaining / next.limit : 0;
-    return nextRatio < currentRatio ? next : current;
-  });
-}
+import { QuotaPanel } from "./QuotaPanel";
 
 type AccountMessage = {
   tone: "success" | "error";
@@ -53,30 +16,16 @@ type DraftState = {
   email: string;
   displayName: string;
   feedbackContact: string;
-  prefs: {
-    marketing: boolean;
-    product: boolean;
-    security: boolean;
-  };
 };
 
 export function AccountPage({ journeyState }: { journeyState?: UserJourneyState }) {
   const { session, isLoggedIn, clearAuth, updateSession } = useAuth();
   const draftKey = session?.userId ?? "guest";
-  const [quota, setQuota] = useState<QuotaInfo | null>(null);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    void apiFetch("/api/quota")
-      .then((res) => res.json())
-      .then((data) => setQuota(data as QuotaInfo))
-      .catch(() => undefined);
-  }, [isLoggedIn]);
 
   if (!isLoggedIn || !session) {
     return (
       <section className="page account-page">
-        <Seo title="账户中心 | AI 求职台" description="管理你的账号、通知与数据。" />
+        <Seo title="账户中心 | AI 求职台" description="管理你的账号与数据。" />
         <div className="account-card">
           <h1 className="account-title">账户</h1>
           <p className="account-hint">{isLoggedIn ? "正在同步账户信息..." : "请先登录以管理账户"}</p>
@@ -92,7 +41,6 @@ export function AccountPage({ journeyState }: { journeyState?: UserJourneyState 
     <AccountWorkspace
       key={draftKey}
       journeyState={journeyState}
-      quota={quota}
       session={session}
       clearAuth={clearAuth}
       updateSession={updateSession}
@@ -102,13 +50,11 @@ export function AccountPage({ journeyState }: { journeyState?: UserJourneyState 
 
 function AccountWorkspace({
   journeyState,
-  quota,
   session,
   clearAuth,
   updateSession,
 }: {
   journeyState?: UserJourneyState;
-  quota: QuotaInfo | null;
   session: AuthSession;
   clearAuth: () => void;
   updateSession: (next: AuthSession | null) => void;
@@ -128,19 +74,12 @@ function AccountWorkspace({
     email: session.email ?? "",
     displayName: session.displayName ?? "",
     feedbackContact: session.email ?? "",
-    prefs: {
-      marketing: session.notificationPrefs?.marketing ?? true,
-      product: session.notificationPrefs?.product ?? true,
-      security: true,
-    },
   });
   const [feedback, setFeedback] = useState("");
   const [feedbackCategory, setFeedbackCategory] = useState("other");
   const [exporting, setExporting] = useState(false);
   const [password, setPassword] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
-  const [sendingVerify, setSendingVerify] = useState(false);
-  const [savingPrefs, setSavingPrefs] = useState(false);
   const [deleteText, setDeleteText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
@@ -211,54 +150,11 @@ function AccountWorkspace({
         notificationPrefs: nextUser.notificationPrefs ?? session.notificationPrefs,
       });
       setPassword("");
-      pushMessage("success", draft.email.trim() && draft.email.trim() !== session.email ? "账户信息已保存，验证邮件已重新发送。" : "账户信息已保存。");
+      pushMessage("success", "账户信息已保存。");
     } catch {
       pushMessage("error", "网络异常，请稍后再试");
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const resendVerification = async () => {
-    setSendingVerify(true);
-    try {
-      const res = await apiFetch("/api/auth/email/send-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: draft.email.trim() || undefined, displayName: draft.displayName.trim() || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        pushMessage("error", data.error ?? "发送失败，请稍后再试");
-        return;
-      }
-      pushMessage("success", "验证邮件已发送，请检查你的收件箱。");
-    } catch {
-      pushMessage("error", "网络异常，请稍后再试");
-    } finally {
-      setSendingVerify(false);
-    }
-  };
-
-  const saveNotificationPrefs = async () => {
-    setSavingPrefs(true);
-    try {
-      const res = await apiFetch("/api/account/notification-preferences", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marketing: draft.prefs.marketing, product: draft.prefs.product }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        pushMessage("error", data.error ?? "保存失败，请稍后重试");
-        return;
-      }
-      updateSession({ ...session, notificationPrefs: data.notificationPrefs ?? draft.prefs });
-      pushMessage("success", "通知偏好已保存。");
-    } catch {
-      pushMessage("error", "网络异常，请稍后重试");
-    } finally {
-      setSavingPrefs(false);
     }
   };
 
@@ -299,12 +195,9 @@ function AccountWorkspace({
     }
   };
 
-  const emailVerified = Boolean(session.emailVerifiedAt);
-  const quotaSummary = quota ? getQuotaSummary(quota) : null;
-
   return (
     <section className="page account-page">
-      <Seo title="账户中心 | AI 求职台" description="管理邮箱、通知偏好、反馈与账号安全。" />
+      <Seo title="账户中心 | AI 求职台" description="管理账号、额度、反馈与数据。" />
       <h1 className="account-title">账户中心</h1>
 
       {message ? (
@@ -326,7 +219,7 @@ function AccountWorkspace({
             <input className="account-input" value={session.phone ? `${session.phone.slice(0, 3)}****${session.phone.slice(7)}` : "未绑定"} disabled />
           </label>
           <label className="account-form-field">
-            <span>邮箱</span>
+            <span>联系邮箱（选填）</span>
             <input className="account-input" type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} placeholder="name@example.com" />
           </label>
           <label className="account-form-field">
@@ -334,10 +227,6 @@ function AccountWorkspace({
             <input className="account-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="不修改可留空，至少 8 位" />
           </label>
           <div className="account-inline-meta">
-            <span className={`account-status-badge ${emailVerified ? "ok" : "warn"}`}>
-              <Mail size={12} />
-              {emailVerified ? "邮箱已验证" : session.email ? "邮箱未验证" : "未绑定邮箱"}
-            </span>
             <span className="account-status-badge">
               <Shield size={12} />
               {JOURNEY_LABELS[journeyState || "guest"]}
@@ -347,70 +236,11 @@ function AccountWorkspace({
             <button type="button" className="account-btn" onClick={saveProfile} disabled={savingProfile}>
               {savingProfile ? "保存中..." : "保存账户信息"}
             </button>
-            <button type="button" className="account-btn" onClick={resendVerification} disabled={sendingVerify || !draft.email.trim()}>
-              {sendingVerify ? "发送中..." : "重新发送验证邮件"}
-            </button>
           </div>
-          <p className="account-card-hint">未验证邮箱不会阻止你练习，但会影响找回密码和安全通知。</p>
+          <p className="account-card-hint">内测阶段仅作联系备用，不会发送验证邮件。忘记密码请在此直接设置新密码。</p>
         </div>
 
-        {quota ? (
-          <div className="account-card">
-            <h2 className="account-card-title">使用额度</h2>
-            {quotaSummary ? (
-              <div className="account-quota-big">
-                <span className="account-quota-num">{quotaSummary.remaining}</span>
-                <span className="account-quota-label">
-                  {quota.features ? `${quotaSummary.label}剩余 / ${quotaSummary.limit} 次/天` : `${quotaSummary.label} / ${quotaSummary.limit} 次/天`}
-                </span>
-              </div>
-            ) : null}
-            {quota.features ? (
-              <div className="account-quota-grid">
-                {QUOTA_FEATURE_LABELS.map((item) => {
-                  const value = quota.features?.[item.key];
-                  if (!value) return null;
-                  return (
-                    <div className="account-quota-feature" key={item.key}>
-                      <span>{item.label}</span>
-                      <strong>{value.remaining}</strong>
-                      <small>剩余 / {value.limit}</small>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-            <p className="account-card-hint">每日 0 点重置，当前仍是公开 MVP 免费额度。</p>
-          </div>
-        ) : null}
-
-        <div className="account-card">
-          <h2 className="account-card-title">通知设置</h2>
-          <label className="account-checkbox-row">
-            <input type="checkbox" checked={draft.prefs.product} onChange={(event) => setDraft((current) => ({ ...current, prefs: { ...current.prefs, product: event.target.checked } }))} />
-            <span>
-              <Bell size={14} />
-              接收产品更新与提醒邮件
-            </span>
-          </label>
-          <label className="account-checkbox-row">
-            <input type="checkbox" checked={draft.prefs.marketing} onChange={(event) => setDraft((current) => ({ ...current, prefs: { ...current.prefs, marketing: event.target.checked } }))} />
-            <span>
-              <Bell size={14} />
-              接收活动与欢迎类邮件
-            </span>
-          </label>
-          <label className="account-checkbox-row disabled">
-            <input type="checkbox" checked readOnly />
-            <span>
-              <Shield size={14} />
-              安全通知默认开启，无法关闭
-            </span>
-          </label>
-          <button type="button" className="account-btn" onClick={saveNotificationPrefs} disabled={savingPrefs}>
-            {savingPrefs ? "保存中..." : "保存通知偏好"}
-          </button>
-        </div>
+        <QuotaPanel />
 
         <div className="account-card">
           <h2 className="account-card-title">数据与合规</h2>

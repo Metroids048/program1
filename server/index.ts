@@ -265,18 +265,19 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     return { ok: true, mergedPositions: newPositions.length, mergedRecords: newRecords.length };
   });
 
-  // Quota helper: call before AI-heavy endpoints
-  const requireQuota = (endpoint: string) => {
-    const userId = orchestrator["currentUserId"] as string | undefined;
-    const state = db.getState(userId);
-    return quota.checkAndRecord(userId, endpoint, state.positions.length);
+  // Quota helper: call before AI-heavy endpoints (registered users only)
+  const requireQuota = (request: Parameters<typeof requireAuth>[0], endpoint: string) => {
+    const session = requireAuth(request);
+    orchestrator.setUserId(session.userId);
+    const state = db.getState(session.userId);
+    return quota.checkAndRecord(session.userId, endpoint, state.positions.length);
   };
 
   // Quota info endpoint
   app.get("/api/quota", async (request) => {
-    const userId = ownerOf(request);
-    const state = db.getState(userId);
-    return quota.getQuotaInfo(userId, state.positions.length);
+    const session = requireAuth(request);
+    const state = db.getState(session.userId);
+    return quota.getQuotaInfo(session.userId, state.positions.length);
   });
 
   // Onboarding
@@ -408,6 +409,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
     ok: true,
     searchProvider: orchestrator.searchProvider,
     model: orchestrator.model,
+    db: db.db ? "sqlite" : "file",
+    auth: "required",
   }));
 
   app.get("/api/state", async (request) => {
@@ -416,6 +419,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/positions/intake", async (request) => {
+    requireAuth(request);
     const body = IntakeBody.parse(request.body);
     const result = await orchestrator.upsertPositionIntake({
       positionId: body.positionId,
@@ -430,6 +434,7 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/profile", async (request) => {
+    requireAuth(request);
     const body = ProfileBody.parse(request.body);
     return toApiSnapshot(
       orchestrator.updateProfile({
@@ -442,13 +447,15 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/profile/analyze", async (request) => {
+    requireAuth(request);
     const body = AnalyzeProfileBody.parse(request.body);
     return toApiSnapshot(orchestrator.analyzeProfile(body.resumeText));
   });
 
   app.post("/api/positions/analyze", async (request) => {
-    applyRateLimit(`positions-analyze:${request.session?.userId ?? request.ip}`, 30, 60 * 60 * 1000);
-    requireQuota("position-analyze");
+    const session = requireAuth(request);
+    applyRateLimit(`positions-analyze:${session.userId}`, 30, 60 * 60 * 1000);
+    requireQuota(request, "position-analyze");
     const body = AnalyzePositionBody.parse(request.body);
     return toApiSnapshot(await orchestrator.analyzePosition(body.jobText, body.positionId), body.positionId);
   });
@@ -527,7 +534,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/copilot/cue-card/stream", async (request, reply) => {
-    const quotaInfo = requireQuota("cue-card");
+    requireAuth(request);
+    const quotaInfo = requireQuota(request, "cue-card");
     const parsed = CueCardBody.safeParse(request.body);
     if (!parsed.success) {
       reply.raw.writeHead(400, {
@@ -594,8 +602,9 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/copilot/cue-card/reconstruct", async (request, reply) => {
+    requireAuth(request);
     const body = ReconstructCueCardBody.parse(request.body);
-    const quotaInfoRc = requireQuota("cue-card-reconstruct");
+    const quotaInfoRc = requireQuota(request, "cue-card-reconstruct");
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
@@ -627,14 +636,16 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/copilot/follow-up", async (request) => {
-    requireQuota("follow-up");
+    requireAuth(request);
+    requireQuota(request, "follow-up");
     const body = FollowUpBody.parse(request.body);
     const result = await orchestrator.createFollowUp(body.transcript, body.positionId);
     return { question: result.question, backendStatus: result.meta.backendStatus, meta: result.meta };
   });
 
   app.post("/api/mock/session", async (request) => {
-    requireQuota("mock-session");
+    requireAuth(request);
+    requireQuota(request, "mock-session");
     const body = z.object({ positionId: z.string().optional(), config: z.record(z.string(), z.unknown()).optional() }).parse(request.body ?? {});
     const result = await orchestrator.createMockSession(body.positionId, body.config);
     return {
@@ -648,7 +659,8 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post<{ Params: { id: string } }>("/api/mock/session/:id/answer", async (request, reply) => {
-    requireQuota("mock-answer");
+    requireAuth(request);
+    requireQuota(request, "mock-answer");
     const parsed = MockAnswerBody.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -681,13 +693,15 @@ export function buildServer(options: { dbPath?: string; llmClient?: LlmClient } 
   });
 
   app.post("/api/resume/ai", async (request) => {
-    requireQuota("resume-ai");
+    requireAuth(request);
+    requireQuota(request, "resume-ai");
     const body = ResumeAiBody.parse(request.body);
     return orchestrator.runResumeAi(body);
   });
 
   app.post("/api/profile/highlights", async (request) => {
-    requireQuota("profile-highlights");
+    requireAuth(request);
+    requireQuota(request, "profile-highlights");
     const body = ProfileHighlightsBody.parse(request.body);
     return orchestrator.generateProfileHighlights(body);
   });
