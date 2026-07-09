@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createPosition, createProfile } from "../lib/interviewEngine";
-import type { InterviewConfig } from "./shared";
+import type { InterviewConfig } from "./sharedConfig";
 import { HomeDashboard, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./positions";
 
 function buildPosition() {

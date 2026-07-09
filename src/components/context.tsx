@@ -2,8 +2,18 @@ import { ArrowRight, BookOpenCheck, FileText, Plus, Upload } from "lucide-react"
 import { ChangeEvent, FormEvent, useState } from "react";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, InterviewQuestion, WorkspaceState } from "../types";
-import { buildResumeSections, buildResumeSuggestion, DEFAULT_CONFIG, EditorHeader, makeId, resolveEvidenceType, sectionsToDrafts } from "./shared";
-import type { InterviewConfig, ResumeChatMessage, ResumeSectionId } from "./shared";
+import { EditorHeader } from "./shared";
+import {
+  buildResumeSections,
+  buildResumeSuggestion,
+  DEFAULT_CONFIG,
+  resolveEvidenceType,
+  sectionsToDrafts,
+  type InterviewConfig,
+  type ResumeChatMessage,
+  type ResumeSectionId,
+} from "./sharedConfig";
+import { makeId } from "../lib/ids";
 
 export function ContextWorkspace({
   workspace,

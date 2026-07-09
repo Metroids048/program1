@@ -9,23 +9,52 @@ import { describeAiFailure } from "../lib/requestError";
 import { analyzeSpeech } from "../lib/speechAnalysis";
 import { type DictationHandle, getSpeechRecognitionSupport, isSpeechRecognitionSupported, startDictation } from "../lib/speech";
 import type { AnswerCueCard, CandidateProfile, ConversationMessage, InterviewRecord, MockMessage, MockTurn, Position, WorkspaceState } from "../types";
+import { AiProgressPanel, AiStatusBadge, CueCardPanel, QuestionCard } from "./shared";
 import {
-  AiProgressPanel,
-  AiStatusBadge,
-  CueCardPanel,
   DEFAULT_CONFIG,
-  QuestionCard,
-  formatDuration,
   type AiProgressItem,
   type InterviewConfig,
   type PersonaKey,
   type RecognizedDraft,
   type RealtimeSubmitMode,
   type SpeechCaptureState,
-} from "./shared";
+} from "./sharedConfig";
+import { formatDuration } from "../lib/ids";
 import { AuthGateCard } from "./auth/AuthGate";
 
 const CUE_CARD_SKILL_ID = "live_cue_card_coach";
+const MOCK_DRAFT_KEY_PREFIX = "campus-interview-ai-workbench:mockDraft:v1:";
+
+interface PersistedMockDraft {
+  answerDraft: RecognizedDraft;
+  cueCards: AnswerCueCard[];
+}
+
+function loadMockDraft(positionId: string): PersistedMockDraft | null {
+  try {
+    const raw = window.sessionStorage.getItem(MOCK_DRAFT_KEY_PREFIX + positionId);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedMockDraft;
+  } catch {
+    return null;
+  }
+}
+
+function saveMockDraft(positionId: string, draft: PersistedMockDraft): void {
+  try {
+    window.sessionStorage.setItem(MOCK_DRAFT_KEY_PREFIX + positionId, JSON.stringify(draft));
+  } catch {
+    // sessionStorage 不可用（隐私模式等）时静默跳过，草稿仅是不再持久化
+  }
+}
+
+function clearMockDraft(positionId: string): void {
+  try {
+    window.sessionStorage.removeItem(MOCK_DRAFT_KEY_PREFIX + positionId);
+  } catch {
+    // ignore
+  }
+}
 
 function formatMetaLabel(meta: AiRunMeta | null): string {
   if (!meta) return "等待生成";
@@ -789,9 +818,11 @@ export function InterviewRoomView({
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig>(config ?? DEFAULT_CONFIG);
   const [setupOpen, setSetupOpen] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [answerDraft, setAnswerDraft] = useState<RecognizedDraft>({ interimText: "", finalText: "", editableText: "", lastFinalAt: 0 });
+  const [answerDraft, setAnswerDraft] = useState<RecognizedDraft>(
+    () => loadMockDraft(position.id)?.answerDraft ?? { interimText: "", finalText: "", editableText: "", lastFinalAt: 0 },
+  );
   const [transcript, setTranscript] = useState<MockMessage[]>([{ role: "interviewer", text: questionPlan[0]?.question ?? "请先介绍一段和当前岗位最相关的经历。" }]);
-  const [cueCards, setCueCards] = useState<AnswerCueCard[]>([]);
+  const [cueCards, setCueCards] = useState<AnswerCueCard[]>(() => loadMockDraft(position.id)?.cueCards ?? []);
   const [cueMeta, setCueMeta] = useState<AiRunMeta | null>(null);
   const [cueProgress, setCueProgress] = useState<AiProgressItem[]>([]);
   const [cueCardLoading, setCueCardLoading] = useState(false);
@@ -811,6 +842,10 @@ export function InterviewRoomView({
   const startedAtRef = useRef<number | null>(null);
   const dictationRef = useRef<DictationHandle | null>(null);
   const cueAbortRef = useRef<AbortController | null>(null);
+  const questionPlanLengthRef = useRef(questionPlan.length);
+  useEffect(() => {
+    questionPlanLengthRef.current = questionPlan.length;
+  }, [questionPlan.length]);
   const sttSupported = isSpeechRecognitionSupported();
   const vad = useMicVAD({
     model: "v5",
@@ -836,6 +871,15 @@ export function InterviewRoomView({
   const progressPercent = `${Math.min(100, Math.round(((questionIndex + 1) / totalQuestions) * 100))}%`;
   const answer = answerDraft.editableText;
 
+  useEffect(() => {
+    const hasContent = answerDraft.editableText.trim().length > 0 || answerDraft.finalText.trim().length > 0 || cueCards.length > 0;
+    if (!hasContent) {
+      clearMockDraft(position.id);
+      return;
+    }
+    saveMockDraft(position.id, { answerDraft, cueCards });
+  }, [answerDraft, cueCards, position.id]);
+
   useEffect(() => () => {
     dictationRef.current?.stop();
     void pauseVadRef.current().catch(() => undefined);
@@ -856,7 +900,7 @@ export function InterviewRoomView({
         setTranscript(restoredTranscript.length > 0 ? restoredTranscript : [{ role: "interviewer", text: stripMarkdown(result.question) }]);
         setConversationHistory(result.conversationHistory ?? []);
         const answeredCount = restoredTranscript.filter((message) => message.role === "candidate").length;
-        setQuestionIndex(Math.min(answeredCount, questionPlan.length - 1));
+        setQuestionIndex(Math.min(answeredCount, questionPlanLengthRef.current - 1));
         setQuestionSourceLabel(formatQuestionSourceLabel(result.questionSource ?? (result.backendStatus === "success" ? "model" : "local")));
         setSessionBackendStatus(result.backendStatus ?? "fallback");
         setBackendHint(
@@ -1084,6 +1128,7 @@ export function InterviewRoomView({
       conversationHistory: latestServerRecord?.conversationHistory ?? conversationHistory,
       aiMeta: latestServerRecord?.aiMeta,
     });
+    clearMockDraft(position.id);
     setFinishConfirmOpen(false);
   };
 

@@ -64,6 +64,24 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // mammoth/pdfjs Node-only import branches (isNodeRuntime() check, never true in a browser
+    // build) and the vad/onnxruntime ML runtime are inherently >500kB; real users never fetch
+    // the Node-only chunks, so this limit reflects what actually ships to the browser.
+    chunkSizeWarningLimit: 520,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("onnxruntime-web") || id.includes("@ricky0123")) return "vad-vendor";
+          if (id.includes("react-dom") || id.includes("/react/") || id.includes("scheduler")) return "react-vendor";
+          if (id.includes("lucide-react")) return "icons-vendor";
+          if (id.includes("zod")) return "zod-vendor";
+          return undefined;
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

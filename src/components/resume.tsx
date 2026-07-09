@@ -3,11 +3,14 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import { generateProfileHighlightsOnServer, runResumeAiOnServer } from "../lib/apiClient";
 import { generateHighlightsLocal } from "../lib/coach";
+import { makeId } from "../lib/ids";
 import { describeAiFailure } from "../lib/requestError";
+import { applyFullResumeSuggestionToDrafts, normalizeResumeSuggestion } from "../lib/resumeSuggestions";
 import { loadDraftState, saveDraftState } from "../lib/store";
 import { importResumeFile } from "../lib/resumeImport";
 import type { CandidateProfile, EvidenceItem, Position } from "../types";
-import { AiStatusBadge, buildResumeSections, buildResumeSuggestion, EvidenceTrace, makeId, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./shared";
+import { AiStatusBadge, EvidenceTrace } from "./shared";
+import { buildResumeSections, buildResumeSuggestion, resolveEvidenceType, sectionsToDrafts, type ResumeChatMessage, type ResumeSectionId } from "./sharedConfig";
 
 type ResumeAction = "section" | "full" | "match";
 
@@ -53,10 +56,6 @@ function applySectionSave(sectionId: ResumeSectionId, text: string, profile: Can
   ]);
 }
 
-function normalizeResumeSuggestion(text: string): string {
-  return repairText(text).trim();
-}
-
 function ResumeSuggestionText({ text }: { text: string }) {
   const lines = normalizeResumeSuggestion(text).split(/\n+/).map((line) => line.trim()).filter(Boolean);
   return (
@@ -64,58 +63,6 @@ function ResumeSuggestionText({ text }: { text: string }) {
       {lines.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
     </div>
   );
-}
-
-function isStructuredFullResumeSuggestion(text: string, sections: Array<{ id: ResumeSectionId; title: string }>): boolean {
-  const normalized = normalizeResumeSuggestion(text);
-  if (!normalized) return false;
-  return sections.some((section) => normalized.includes(section.title));
-}
-
-function parseFullResumeSuggestion(text: string, sections: Array<{ id: ResumeSectionId; title: string }>): Partial<Record<ResumeSectionId, string>> {
-  const normalized = normalizeResumeSuggestion(text);
-  if (!normalized) return {};
-
-  const titles = sections
-    .map((section) => ({ id: section.id, title: section.title }))
-    .sort((a, b) => b.title.length - a.title.length);
-
-  const markers = titles
-    .map((section) => {
-      const index = normalized.indexOf(section.title);
-      return index >= 0 ? { ...section, index } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a!.index - b!.index) as Array<{ id: ResumeSectionId; title: string; index: number }>;
-
-  if (markers.length === 0) return {};
-
-  const next: Partial<Record<ResumeSectionId, string>> = {};
-  markers.forEach((marker, index) => {
-    const start = marker.index + marker.title.length;
-    const end = markers[index + 1]?.index ?? normalized.length;
-    const block = normalized
-      .slice(start, end)
-      .replace(/^[\s:：-]+/, "")
-      .trim();
-    if (block) next[marker.id] = block;
-  });
-
-  return next;
-}
-
-export function applyFullResumeSuggestionToDrafts(
-  suggestion: string,
-  sections: Array<{ id: ResumeSectionId; title: string }>,
-  currentDrafts: Record<ResumeSectionId, string>,
-): Partial<Record<ResumeSectionId, string>> {
-  const parsed = parseFullResumeSuggestion(suggestion, sections);
-  if (Object.keys(parsed).length > 0) return parsed;
-  if (isStructuredFullResumeSuggestion(suggestion, sections)) return {};
-  return {
-    ...currentDrafts,
-    highlights: normalizeResumeSuggestion(suggestion),
-  };
 }
 
 export function ResumeWorkspacePage({

@@ -2,7 +2,7 @@ import { ChevronDown, FileText, FileUp, FolderKanban, Plus, ScrollText, Sparkles
 import { type ChangeEvent, type FormEvent, useMemo, useState } from "react";
 import { repairText } from "../lib/copy";
 import { importResumeFile } from "../lib/resumeImport";
-import { makeId, nowIso } from "./shared";
+import { makeId, nowIso } from "../lib/ids";
 import type { InterviewQuestion, Position, PositionMaterial, WorkspaceState } from "../types";
 import { AuthGateCard } from "./auth/AuthGate";
 

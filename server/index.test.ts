@@ -6,6 +6,7 @@ import WebSocket from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiMessage, AiProvider } from "./ai/provider";
 import { LocalFallbackProvider } from "./ai/provider";
+import { resetAudioBridgeState } from "./audioBridge";
 import { createDb } from "./db";
 import { createAuthService } from "./domains/auth/auth.service";
 import { buildServer, resolveListenOptions } from "./index";
@@ -49,6 +50,7 @@ afterEach(async () => {
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
   resetRateLimits();
+  resetAudioBridgeState();
 });
 
 function testApp(dbPath = testDbPath()): FastifyInstance {
@@ -110,6 +112,28 @@ async function readWebSocketEvents(url: string): Promise<Array<Record<string, un
     ws.on("close", () => {
       clearTimeout(timeout);
       resolve(events);
+    });
+    ws.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
+
+async function readWebSocketOutcome(url: string): Promise<{ code: number; reason: string; messages: Array<Record<string, unknown>> }> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url);
+    const messages: Array<Record<string, unknown>> = [];
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error("websocket test timed out"));
+    }, 1500);
+    ws.on("message", (raw) => {
+      messages.push(JSON.parse(raw.toString()) as Record<string, unknown>);
+    });
+    ws.on("close", (code, reasonBuf) => {
+      clearTimeout(timeout);
+      resolve({ code, reason: reasonBuf?.toString() ?? "", messages });
     });
     ws.on("error", (error) => {
       clearTimeout(timeout);
@@ -1492,6 +1516,161 @@ describe("local backend API", () => {
       expect(finalState.json().journeyState).toBe("ready");
 
       await app.close();
+    });
+  });
+
+  describe("audio bridge", () => {
+    it("requires auth to issue a pairing code", async () => {
+      const app = testApp();
+      const response = await app.inject({ method: "POST", url: "/api/audio-bridge/pair", payload: {} });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it("issues a 6-digit pairing code that a device can claim for a token", async () => {
+      const app = testApp();
+      const { token } = await registerAndLogin(app, "13800138201", "音频桥用户");
+
+      const pairRes = await app.inject({
+        method: "POST",
+        url: "/api/audio-bridge/pair",
+        headers: bearer(token),
+        payload: { deviceName: "我的电脑" },
+      });
+      expect(pairRes.statusCode).toBe(200);
+      const { pairingCode, expiresAt } = pairRes.json();
+      expect(pairingCode).toMatch(/^\d{6}$/);
+      expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
+
+      const claimRes = await app.inject({
+        method: "POST",
+        url: "/api/audio-bridge/claim",
+        payload: { pairingCode, deviceName: "我的电脑" },
+      });
+      expect(claimRes.statusCode).toBe(200);
+      const { deviceToken } = claimRes.json();
+      expect(typeof deviceToken).toBe("string");
+      expect(deviceToken.length).toBeGreaterThan(10);
+
+      const devicesRes = await app.inject({
+        method: "GET",
+        url: "/api/audio-bridge/devices",
+        headers: bearer(token),
+      });
+      expect(devicesRes.statusCode).toBe(200);
+      expect(devicesRes.json().devices).toHaveLength(1);
+      expect(devicesRes.json().devices[0].deviceName).toBe("我的电脑");
+    });
+
+    it("rejects claiming an invalid or already-used pairing code", async () => {
+      const app = testApp();
+      const { token } = await registerAndLogin(app, "13800138202", "音频桥用户2");
+
+      const badClaim = await app.inject({
+        method: "POST",
+        url: "/api/audio-bridge/claim",
+        payload: { pairingCode: "000000" },
+      });
+      expect(badClaim.statusCode).toBe(404);
+
+      const pairRes = await app.inject({
+        method: "POST",
+        url: "/api/audio-bridge/pair",
+        headers: bearer(token),
+        payload: {},
+      });
+      const { pairingCode } = pairRes.json();
+
+      const firstClaim = await app.inject({ method: "POST", url: "/api/audio-bridge/claim", payload: { pairingCode } });
+      expect(firstClaim.statusCode).toBe(200);
+
+      const secondClaim = await app.inject({ method: "POST", url: "/api/audio-bridge/claim", payload: { pairingCode } });
+      expect(secondClaim.statusCode).toBe(404);
+    });
+
+    it("scopes the device list to its owner and lets the owner revoke a device", async () => {
+      const app = testApp();
+      const { token: ownerToken } = await registerAndLogin(app, "13800138203", "设备主人");
+      const { token: otherToken } = await registerAndLogin(app, "13800138204", "别的用户");
+
+      const pairRes = await app.inject({ method: "POST", url: "/api/audio-bridge/pair", headers: bearer(ownerToken), payload: {} });
+      const { pairingCode } = pairRes.json();
+      await app.inject({ method: "POST", url: "/api/audio-bridge/claim", payload: { pairingCode } });
+
+      const otherDevices = await app.inject({ method: "GET", url: "/api/audio-bridge/devices", headers: bearer(otherToken) });
+      expect(otherDevices.json().devices).toHaveLength(0);
+
+      const ownerDevices = await app.inject({ method: "GET", url: "/api/audio-bridge/devices", headers: bearer(ownerToken) });
+      expect(ownerDevices.json().devices).toHaveLength(1);
+      const deviceId = ownerDevices.json().devices[0].id;
+
+      const revokeByOther = await app.inject({ method: "DELETE", url: `/api/audio-bridge/devices/${deviceId}`, headers: bearer(otherToken) });
+      expect(revokeByOther.statusCode).toBe(200);
+      const stillThere = await app.inject({ method: "GET", url: "/api/audio-bridge/devices", headers: bearer(ownerToken) });
+      expect(stillThere.json().devices).toHaveLength(1);
+
+      const revokeByOwner = await app.inject({ method: "DELETE", url: `/api/audio-bridge/devices/${deviceId}`, headers: bearer(ownerToken) });
+      expect(revokeByOwner.statusCode).toBe(200);
+      const afterRevoke = await app.inject({ method: "GET", url: "/api/audio-bridge/devices", headers: bearer(ownerToken) });
+      expect(afterRevoke.json().devices).toHaveLength(0);
+    });
+
+    it("requires auth to subscribe to the SSE event stream and sends an initial disconnected status", async () => {
+      const app = testApp();
+      const unauthorized = await app.inject({ method: "GET", url: "/api/audio-bridge/events" });
+      expect(unauthorized.statusCode).toBe(401);
+
+      const { token } = await registerAndLogin(app, "13800138205", "订阅用户");
+      await app.listen({ host: "127.0.0.1", port: 0 });
+      const address = app.server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server address");
+
+      const controller = new AbortController();
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/audio-bridge/events`, {
+        headers: bearer(token),
+        signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const { value } = await reader.read();
+      const chunk = Buffer.from(value ?? new Uint8Array()).toString("utf8");
+      controller.abort();
+      expect(chunk).toContain("event: bridge_status");
+      const status = readSseEvent<{ type: string; connected: boolean }>(chunk, "bridge_status");
+      expect(status.connected).toBe(false);
+    });
+
+    it("closes the ingest websocket with ASR_NOT_CONFIGURED when device is valid but ASR keys are missing", async () => {
+      delete process.env.XFYUN_RTASR_APP_ID;
+      delete process.env.XFYUN_RTASR_API_KEY;
+      process.env.ASR_PROVIDER = "xfyun";
+      const app = testApp();
+      const { token } = await registerAndLogin(app, "13800138206", "摄取用户");
+      const pairRes = await app.inject({ method: "POST", url: "/api/audio-bridge/pair", headers: bearer(token), payload: {} });
+      const claimRes = await app.inject({ method: "POST", url: "/api/audio-bridge/claim", payload: { pairingCode: pairRes.json().pairingCode } });
+      const deviceToken = claimRes.json().deviceToken as string;
+
+      await app.listen({ host: "127.0.0.1", port: 0 });
+      const address = app.server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server address");
+
+      const outcome = await readWebSocketOutcome(`ws://127.0.0.1:${address.port}/api/audio-bridge/stream?token=${deviceToken}`);
+      expect(outcome.code).toBe(1011);
+      expect(outcome.reason).toBe("ASR_NOT_CONFIGURED");
+    });
+
+    it("rejects the ingest websocket connection when the device token is missing or invalid", async () => {
+      const app = testApp();
+      await app.listen({ host: "127.0.0.1", port: 0 });
+      const address = app.server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server address");
+
+      const missingToken = await readWebSocketOutcome(`ws://127.0.0.1:${address.port}/api/audio-bridge/stream`);
+      expect(missingToken.code).toBe(4401);
+      expect(missingToken.reason).toBe("MISSING_DEVICE_TOKEN");
+
+      const invalidToken = await readWebSocketOutcome(`ws://127.0.0.1:${address.port}/api/audio-bridge/stream?token=not-a-real-token`);
+      expect(invalidToken.code).toBe(4401);
+      expect(invalidToken.reason).toBe("DEVICE_TOKEN_INVALID");
     });
   });
 });

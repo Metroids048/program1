@@ -3,7 +3,8 @@ import { FormEvent, useState } from "react";
 import { repairText } from "../lib/copy";
 import { loadDraftState, saveDraftState } from "../lib/store";
 import type { Position } from "../types";
-import { QuotaBadge, configFromPreferences, DEFAULT_CONFIG, type InterviewConfig } from "./shared";
+import { QuotaBadge } from "./shared";
+import { configFromPreferences, DEFAULT_CONFIG, type InterviewConfig } from "./sharedConfig";
 
 export function AuthLandingPage({
   onLogin,

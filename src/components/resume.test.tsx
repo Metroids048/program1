@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProfile } from "../lib/interviewEngine";
-import { applyFullResumeSuggestionToDrafts } from "./resume";
+import { applyFullResumeSuggestionToDrafts } from "../lib/resumeSuggestions";
 import { ResumeWorkspacePage } from "./resume";
 
 const importResumeFileMock = vi.hoisted(() => vi.fn());

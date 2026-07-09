@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
 import { HomeDashboard, AuthLandingPage, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
-import { DEFAULT_CONFIG, type InterviewConfig, makeId, nowIso } from "./components/shared";
+import { DEFAULT_CONFIG, type InterviewConfig } from "./components/sharedConfig";
+import { makeId, nowIso } from "./lib/ids";
 import { useAuth } from "./lib/auth";
 import {
   completeMockSessionOnServer,

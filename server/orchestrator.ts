@@ -441,7 +441,8 @@ export class AiOrchestrator {
       { temperature: 0.3, schemaHint: JSON.stringify(prompt.outputSchema) },
     );
     const highlights = normalizeList(result.data.highlights, fallback.highlights ?? []).slice(0, 5);
-    const evidenceIds = normalizeList(result.data.evidenceIds, fallback.evidenceIds ?? []).slice(0, 5);
+    const rawEvidenceIds = normalizeList(result.data.evidenceIds, fallback.evidenceIds ?? []).slice(0, 5);
+    const evidenceIds = filterValidEvidenceIds(rawEvidenceIds, profile.evidenceLibrary, fallback.evidenceIds ?? []);
     const evidenceTrace = buildMergedEvidenceTrace(evidenceIds, profile.evidenceLibrary, retrieval.items);
     const meta: AiRunMeta = {
       backendStatus: result.status,
@@ -668,7 +669,9 @@ export class AiOrchestrator {
         { temperature: 0.35, schemaHint: JSON.stringify(prompt.outputSchema), signal: budget.signal },
       );
 
-      const evidenceIds = normalizeList(result.data.evidenceIds, mergeEvidenceIds(local.evidenceIds, retrieval.items, state.profile.evidenceLibrary)).slice(0, 4);
+      const cueCardEvidenceFallback = mergeEvidenceIds(local.evidenceIds, retrieval.items, state.profile.evidenceLibrary);
+      const rawEvidenceIds = normalizeList(result.data.evidenceIds, cueCardEvidenceFallback).slice(0, 4);
+      const evidenceIds = filterValidEvidenceIds(rawEvidenceIds, state.profile.evidenceLibrary, cueCardEvidenceFallback);
       const sanitized = sanitizeCueCardPayload(result.data, local);
       const card: AnswerCueCard = {
         ...local,
@@ -756,12 +759,13 @@ export class AiOrchestrator {
     );
 
     const sanitized = sanitizeCueCardPayload(result.data, request.originalCard);
+    const rawEvidenceIds = normalizeList(result.data.evidenceIds, request.originalCard.evidenceIds).slice(0, 4);
     const card: AnswerCueCard = {
       ...request.originalCard,
       strategy: sanitized.strategy,
       openingLine: sanitized.openingLine,
       bullets: sanitized.bullets,
-      evidenceIds: normalizeList(result.data.evidenceIds, request.originalCard.evidenceIds).slice(0, 4),
+      evidenceIds: filterValidEvidenceIds(rawEvidenceIds, state.profile.evidenceLibrary, request.originalCard.evidenceIds),
       risks: sanitized.risks,
       followUps: sanitized.followUps,
     };
@@ -835,7 +839,9 @@ export class AiOrchestrator {
     );
 
     const suggestion = result.data.suggestion?.trim() || fallback.suggestion;
-    const evidenceIds = normalizeList(result.data.evidenceIds, mergeEvidenceIds([], retrieval.items, state.profile.evidenceLibrary));
+    const resumeEvidenceFallback = mergeEvidenceIds([], retrieval.items, state.profile.evidenceLibrary);
+    const rawEvidenceIds = normalizeList(result.data.evidenceIds, resumeEvidenceFallback);
+    const evidenceIds = filterValidEvidenceIds(rawEvidenceIds, state.profile.evidenceLibrary, resumeEvidenceFallback);
     const evidenceTrace = buildMergedEvidenceTrace(evidenceIds, state.profile.evidenceLibrary, retrieval.items);
     const meta: AiRunMeta = {
       backendStatus: result.status,
@@ -1434,6 +1440,12 @@ function buildMergedEvidenceTrace(evidenceIds: string[], evidence: CandidateProf
       synthetic: item.sourceType === "resume" ? undefined : false,
     }));
   return [...direct, ...extra].slice(0, 5);
+}
+
+function filterValidEvidenceIds(evidenceIds: string[], evidence: CandidateProfile["evidenceLibrary"], fallback: string[]): string[] {
+  const validIds = new Set(evidence.map((item) => item.id));
+  const filtered = evidenceIds.filter((id) => validIds.has(id) || id === "ev-fallback");
+  return filtered.length > 0 ? filtered : fallback;
 }
 
 function mergeEvidenceIds(fallbackIds: string[], retrieved: RetrievedChunk[], evidence: CandidateProfile["evidenceLibrary"]): string[] {

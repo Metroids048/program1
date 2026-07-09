@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { MockSetupModal } from "./components/live";
-import { DEFAULT_CONFIG } from "./components/shared";
+import { DEFAULT_CONFIG } from "./components/sharedConfig";
 import type { InterviewRecord } from "./types";
 import { createPosition, createProfile } from "./lib/interviewEngine";
 import { saveServerSnapshotCache, serializeAppState } from "./lib/store";

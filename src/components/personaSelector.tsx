@@ -1,5 +1,4 @@
-import type { PersonaKey } from "./shared";
-import { PERSONAS } from "./shared";
+import { PERSONAS, type PersonaKey } from "./sharedConfig";
 
 export function PersonaSelector({
   selected,
