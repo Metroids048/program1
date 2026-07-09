@@ -1,6 +1,6 @@
 import { ArrowRight, BriefcaseBusiness, MessageCircle, Mic, Trash2 } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { repairText } from "../lib/copy";
+import { repairText, sanitizeDisplayText } from "../lib/copy";
 import { loadDraftState, saveDraftState } from "../lib/store";
 import type { Position } from "../types";
 import { QuotaBadge } from "./shared";
@@ -49,8 +49,8 @@ function summarizePositionStatus(position: Position) {
 }
 
 function positionSummary(position: Position) {
-  if (position.analysisContext.priorityFocus.length > 0) return position.analysisContext.priorityFocus[0];
-  if (position.intake.missingFields.length > 0) return `待补：${position.intake.missingFields.map((item) => item.label).join("、")}`;
+  if (position.analysisContext.priorityFocus.length > 0) return sanitizeDisplayText(position.analysisContext.priorityFocus[0]);
+  if (position.intake.missingFields.length > 0) return `待补：${position.intake.missingFields.map((item) => sanitizeDisplayText(item.label)).join("、")}`;
   return "岗位信息已保存，可继续完善或开始练习。";
 }
 
@@ -88,7 +88,6 @@ export function HomeDashboard({
   positions,
   activePositionId,
   onSubmitJd,
-  onOpenCreatedPosition,
   onOpenMockList,
   onOpenLive,
   onRequireLogin,
@@ -104,16 +103,12 @@ export function HomeDashboard({
       messages?: Array<{ role: "assistant" | "user"; text: string }>;
     },
   ) => Promise<string | null> | string | null;
-  onOpenCreatedPosition: (positionId: string) => void;
   onOpenMockList: () => void;
   onOpenLive: () => void;
   onRequireLogin: (path: string) => void;
   isLoggedIn: boolean;
 }) {
   const activePosition = positions.find((item) => item.id === activePositionId) ?? positions[0];
-  const orderedPositions = activePosition
-    ? [activePosition, ...positions.filter((item) => item.id !== activePosition.id)]
-    : positions;
   const [input, setInput] = useState(() => loadDraftState().homeInput ?? "");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -175,14 +170,6 @@ export function HomeDashboard({
         <div className="home-product-shell">
           <section className="surface-card home-hero-input-card">
             <div className="surface-card-inner">
-              <div className="home-dialog-intro">
-                <div>
-                  <span className="subtle-label">岗位输入</span>
-                  <h2>先放一整段 JD 或面试背景</h2>
-                  <p>直接贴真实 JD、HR 消息或你掌握的面试背景；AI 会保留原文，并继续追问缺失字段。</p>
-                </div>
-              </div>
-
               <form className="home-intake-box home-intake-box-product" onSubmit={submit}>
                 <div className="home-dialog-shell">
                   <textarea
@@ -212,19 +199,6 @@ export function HomeDashboard({
               {submitStage ? <p className="inline-message" role="status">{submitStage}</p> : null}
               {submitError ? <p className="inline-message error" role="alert">{submitError}</p> : null}
               {!isLoggedIn ? <p className="home-guest-hint">未登录也可以先整理 JD；点击发送、实时助手或模拟面试时会提示登录，本地不会自动并入任何账号。</p> : null}
-
-              <div className="home-suggestion-grid home-suggestion-grid-product">
-                {[
-                  "我有一场 AI 产品运营实习面试，先帮我整理岗位重点",
-                  "这是增长运营 JD，后面我想进入模拟面试",
-                  "帮我把这段招聘信息整理成岗位卡，再继续提问补全",
-                ].map((prompt) => (
-                  <button key={prompt} type="button" className="prompt-chip suggestion-chip" onClick={() => updateInput(prompt)}>
-                    <MessageCircle size={16} />
-                    <span>{prompt}</span>
-                  </button>
-                ))}
-              </div>
             </div>
           </section>
 
@@ -233,7 +207,7 @@ export function HomeDashboard({
               <div className="home-current-position-strip">
                 <div className="home-current-position-copy">
                   <span className="subtle-label">当前岗位</span>
-                  <h2>{activePosition ? `${repairText(activePosition.company) || "公司待确认"} · ${repairText(activePosition.title) || "岗位待确认"}` : "还没有岗位卡"}</h2>
+                  <h2>{activePosition ? `${sanitizeDisplayText(activePosition.company, "公司待确认") || "公司待确认"} · ${sanitizeDisplayText(activePosition.title, "岗位待确认") || "岗位待确认"}` : "还没有岗位卡"}</h2>
                   <p>{activePosition ? positionSummary(activePosition) : "保存一个岗位后，这里会显示当前岗位摘要和后续入口。"}</p>
                 </div>
 
@@ -276,39 +250,6 @@ export function HomeDashboard({
 
             </div>
           </section>
-
-          {orderedPositions.length > 0 ? (
-            <section className="home-position-collection">
-              <div className="section-row-header">
-                <div>
-                  <span className="subtle-label">岗位列表</span>
-                  <h2>已保存岗位</h2>
-                </div>
-              </div>
-              <div className="home-position-grid">
-                {orderedPositions.map((position, index) => {
-                  const isActive = position.id === activePosition?.id;
-                  return (
-                    <button
-                      key={position.id}
-                      type="button"
-                      className={isActive ? "home-position-card home-position-card--active" : "home-position-card"}
-                      onClick={() => onOpenCreatedPosition(position.id)}
-                    >
-                      <div className="home-position-head">
-                        <span className="home-position-icon"><BriefcaseBusiness size={16} /></span>
-                        <strong>{repairText(position.company) || "公司待确认"}</strong>
-                        {index === 0 ? <span className="badge-current">当前岗位</span> : null}
-                      </div>
-                      <p className="home-position-title">{repairText(position.title) || "岗位待确认"}</p>
-                      <span className="home-position-status">{summarizePositionStatus(position)}</span>
-                      <p className="home-position-summary">{positionSummary(position)}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
         </div>
       </div>
     </section>

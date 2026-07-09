@@ -44088,6 +44088,87 @@
   },
   "cueCards": [
     {
+      "id": "cue-mrdloizb-esod0",
+      "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+      "createdAt": "2026-07-09T14:26:49.751Z",
+      "source": "live",
+      "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+      "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+      "bullets": [
+        "先点题：这段经历对应 JD 里的 产品、AI。",
+        "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+        "补结果证据：?? MVP ????????????",
+        "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+      ],
+      "evidenceIds": [
+        "ev-real-1"
+      ],
+      "risks": [
+        "不要把团队成果说成个人独立完成。",
+        "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+        "量化结果偏少，面试中容易被追问贡献和效果。"
+      ],
+      "followUps": [
+        "这件事里你最关键的个人贡献是什么？",
+        "如果结果没有达到预期，你会怎么复盘？",
+        "和 产品运营 这份 JD 里的哪条要求最相关？"
+      ]
+    },
+    {
+      "id": "cue-mrdlo7nw-zvztp",
+      "questionText": "会坏坏坏坏",
+      "createdAt": "2026-07-09T14:26:35.084Z",
+      "source": "live",
+      "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+      "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+      "bullets": [
+        "先点题：这段经历对应 JD 里的 产品、AI。",
+        "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+        "补结果证据：?? MVP ????????????",
+        "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+      ],
+      "evidenceIds": [
+        "ev-real-1"
+      ],
+      "risks": [
+        "不要把团队成果说成个人独立完成。",
+        "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+        "量化结果偏少，面试中容易被追问贡献和效果。"
+      ],
+      "followUps": [
+        "这件事里你最关键的个人贡献是什么？",
+        "如果结果没有达到预期，你会怎么复盘？",
+        "和 产品运营 这份 JD 里的哪条要求最相关？"
+      ]
+    },
+    {
+      "id": "cue-mrdljt4j-fjmbu",
+      "questionText": "喂喂喂喂",
+      "createdAt": "2026-07-09T14:23:09.619Z",
+      "source": "live",
+      "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+      "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+      "bullets": [
+        "先点题：这段经历对应 JD 里的 产品、AI。",
+        "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+        "补结果证据：?? MVP ????????????",
+        "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+      ],
+      "evidenceIds": [
+        "ev-real-1"
+      ],
+      "risks": [
+        "不要把团队成果说成个人独立完成。",
+        "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+        "量化结果偏少，面试中容易被追问贡献和效果。"
+      ],
+      "followUps": [
+        "这件事里你最关键的个人贡献是什么？",
+        "如果结果没有达到预期，你会怎么复盘？",
+        "和 产品运营 这份 JD 里的哪条要求最相关？"
+      ]
+    },
+    {
       "id": "cue-mr7toohj-6141y",
       "questionText": "呃，做一下自我介绍吧。",
       "createdAt": "2026-07-05T13:24:16.759Z",
@@ -49377,6 +49458,96 @@
     {
       "userId": "user-mr7t0mn7-q3ds30",
       "run": {
+        "id": "prompt-mrdlovnr-9clnnz",
+        "skillId": "live_cue_card_coach",
+        "promptId": "copilot.cue-card.v1",
+        "model": "deepseek-chat",
+        "provider": "deepseek-chat",
+        "inputSummary": "[cache] 产品运营: 会坏坏坏坏 你有没有在听到我说什么",
+        "outputJson": "{\"id\":\"cue-mrdloizb-esod0\",\"questionText\":\"会坏坏坏坏 你有没有在听到我说什么\",\"createdAt\":\"2026-07-09T14:26:49.751Z\",\"source\":\"live\",\"strategy\":\"用结论先行，再按背景、动作、结果补充证据。\",\"openingLine\":\"我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。\",\"bullets\":[\"先点题：这段经历对应 JD 里的 产品、AI。\",\"讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。\",\"补结果证据：?? MVP ????????????\",\"收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。\"],\"evidenceIds\":[\"ev-real-1\"],\"risks\":[\"不要把团队成果说成个人独立完成。\",\"没有数字时不要硬编，改说过程指标、样本量或复盘结论。\",\"量化结果偏少，面试中容易被追问贡献和效果。\"],\"followUps\":[\"这件事里你最关键的个人贡献是什么？\",\"如果结果没有达到预期，你会怎么复盘？\",\"和 产品运营 这份 JD 里的哪条要求最相关？\"]}",
+        "status": "cache",
+        "latencyMs": 36,
+        "retrievalCount": 1,
+        "searchUsed": false,
+        "fallbackReason": "",
+        "createdAt": "2026-07-09T14:27:06.183Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "prompt-mrdlolvf-qtu6hc",
+        "skillId": "live_cue_card_coach",
+        "promptId": "copilot.cue-card.v1",
+        "model": "deepseek-chat",
+        "provider": "deepseek-chat",
+        "inputSummary": "[cache] 产品运营: 会坏坏坏坏 你有没有在听到我说什么",
+        "outputJson": "{\"id\":\"cue-mrdloizb-esod0\",\"questionText\":\"会坏坏坏坏 你有没有在听到我说什么\",\"createdAt\":\"2026-07-09T14:26:49.751Z\",\"source\":\"live\",\"strategy\":\"用结论先行，再按背景、动作、结果补充证据。\",\"openingLine\":\"我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。\",\"bullets\":[\"先点题：这段经历对应 JD 里的 产品、AI。\",\"讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。\",\"补结果证据：?? MVP ????????????\",\"收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。\"],\"evidenceIds\":[\"ev-real-1\"],\"risks\":[\"不要把团队成果说成个人独立完成。\",\"没有数字时不要硬编，改说过程指标、样本量或复盘结论。\",\"量化结果偏少，面试中容易被追问贡献和效果。\"],\"followUps\":[\"这件事里你最关键的个人贡献是什么？\",\"如果结果没有达到预期，你会怎么复盘？\",\"和 产品运营 这份 JD 里的哪条要求最相关？\"]}",
+        "status": "cache",
+        "latencyMs": 41,
+        "retrievalCount": 1,
+        "searchUsed": false,
+        "fallbackReason": "",
+        "createdAt": "2026-07-09T14:26:53.499Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "prompt-mrdlojf0-ix0i04",
+        "skillId": "live_cue_card_coach",
+        "promptId": "copilot.cue-card.v1",
+        "model": "deepseek-chat",
+        "provider": "deepseek-chat",
+        "inputSummary": "产品运营: 会坏坏坏坏 你有没有在听到我说什么",
+        "outputJson": "{\"error\":{\"message\":\"Prompt must contain the word 'json' in some form to use 'response_format' of type 'json_object'.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"},\"strategy\":\"用结论先行，再按背景、动作、结果补充证据。\",\"openingLine\":\"我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。\",\"bullets\":[\"先点题：这段经历对应 JD 里的 产品、AI。\",\"讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。\",\"补结果证据：?? MVP ????????????\",\"收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。\"],\"risks\":[\"不要把团队成果说成个人独立完成。\",\"没有数字时不要硬编，改说过程指标、样本量或复盘结论。\",\"量化结果偏少，面试中容易被追问贡献和效果。\"],\"followUps\":[\"这件事里你最关键的个人贡献是什么？\",\"如果结果没有达到预期，你会怎么复盘？\",\"和 产品运营 这份 JD 里的哪条要求最相关？\"],\"evidenceIds\":[\"ev-real-1\"]}",
+        "status": "success",
+        "latencyMs": 608,
+        "retrievalCount": 5,
+        "searchUsed": false,
+        "fallbackReason": "",
+        "createdAt": "2026-07-09T14:26:50.316Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "prompt-mrdlo84v-c3a95d",
+        "skillId": "live_cue_card_coach",
+        "promptId": "copilot.cue-card.v1",
+        "model": "deepseek-chat",
+        "provider": "deepseek-chat",
+        "inputSummary": "产品运营: 会坏坏坏坏",
+        "outputJson": "{\"error\":{\"message\":\"Prompt must contain the word 'json' in some form to use 'response_format' of type 'json_object'.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"},\"strategy\":\"用结论先行，再按背景、动作、结果补充证据。\",\"openingLine\":\"我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。\",\"bullets\":[\"先点题：这段经历对应 JD 里的 产品、AI。\",\"讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。\",\"补结果证据：?? MVP ????????????\",\"收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。\"],\"risks\":[\"不要把团队成果说成个人独立完成。\",\"没有数字时不要硬编，改说过程指标、样本量或复盘结论。\",\"量化结果偏少，面试中容易被追问贡献和效果。\"],\"followUps\":[\"这件事里你最关键的个人贡献是什么？\",\"如果结果没有达到预期，你会怎么复盘？\",\"和 产品运营 这份 JD 里的哪条要求最相关？\"],\"evidenceIds\":[\"ev-real-1\"]}",
+        "status": "success",
+        "latencyMs": 653,
+        "retrievalCount": 5,
+        "searchUsed": false,
+        "fallbackReason": "",
+        "createdAt": "2026-07-09T14:26:35.695Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "prompt-mrdljtl7-ehpkcl",
+        "skillId": "live_cue_card_coach",
+        "promptId": "copilot.cue-card.v1",
+        "model": "deepseek-chat",
+        "provider": "deepseek-chat",
+        "inputSummary": "产品运营: 喂喂喂喂",
+        "outputJson": "{\"error\":{\"message\":\"Prompt must contain the word 'json' in some form to use 'response_format' of type 'json_object'.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"},\"strategy\":\"用结论先行，再按背景、动作、结果补充证据。\",\"openingLine\":\"我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。\",\"bullets\":[\"先点题：这段经历对应 JD 里的 产品、AI。\",\"讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。\",\"补结果证据：?? MVP ????????????\",\"收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。\"],\"risks\":[\"不要把团队成果说成个人独立完成。\",\"没有数字时不要硬编，改说过程指标、样本量或复盘结论。\",\"量化结果偏少，面试中容易被追问贡献和效果。\"],\"followUps\":[\"这件事里你最关键的个人贡献是什么？\",\"如果结果没有达到预期，你会怎么复盘？\",\"和 产品运营 这份 JD 里的哪条要求最相关？\"],\"evidenceIds\":[\"ev-real-1\"]}",
+        "status": "success",
+        "latencyMs": 643,
+        "retrievalCount": 5,
+        "searchUsed": false,
+        "fallbackReason": "",
+        "createdAt": "2026-07-09T14:23:10.219Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
         "id": "prompt-mr7tyiys-rsafp5",
         "skillId": "resume_optimizer",
         "promptId": "resume.chat.v1",
@@ -50454,7 +50625,431 @@
     }
   ],
   "userMockSessions": [],
+  "userLiveCueSessions": [
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "session": {
+        "id": "live-cue-session-mrdlo85f-2xmsil",
+        "positionId": "pos-mqs7x3sg-qsqtp",
+        "history": [
+          {
+            "id": "live-cue-turn-mrdlo85f-g2e4w5",
+            "questionText": "会坏坏坏坏",
+            "card": {
+              "id": "cue-mrdlo7nw-zvztp",
+              "questionText": "会坏坏坏坏",
+              "createdAt": "2026-07-09T14:26:35.084Z",
+              "source": "live",
+              "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+              "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+              "bullets": [
+                "先点题：这段经历对应 JD 里的 产品、AI。",
+                "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+                "补结果证据：?? MVP ????????????",
+                "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+              ],
+              "evidenceIds": [
+                "ev-real-1"
+              ],
+              "risks": [
+                "不要把团队成果说成个人独立完成。",
+                "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+                "量化结果偏少，面试中容易被追问贡献和效果。"
+              ],
+              "followUps": [
+                "这件事里你最关键的个人贡献是什么？",
+                "如果结果没有达到预期，你会怎么复盘？",
+                "和 产品运营 这份 JD 里的哪条要求最相关？"
+              ]
+            },
+            "meta": {
+              "backendStatus": "success",
+              "skillId": "live_cue_card_coach",
+              "fallbackReason": "",
+              "promptId": "copilot.cue-card.v1",
+              "provider": "deepseek-chat",
+              "evidenceTrace": [
+                {
+                  "id": "ev-real-1",
+                  "title": "??????",
+                  "reason": "?? MVP ????????????",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnxk-tmicer",
+                  "title": "请你详细介绍一下「??????」，你具体负责什么，最后结果如何？",
+                  "reason": "问题：请你详细介绍一下「??????」，你具体负责什么，最后结果如何？\n\n题型：项目深挖\n\n难度：基础\n\n理由：JD 会关注经历真实性和个人贡献边界。\n\n备注：",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnyp-gl6s80",
+                  "title": "这个经历里最困难的一次协作或推进是什么，你怎么处理？",
+                  "reason": "问题：这个经历里最困难的一次协作或推进是什么，你怎么处理？\n\n题型：行为面\n\n难度：进阶\n\n理由：校招面试常用同一段经历追问执行力和沟通。\n\n备注：\n\n参考回答",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnzt-yh7lks",
+                  "title": "你在过往经历中如何使用「产品」解决实际问题？",
+                  "reason": "问题：你在过往经历中如何使用「产品」解决实际问题？\n\n题型：专业技能\n\n难度：基础\n\n理由：JD 明确提到 产品，需要用真实场景证明。\n\n备注：\n\n参考回答：\n",
+                  "synthetic": false
+                }
+              ],
+              "latencyMs": 653,
+              "retrievalCount": 5,
+              "searchUsed": false
+            },
+            "createdAt": "2026-07-09T14:26:35.715Z"
+          },
+          {
+            "id": "live-cue-turn-mrdlojg2-f37vds",
+            "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+            "card": {
+              "id": "cue-mrdloizb-esod0",
+              "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+              "createdAt": "2026-07-09T14:26:49.751Z",
+              "source": "live",
+              "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+              "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+              "bullets": [
+                "先点题：这段经历对应 JD 里的 产品、AI。",
+                "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+                "补结果证据：?? MVP ????????????",
+                "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+              ],
+              "evidenceIds": [
+                "ev-real-1"
+              ],
+              "risks": [
+                "不要把团队成果说成个人独立完成。",
+                "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+                "量化结果偏少，面试中容易被追问贡献和效果。"
+              ],
+              "followUps": [
+                "这件事里你最关键的个人贡献是什么？",
+                "如果结果没有达到预期，你会怎么复盘？",
+                "和 产品运营 这份 JD 里的哪条要求最相关？"
+              ]
+            },
+            "meta": {
+              "backendStatus": "success",
+              "skillId": "live_cue_card_coach",
+              "fallbackReason": "",
+              "promptId": "copilot.cue-card.v1",
+              "provider": "deepseek-chat",
+              "evidenceTrace": [
+                {
+                  "id": "ev-real-1",
+                  "title": "??????",
+                  "reason": "?? MVP ????????????",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnxk-tmicer",
+                  "title": "请你详细介绍一下「??????」，你具体负责什么，最后结果如何？",
+                  "reason": "问题：请你详细介绍一下「??????」，你具体负责什么，最后结果如何？\n\n题型：项目深挖\n\n难度：基础\n\n理由：JD 会关注经历真实性和个人贡献边界。\n\n备注：",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnyp-gl6s80",
+                  "title": "这个经历里最困难的一次协作或推进是什么，你怎么处理？",
+                  "reason": "问题：这个经历里最困难的一次协作或推进是什么，你怎么处理？\n\n题型：行为面\n\n难度：进阶\n\n理由：校招面试常用同一段经历追问执行力和沟通。\n\n备注：\n\n参考回答",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnzt-yh7lks",
+                  "title": "你在过往经历中如何使用「产品」解决实际问题？",
+                  "reason": "问题：你在过往经历中如何使用「产品」解决实际问题？\n\n题型：专业技能\n\n难度：基础\n\n理由：JD 明确提到 产品，需要用真实场景证明。\n\n备注：\n\n参考回答：\n",
+                  "synthetic": false
+                }
+              ],
+              "latencyMs": 608,
+              "retrievalCount": 5,
+              "searchUsed": false
+            },
+            "createdAt": "2026-07-09T14:26:50.342Z"
+          },
+          {
+            "id": "live-cue-turn-mrdlolwc-igppr1",
+            "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+            "card": {
+              "id": "cue-mrdloizb-esod0",
+              "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+              "createdAt": "2026-07-09T14:26:49.751Z",
+              "source": "live",
+              "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+              "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+              "bullets": [
+                "先点题：这段经历对应 JD 里的 产品、AI。",
+                "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+                "补结果证据：?? MVP ????????????",
+                "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+              ],
+              "evidenceIds": [
+                "ev-real-1"
+              ],
+              "risks": [
+                "不要把团队成果说成个人独立完成。",
+                "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+                "量化结果偏少，面试中容易被追问贡献和效果。"
+              ],
+              "followUps": [
+                "这件事里你最关键的个人贡献是什么？",
+                "如果结果没有达到预期，你会怎么复盘？",
+                "和 产品运营 这份 JD 里的哪条要求最相关？"
+              ]
+            },
+            "meta": {
+              "backendStatus": "cache",
+              "skillId": "live_cue_card_coach",
+              "fallbackReason": "",
+              "promptId": "copilot.cue-card.v1",
+              "provider": "deepseek-chat",
+              "evidenceTrace": [
+                {
+                  "id": "ev-real-1",
+                  "title": "??????",
+                  "reason": "?? MVP ????????????",
+                  "synthetic": false
+                }
+              ],
+              "latencyMs": 41,
+              "retrievalCount": 1,
+              "searchUsed": false
+            },
+            "createdAt": "2026-07-09T14:26:53.520Z"
+          },
+          {
+            "id": "live-cue-turn-mrdlovop-dz8bk3",
+            "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+            "card": {
+              "id": "cue-mrdloizb-esod0",
+              "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+              "createdAt": "2026-07-09T14:26:49.751Z",
+              "source": "live",
+              "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+              "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+              "bullets": [
+                "先点题：这段经历对应 JD 里的 产品、AI。",
+                "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+                "补结果证据：?? MVP ????????????",
+                "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+              ],
+              "evidenceIds": [
+                "ev-real-1"
+              ],
+              "risks": [
+                "不要把团队成果说成个人独立完成。",
+                "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+                "量化结果偏少，面试中容易被追问贡献和效果。"
+              ],
+              "followUps": [
+                "这件事里你最关键的个人贡献是什么？",
+                "如果结果没有达到预期，你会怎么复盘？",
+                "和 产品运营 这份 JD 里的哪条要求最相关？"
+              ]
+            },
+            "meta": {
+              "backendStatus": "cache",
+              "skillId": "live_cue_card_coach",
+              "fallbackReason": "",
+              "promptId": "copilot.cue-card.v1",
+              "provider": "deepseek-chat",
+              "evidenceTrace": [
+                {
+                  "id": "ev-real-1",
+                  "title": "??????",
+                  "reason": "?? MVP ????????????",
+                  "synthetic": false
+                }
+              ],
+              "latencyMs": 36,
+              "retrievalCount": 1,
+              "searchUsed": false
+            },
+            "createdAt": "2026-07-09T14:27:06.204Z"
+          }
+        ],
+        "createdAt": "2026-07-09T14:26:35.715Z",
+        "updatedAt": "2026-07-09T14:27:06.204Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "session": {
+        "id": "live-cue-session-mrdljtlr-k005oe",
+        "positionId": "pos-mqs7x3sg-qsqtp",
+        "history": [
+          {
+            "id": "live-cue-turn-mrdljtlr-w4lygk",
+            "questionText": "喂喂喂喂",
+            "card": {
+              "id": "cue-mrdljt4j-fjmbu",
+              "questionText": "喂喂喂喂",
+              "createdAt": "2026-07-09T14:23:09.619Z",
+              "source": "live",
+              "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+              "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+              "bullets": [
+                "先点题：这段经历对应 JD 里的 产品、AI。",
+                "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+                "补结果证据：?? MVP ????????????",
+                "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+              ],
+              "evidenceIds": [
+                "ev-real-1"
+              ],
+              "risks": [
+                "不要把团队成果说成个人独立完成。",
+                "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+                "量化结果偏少，面试中容易被追问贡献和效果。"
+              ],
+              "followUps": [
+                "这件事里你最关键的个人贡献是什么？",
+                "如果结果没有达到预期，你会怎么复盘？",
+                "和 产品运营 这份 JD 里的哪条要求最相关？"
+              ]
+            },
+            "meta": {
+              "backendStatus": "success",
+              "skillId": "live_cue_card_coach",
+              "fallbackReason": "",
+              "promptId": "copilot.cue-card.v1",
+              "provider": "deepseek-chat",
+              "evidenceTrace": [
+                {
+                  "id": "ev-real-1",
+                  "title": "??????",
+                  "reason": "?? MVP ????????????",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnxk-tmicer",
+                  "title": "请你详细介绍一下「??????」，你具体负责什么，最后结果如何？",
+                  "reason": "问题：请你详细介绍一下「??????」，你具体负责什么，最后结果如何？\n\n题型：项目深挖\n\n难度：基础\n\n理由：JD 会关注经历真实性和个人贡献边界。\n\n备注：",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnyp-gl6s80",
+                  "title": "这个经历里最困难的一次协作或推进是什么，你怎么处理？",
+                  "reason": "问题：这个经历里最困难的一次协作或推进是什么，你怎么处理？\n\n题型：行为面\n\n难度：进阶\n\n理由：校招面试常用同一段经历追问执行力和沟通。\n\n备注：\n\n参考回答",
+                  "synthetic": false
+                },
+                {
+                  "id": "chunk-question-mr7tfnzt-yh7lks",
+                  "title": "你在过往经历中如何使用「产品」解决实际问题？",
+                  "reason": "问题：你在过往经历中如何使用「产品」解决实际问题？\n\n题型：专业技能\n\n难度：基础\n\n理由：JD 明确提到 产品，需要用真实场景证明。\n\n备注：\n\n参考回答：\n",
+                  "synthetic": false
+                }
+              ],
+              "latencyMs": 643,
+              "retrievalCount": 5,
+              "searchUsed": false
+            },
+            "createdAt": "2026-07-09T14:23:10.239Z"
+          }
+        ],
+        "createdAt": "2026-07-09T14:23:10.239Z",
+        "updatedAt": "2026-07-09T14:23:10.239Z"
+      }
+    }
+  ],
   "cueCardCache": [
+    {
+      "cacheKey": "pos-mqs7x3sg-qsqtp::会坏坏坏坏 你有没有在听到我说什么",
+      "positionId": "pos-mqs7x3sg-qsqtp",
+      "card": {
+        "id": "cue-mrdloizb-esod0",
+        "questionText": "会坏坏坏坏 你有没有在听到我说什么",
+        "createdAt": "2026-07-09T14:26:49.751Z",
+        "source": "live",
+        "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+        "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+        "bullets": [
+          "先点题：这段经历对应 JD 里的 产品、AI。",
+          "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+          "补结果证据：?? MVP ????????????",
+          "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+        ],
+        "evidenceIds": [
+          "ev-real-1"
+        ],
+        "risks": [
+          "不要把团队成果说成个人独立完成。",
+          "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+          "量化结果偏少，面试中容易被追问贡献和效果。"
+        ],
+        "followUps": [
+          "这件事里你最关键的个人贡献是什么？",
+          "如果结果没有达到预期，你会怎么复盘？",
+          "和 产品运营 这份 JD 里的哪条要求最相关？"
+        ]
+      },
+      "createdAt": "2026-07-09T14:26:49.751Z"
+    },
+    {
+      "cacheKey": "pos-mqs7x3sg-qsqtp::会坏坏坏坏",
+      "positionId": "pos-mqs7x3sg-qsqtp",
+      "card": {
+        "id": "cue-mrdlo7nw-zvztp",
+        "questionText": "会坏坏坏坏",
+        "createdAt": "2026-07-09T14:26:35.084Z",
+        "source": "live",
+        "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+        "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+        "bullets": [
+          "先点题：这段经历对应 JD 里的 产品、AI。",
+          "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+          "补结果证据：?? MVP ????????????",
+          "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+        ],
+        "evidenceIds": [
+          "ev-real-1"
+        ],
+        "risks": [
+          "不要把团队成果说成个人独立完成。",
+          "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+          "量化结果偏少，面试中容易被追问贡献和效果。"
+        ],
+        "followUps": [
+          "这件事里你最关键的个人贡献是什么？",
+          "如果结果没有达到预期，你会怎么复盘？",
+          "和 产品运营 这份 JD 里的哪条要求最相关？"
+        ]
+      },
+      "createdAt": "2026-07-09T14:26:35.084Z"
+    },
+    {
+      "cacheKey": "pos-mqs7x3sg-qsqtp::喂喂喂喂",
+      "positionId": "pos-mqs7x3sg-qsqtp",
+      "card": {
+        "id": "cue-mrdljt4j-fjmbu",
+        "questionText": "喂喂喂喂",
+        "createdAt": "2026-07-09T14:23:09.619Z",
+        "source": "live",
+        "strategy": "用结论先行，再按背景、动作、结果补充证据。",
+        "openingLine": "我会优先结合「??????」这段经历来回答，因为它和 产品运营 里的关键要求有直接关系。",
+        "bullets": [
+          "先点题：这段经历对应 JD 里的 产品、AI。",
+          "讲个人动作：突出你在「??????」中直接负责的拆解、推进和协作。",
+          "补结果证据：?? MVP ????????????",
+          "收尾回到岗位：说明这段经验如何迁移到当前团队的业务目标。"
+        ],
+        "evidenceIds": [
+          "ev-real-1"
+        ],
+        "risks": [
+          "不要把团队成果说成个人独立完成。",
+          "没有数字时不要硬编，改说过程指标、样本量或复盘结论。",
+          "量化结果偏少，面试中容易被追问贡献和效果。"
+        ],
+        "followUps": [
+          "这件事里你最关键的个人贡献是什么？",
+          "如果结果没有达到预期，你会怎么复盘？",
+          "和 产品运营 这份 JD 里的哪条要求最相关？"
+        ]
+      },
+      "createdAt": "2026-07-09T14:23:09.619Z"
+    },
     {
       "cacheKey": "pos-mqs7x3sg-qsqtp::呃，做一下自我介绍吧。",
       "positionId": "pos-mqs7x3sg-qsqtp",
@@ -54142,6 +54737,60 @@
     {
       "userId": "user-mr7t0mn7-q3ds30",
       "run": {
+        "id": "retrieval-mrdloizn-bvy63p",
+        "query": "会坏坏坏坏 你有没有在听到我说什么",
+        "positionId": "pos-mqs7x3sg-qsqtp",
+        "ownerKey": "user:user-mr7t0mn7-q3ds30",
+        "chunkIds": [
+          "chunk-question-mr7tfnxk-tmicer",
+          "chunk-question-mr7tfnyp-gl6s80",
+          "chunk-question-mr7tfnzt-yh7lks",
+          "chunk-question-mr7tfo0x-x1u6i6",
+          "chunk-jd-mr7tfnvc-v4z8d9"
+        ],
+        "latencyMs": 12,
+        "createdAt": "2026-07-09T14:26:49.763Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "retrieval-mrdlo7o8-sv0c52",
+        "query": "会坏坏坏坏",
+        "positionId": "pos-mqs7x3sg-qsqtp",
+        "ownerKey": "user:user-mr7t0mn7-q3ds30",
+        "chunkIds": [
+          "chunk-question-mr7tfnxk-tmicer",
+          "chunk-question-mr7tfnyp-gl6s80",
+          "chunk-question-mr7tfnzt-yh7lks",
+          "chunk-question-mr7tfo0x-x1u6i6",
+          "chunk-jd-mr7tfnvc-v4z8d9"
+        ],
+        "latencyMs": 12,
+        "createdAt": "2026-07-09T14:26:35.096Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
+        "id": "retrieval-mrdljt4v-smpeuf",
+        "query": "喂喂喂喂",
+        "positionId": "pos-mqs7x3sg-qsqtp",
+        "ownerKey": "user:user-mr7t0mn7-q3ds30",
+        "chunkIds": [
+          "chunk-question-mr7tfnxk-tmicer",
+          "chunk-question-mr7tfnyp-gl6s80",
+          "chunk-question-mr7tfnzt-yh7lks",
+          "chunk-question-mr7tfo0x-x1u6i6",
+          "chunk-jd-mr7tfnvc-v4z8d9"
+        ],
+        "latencyMs": 12,
+        "createdAt": "2026-07-09T14:23:09.631Z"
+      }
+    },
+    {
+      "userId": "user-mr7t0mn7-q3ds30",
+      "run": {
         "id": "retrieval-mr7tyhb2-7hi56z",
         "query": "候选人\n校招目标岗位\n候选人具备AI、ai相关经历，适合围绕校招岗位做证据化表达训练。\n优化一下项目经历\n优化一下项目经历\n产品运营\n目标公司",
         "positionId": "pos-mqs7x3sg-qsqtp",
@@ -54312,6 +54961,21 @@
       "tokenJti": "jti-mr7t0mo9-w0y6t4",
       "expiresAt": "2026-07-06T13:05:34.665Z",
       "createdAt": "2026-07-05T13:05:34.665Z"
+    },
+    {
+      "id": "sess-mrd0tw2f-wjutyw",
+      "userId": "user-mr7t0mn7-q3ds30",
+      "tokenJti": "jti-mrd0tw2f-v4uemd",
+      "expiresAt": "2026-07-10T04:43:08.055Z",
+      "createdAt": "2026-07-09T04:43:08.055Z"
+    },
+    {
+      "id": "sess-mrdlix66-u247hq",
+      "userId": "user-mr7t0mn7-q3ds30",
+      "tokenJti": "jti-mrdlix66-q4xyhy",
+      "expiresAt": "2026-07-10T14:22:28.206Z",
+      "createdAt": "2026-07-09T14:22:28.206Z"
     }
-  ]
+  ],
+  "audioBridgeDevices": []
 }

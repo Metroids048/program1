@@ -9,6 +9,7 @@ import {
   saveQuestionFromCueCard,
 } from "../src/lib/interviewEngine";
 import { normalizeText } from "../src/lib/text";
+import { DATA_REPAIR_NEEDED, hasCorruptedText, sanitizeDisplayText } from "../src/lib/copy";
 import type {
   AiRunMeta,
   AnswerCueCard,
@@ -593,14 +594,15 @@ export class AiOrchestrator {
     const cacheKey = `${position.id}::${normalizeText(request.questionText).toLowerCase().slice(0, 120)}`;
     const cached = this.db.getCachedCueCard(cacheKey);
     if (cached) {
-      const evidenceTrace = buildEvidenceTrace(cached.evidenceIds, state.profile.evidenceLibrary);
+      const cleanCached = sanitizeAnswerCueCard(cached);
+      const evidenceTrace = buildEvidenceTrace(cleanCached.evidenceIds, state.profile.evidenceLibrary);
       const promptRun = buildPromptRun({
         skillId,
         promptId: prompts.cueCard.id,
         model: this.llm.model,
         provider: this.llm.model,
         inputSummary: `[cache] ${position.title}: ${request.questionText.slice(0, 80)}`,
-        outputJson: JSON.stringify(cached),
+        outputJson: JSON.stringify(cleanCached),
         status: "cache",
         latencyMs: Date.now() - started,
         retrievalCount: evidenceTrace.length,
@@ -609,7 +611,7 @@ export class AiOrchestrator {
       });
       this.db.savePromptRun(promptRun, this.currentUserId);
       return {
-        card: cached,
+        card: cleanCached,
         searchResults: [],
         promptRun,
         meta: {
@@ -675,6 +677,7 @@ export class AiOrchestrator {
       const sanitized = sanitizeCueCardPayload(result.data, local);
       const card: AnswerCueCard = {
         ...local,
+        questionText: sanitizeDisplayText(local.questionText),
         strategy: sanitized.strategy,
         openingLine: sanitized.openingLine,
         bullets: sanitized.bullets,
@@ -683,7 +686,7 @@ export class AiOrchestrator {
         followUps: sanitized.followUps,
       };
       this.saveCueCard(card);
-      this.db.saveCachedCueCard(cacheKey, card, position.id);
+      if (result.status === "success") this.db.saveCachedCueCard(cacheKey, card, position.id);
       const evidenceTrace = buildMergedEvidenceTrace(card.evidenceIds, state.profile.evidenceLibrary, retrieval.items);
       const promptRun = buildPromptRun({
         skillId,
@@ -771,7 +774,7 @@ export class AiOrchestrator {
     };
     this.saveCueCard(card);
     const cacheKey = `${position.id}::${normalizeText(request.questionText).toLowerCase().slice(0, 120)}`;
-    this.db.saveCachedCueCard(cacheKey, card, position.id);
+    if (result.status === "success") this.db.saveCachedCueCard(cacheKey, card, position.id);
     const evidenceTrace = buildMergedEvidenceTrace(card.evidenceIds, state.profile.evidenceLibrary, retrieval.items);
     const promptRun = buildPromptRun({
       skillId,
@@ -1379,8 +1382,9 @@ function normalizeList(value: unknown, fallback: string[]): string[] {
 
 function sanitizeCueCardPayload(value: CueCardJson, fallback: Pick<AnswerCueCard, "strategy" | "openingLine" | "bullets" | "risks" | "followUps">) {
   const sanitizeText = (text: string, defaultValue: string) => {
-    const trimmed = text.trim();
+    const trimmed = sanitizeDisplayText(text.trim(), defaultValue);
     if (!trimmed) return defaultValue;
+    if (hasCorruptedText(trimmed)) return DATA_REPAIR_NEEDED;
     if (/(虚构|编造|假设一个|杜撰|想象一个)/.test(trimmed)) {
       return "如果真实证据不足，请明确说明边界，并补充你已经做过的事实、动作或复盘。";
     }
@@ -1402,11 +1406,34 @@ function sanitizeCueCardPayload(value: CueCardJson, fallback: Pick<AnswerCueCard
   };
 }
 
+function sanitizeAnswerCueCard(card: AnswerCueCard): AnswerCueCard {
+  return {
+    ...card,
+    questionText: sanitizeDisplayText(card.questionText),
+    strategy: sanitizeDisplayText(card.strategy),
+    openingLine: sanitizeDisplayText(card.openingLine),
+    bullets: card.bullets.map((item) => sanitizeDisplayText(item)),
+    risks: card.risks.map((item) => sanitizeDisplayText(item)),
+    followUps: card.followUps.map((item) => sanitizeDisplayText(item)),
+  };
+}
+
 function buildEvidenceTrace(evidenceIds: string[], evidence: Array<{ id: string; title: string; detail: string; impact: string }>): EvidenceTraceItem[] {
   return Array.from(new Set(evidenceIds))
     .map((id) => {
       const matched = evidence.find((item) => item.id === id);
-      if (matched) return matched;
+      if (matched) {
+        if ([matched.title, matched.detail, matched.impact].some(hasCorruptedText)) {
+          return {
+            id,
+            title: DATA_REPAIR_NEEDED,
+            detail: "该证据内容已损坏，无法可靠还原原文。",
+            impact: "需重新补充真实项目、动作和可验证结果",
+            synthetic: true,
+          };
+        }
+        return matched;
+      }
       if (id === "ev-fallback") {
         return {
           id,
@@ -1422,8 +1449,8 @@ function buildEvidenceTrace(evidenceIds: string[], evidence: Array<{ id: string;
     .slice(0, 4)
     .map((item) => ({
       id: item!.id,
-      title: item!.title,
-      reason: item!.impact || item!.detail,
+      title: sanitizeDisplayText(item!.title),
+      reason: sanitizeDisplayText(item!.impact || item!.detail),
       synthetic: Boolean((item as CandidateProfile["evidenceLibrary"][number] & { synthetic?: boolean }).synthetic),
     }));
 }
@@ -1435,8 +1462,8 @@ function buildMergedEvidenceTrace(evidenceIds: string[], evidence: CandidateProf
     .slice(0, 3)
     .map((item) => ({
       id: item.id,
-      title: item.title,
-      reason: item.content.slice(0, 80),
+      title: sanitizeDisplayText(item.title),
+      reason: sanitizeDisplayText(item.content.slice(0, 80)),
       synthetic: item.sourceType === "resume" ? undefined : false,
     }));
   return [...direct, ...extra].slice(0, 5);

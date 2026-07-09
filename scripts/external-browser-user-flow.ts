@@ -118,6 +118,8 @@ async function runDesktopFlow(page: Page) {
   await page.getByRole("button", { name: "跳过引导，直接开始" }).click();
   await page.getByRole("button", { name: /进入岗位台/ }).click();
   await expect(page.getByRole("heading", { name: /告诉 AI 你想面试的岗位/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "先放一整段 JD 或面试背景" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /我有一场 AI 产品运营实习面试/ })).toHaveCount(0);
 
   await page.getByLabel("首页主输入").fill([
     "公司名称：字节跳动 | 岗位名称：AI 产品经理",
@@ -133,6 +135,11 @@ async function runDesktopFlow(page: Page) {
   await page.getByLabel("实时问题输入").fill("请介绍一个你做过最有挑战性的 AI 产品项目。");
   await page.getByRole("button", { name: "生成提词卡" }).click();
   await expect(page.getByText(/模型提词卡已生成|已切回本地练习结果|本地练习|回答框架/).first()).toBeVisible({ timeout: 35_000 });
+  await expect(page.getByLabel("实时问题输入")).toHaveValue("");
+  await page.getByLabel("实时问题输入").fill("这个项目你怎么验证效果不是偶然波动？");
+  await page.getByRole("button", { name: "生成提词卡" }).click();
+  await expect(page.getByText(/模型提词卡已生成|已切回本地练习结果|本地练习|回答框架/).first()).toBeVisible({ timeout: 35_000 });
+  await expect(page.getByLabel("实时问题输入")).toHaveValue("");
   await assertNoHorizontalOverflow(page, "live 1280x720");
   await page.locator("button", { hasText: "结束" }).first().click();
   await expect(page.getByRole("dialog", { name: "结束实时助手" })).toBeVisible({ timeout: 10_000 });
@@ -142,7 +149,10 @@ async function runDesktopFlow(page: Page) {
   await page.getByRole("button", { name: "会议监听" }).click();
   await expect(page.getByRole("heading", { name: "Windows 音频桥" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/腾讯会议、飞书/)).toBeVisible();
-  await expect(page.getByText("dotnet run --project audio-bridge/AudioBridge.csproj")).toBeVisible();
+  await expect(page.getByText("生成配对码").first()).toBeVisible();
+  await expect(page.getByText("启动本机音频桥")).toBeVisible();
+  await expect(page.getByText("回到实时助手")).toBeVisible();
+  await expect(page.getByText("dotnet run --project audio-bridge/AudioBridge.csproj")).not.toBeVisible();
   await assertNoHorizontalOverflow(page, "audio bridge 1280x720");
 
   await page.getByRole("button", { name: "模拟面试" }).click();
@@ -150,6 +160,9 @@ async function runDesktopFlow(page: Page) {
   await page.getByRole("button", { name: /字节跳动|AI 产品经理/ }).first().click();
   await page.getByRole("button", { name: /进入面试房间|保存配置并进入练习/ }).click();
   await expect(page.getByLabel("模拟面试回答")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/第 1 \/ 8 题/)).toBeVisible();
+  await expect(page.getByText("当前回答框架")).toBeVisible();
+  await expect(page.getByRole("button", { name: /语音作答|提交当前回答/ })).toBeVisible();
   await page.getByLabel("模拟面试回答").fill("我负责过 AI 面试助手项目，先通过用户访谈确认卡点，再用 RAG 连接岗位、简历和题库，最终把练习到复盘的路径跑通。上线后用户首次练习完成率提升 32%。");
   await page.getByRole("button", { name: "提交当前回答" }).click();
   await expect(page.getByText(/模型生成|本地练习|题目来源|追问/).first()).toBeVisible({ timeout: 35_000 });

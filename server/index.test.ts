@@ -267,6 +267,34 @@ describe("local backend API", () => {
     expect(secondCard.history[0].meta).toBeTruthy();
   });
 
+  it("does not cache fallback cue-card results as model success", async () => {
+    const provider = new CapturingProvider();
+    const app = buildServer({ dbPath: testDbPath(), llmClient: provider });
+    apps.push(app);
+    const { token } = await registerAndLogin(app, "13800138131", "缓存回归用户");
+
+    const payload = { questionText: "请介绍一个增长项目", source: "live", enableSearch: false };
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/copilot/cue-card/stream",
+      headers: bearer(token),
+      payload,
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/copilot/cue-card/stream",
+      headers: bearer(token),
+      payload,
+    });
+    const firstCard = readSseEvent<{ promptRun: { status: string }; meta: { backendStatus: string } }>(first.body, "card");
+    const secondCard = readSseEvent<{ promptRun: { status: string }; meta: { backendStatus: string } }>(second.body, "card");
+
+    expect(firstCard.promptRun.status).toBe("fallback");
+    expect(secondCard.promptRun.status).toBe("fallback");
+    expect(secondCard.meta.backendStatus).toBe("fallback");
+    expect(provider.calls).toHaveLength(2);
+  });
+
   it("deletes live cue-card sessions with position artifacts", async () => {
     const db = createDb(testDbPath());
     db.saveLiveCueSession({

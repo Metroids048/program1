@@ -224,6 +224,30 @@ export function AudioBridgePage({
                   {errorMessage ? <p className="inline-message error">{errorMessage}</p> : null}
                 </div>
 
+                <div className="audio-bridge-steps" aria-label="会议监听连接步骤">
+                  <article className={pairing || isBridgeConnected ? "audio-bridge-step done" : "audio-bridge-step active"}>
+                    <span>1</span>
+                    <div>
+                      <strong>生成配对码</strong>
+                      <p>{pairing ? `配对码 ${pairing.pairingCode}，${remainingSec > 0 ? `${remainingSec} 秒后过期` : "已过期"}` : "点击下方按钮拿到本次连接码。"}</p>
+                    </div>
+                  </article>
+                  <article className={isBridgeConnected ? "audio-bridge-step done" : pairing ? "audio-bridge-step active" : "audio-bridge-step"}>
+                    <span>2</span>
+                    <div>
+                      <strong>启动本机音频桥</strong>
+                      <p>在 Windows 本机音频桥中输入配对码，然后打开腾讯会议或飞书会议播放声音。</p>
+                    </div>
+                  </article>
+                  <article className={isBridgeConnected ? "audio-bridge-step active" : "audio-bridge-step"}>
+                    <span>3</span>
+                    <div>
+                      <strong>回到实时助手</strong>
+                      <p>{isBridgeConnected ? "连接成功，去实时助手选择“系统音频”。" : "连接成功后，实时助手会接收系统音频转写。"}</p>
+                    </div>
+                  </article>
+                </div>
+
                 {pairing ? (
                   <div className="audio-bridge-code-card" aria-live="polite">
                     <span>6 位配对码</span>
@@ -241,10 +265,10 @@ export function AudioBridgePage({
                   </button>
                 )}
 
-                <div className="audio-bridge-command">
-                  <span>本地程序命令</span>
+                <details className="audio-bridge-command">
+                  <summary>高级信息：本地程序命令</summary>
                   <code>{bridgeCommand}</code>
-                </div>
+                </details>
 
                 <div className="audio-bridge-actions">
                   <button className="button secondary" type="button" onClick={stopSubscription} disabled={!isLoggedIn}>
@@ -252,6 +276,9 @@ export function AudioBridgePage({
                   </button>
                   <button className="button secondary" type="button" onClick={startPairing} disabled={pairingLoading}>
                     重新生成配对码
+                  </button>
+                  <button className="button primary" type="button" onClick={onOpenLive} disabled={!isBridgeConnected}>
+                    去实时助手选择系统音频
                   </button>
                 </div>
               </>

@@ -835,6 +835,11 @@ select.input:focus,
   min-height: 150px;
 }
 
+.mock-main-column .textarea.tall {
+  min-height: 96px;
+  max-height: 128px;
+}
+
 .surface-card,
 .empty-card,
 .position-summary-card,
@@ -1484,8 +1489,8 @@ select.input:focus,
 }
 
 .home-stage-product {
-  gap: 20px;
-  padding-top: 18px;
+  gap: 14px;
+  padding-top: 10px;
 }
 
 .home-hero-product {
@@ -1497,7 +1502,7 @@ select.input:focus,
 }
 
 .home-hero-product h1 {
-  font-size: 54px;
+  font-size: 46px;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
@@ -1505,8 +1510,8 @@ select.input:focus,
 .home-hero-product p {
   max-width: 720px;
   color: #667085;
-  font-size: 18px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .home-hero-topline {
@@ -1567,11 +1572,11 @@ select.input:focus,
 
 .home-dialog-shell {
   display: grid;
-  min-height: 300px;
+  min-height: 240px;
 }
 
 .home-intake-box-product textarea {
-  min-height: 220px;
+  min-height: 176px;
   max-height: 420px;
   padding: 18px 20px 12px;
   border: 0;
@@ -1844,6 +1849,7 @@ select.input:focus,
 }
 
 .audio-bridge-status-panel,
+.audio-bridge-steps,
 .audio-bridge-command,
 .audio-bridge-code-card {
   display: grid;
@@ -1855,11 +1861,62 @@ select.input:focus,
 }
 
 .audio-bridge-status-panel span,
-.audio-bridge-command span,
+.audio-bridge-command summary,
 .audio-bridge-code-card span {
   color: #667085;
   font-size: 12px;
   font-weight: 600;
+}
+
+.audio-bridge-steps {
+  gap: 10px;
+}
+
+.audio-bridge-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid #edf1f5;
+  border-radius: 10px;
+  background: #fafcfb;
+}
+
+.audio-bridge-step > span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #667085;
+  background: #eef2f6;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.audio-bridge-step strong {
+  display: block;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.audio-bridge-step p {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.audio-bridge-step.active {
+  border-color: #cfe9dd;
+  background: #f4fbf7;
+}
+
+.audio-bridge-step.done > span,
+.audio-bridge-step.active > span {
+  color: #166534;
+  background: #dff3e8;
 }
 
 .audio-bridge-status-panel strong {
@@ -2753,29 +2810,32 @@ select.input:focus,
 
 .mock-room-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: var(--space-md);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 12px;
   align-items: start;
+  min-height: 0;
 }
 
 .mock-main-column,
 .mock-side-column,
 .jd-analysis-column {
   display: grid;
-  gap: var(--space-md);
+  gap: 10px;
   align-content: start;
   min-width: 0;
 }
 
 .mock-side-column {
   position: sticky;
-  top: var(--space-lg);
+  top: 12px;
+  max-height: calc(100dvh - 132px);
+  overflow: auto;
 }
 
 .question-card {
   display: grid;
-  gap: var(--space-xs);
-  padding: var(--space-md);
+  gap: 6px;
+  padding: 12px 14px;
   border-color: var(--mock);
   background: var(--mock-soft);
 }
@@ -2787,7 +2847,7 @@ select.input:focus,
 
 .question-card h2 {
   color: var(--ink);
-  font-size: var(--text-h2);
+  font-size: 18px;
   font-weight: 500;
   line-height: var(--leading-h);
 }
@@ -2795,6 +2855,7 @@ select.input:focus,
 .question-card p {
   color: var(--muted);
   font-size: var(--text-body-sm);
+  line-height: 1.45;
 }
 
 .question-card small {
@@ -2803,13 +2864,14 @@ select.input:focus,
 }
 
 .mock-dialog-card .surface-card-inner {
-  min-height: 260px;
+  min-height: 0;
+  padding: 12px 14px;
 }
 
 .mock-chat-thread {
   display: grid;
-  gap: var(--space-sm);
-  max-height: 240px;
+  gap: 8px;
+  max-height: clamp(132px, 21dvh, 190px);
   overflow: auto;
   padding: 2px;
 }
@@ -2818,7 +2880,7 @@ select.input:focus,
   display: grid;
   gap: 4px;
   max-width: min(620px, 88%);
-  padding: var(--space-sm);
+  padding: 9px 10px;
   border: 0.5px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-muted);
@@ -2852,7 +2914,7 @@ select.input:focus,
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 10px 12px;
   border: 0.5px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);

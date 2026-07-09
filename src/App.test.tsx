@@ -414,7 +414,8 @@ describe("App", () => {
     const main = within(screen.getByRole("main"));
 
     expect(main.getByRole("heading", { level: 1, name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
-    expect(main.getByRole("heading", { level: 2, name: "先放一整段 JD 或面试背景" })).toBeInTheDocument();
+    expect(main.queryByRole("heading", { level: 2, name: "先放一整段 JD 或面试背景" })).not.toBeInTheDocument();
+    expect(main.queryByRole("button", { name: /我有一场 AI 产品运营实习面试/ })).not.toBeInTheDocument();
     expect(main.getByLabelText("首页主输入")).toBeInTheDocument();
     expect(main.queryByRole("button", { name: /上传 JD/ })).not.toBeInTheDocument();
 
@@ -487,6 +488,10 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Windows 音频桥" })).toBeInTheDocument();
     expect(screen.getByText(/腾讯会议、飞书/)).toBeInTheDocument();
+    expect(screen.getAllByText("生成配对码").length).toBeGreaterThan(0);
+    expect(screen.getByText("启动本机音频桥")).toBeInTheDocument();
+    expect(screen.getByText("回到实时助手")).toBeInTheDocument();
+    expect(screen.getByText("dotnet run --project audio-bridge/AudioBridge.csproj")).not.toBeVisible();
     await user.click(screen.getByRole("button", { name: "生成配对码" }));
     expect(await screen.findByText("123456")).toBeInTheDocument();
   });
@@ -714,7 +719,8 @@ describe("App", () => {
     expect(screen.getByText("注意")).toBeInTheDocument();
     expect(screen.getByText("追问预测")).toBeInTheDocument();
     expect(screen.getByText("开场句")).toBeInTheDocument();
-    expect(screen.getByText("已识别，可继续编辑")).toBeInTheDocument();
+    expect(textarea.value).toBe("");
+    expect(screen.getByText("等待输入问题")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "结束" }));
     expect(screen.getByRole("dialog", { name: "结束实时助手" })).toBeInTheDocument();
@@ -735,10 +741,11 @@ describe("App", () => {
     await user.type(screen.getByLabelText("实时问题输入"), "当前题：怎么证明增长有效");
     await user.click(screen.getByRole("button", { name: /生成提词卡/ }));
 
-    const historyToggle = await screen.findByText("完整历史提词卡（2）");
+    const historyToggle = await screen.findByText("多轮对话历史（2）");
     await user.click(historyToggle);
 
-    expect(screen.getByText("上一题：讲讲你做过的增长项目")).toBeInTheDocument();
+    expect(screen.getByText(/上一问 · 上一题：讲讲你做过的增长项目/)).toBeInTheDocument();
+    expect(screen.getByText(/当前问 · 当前题：怎么证明增长有效/)).toBeInTheDocument();
     expect(screen.getByText("上一题开场句")).toBeInTheDocument();
   });
 
@@ -763,7 +770,7 @@ describe("App", () => {
 
     await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/copilot/cue-card/stream"))).toHaveLength(1));
     await waitFor(() => expect(screen.getByRole("button", { name: "记录到面试资料" })).toBeInTheDocument(), { timeout: 2500 });
-    expect(screen.getByText("已识别，可继续编辑")).toBeInTheDocument();
+    expect((screen.getByLabelText("实时问题输入") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("uses VAD speech end to stop live dictation and auto-generate without clearing text", async () => {

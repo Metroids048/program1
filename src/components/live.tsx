@@ -3,7 +3,7 @@ import { useMicVAD } from "@ricky0123/vad-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiRunMeta, AudioBridgeStreamEvent, CueCardProgressEvent, LiveCueSessionTurn } from "../lib/apiClient";
 import { answerMockSessionOnServer, createMockSessionOnServer, requestAudioBridgePairingCode, streamCueCardFromServer, subscribeToAudioBridgeEvents } from "../lib/apiClient";
-import { repairText } from "../lib/copy";
+import { sanitizeDisplayText, repairText } from "../lib/copy";
 import { evaluateMockTurn, generateCueCard, generateFollowUpFromTranscript } from "../lib/interviewEngine";
 import { describeAiFailure } from "../lib/requestError";
 import { analyzeSpeech } from "../lib/speechAnalysis";
@@ -96,12 +96,12 @@ function progressItemFromEvent(event: CueCardProgressEvent): AiProgressItem | nu
 function normalizeCard(card: AnswerCueCard): AnswerCueCard {
   return {
     ...card,
-    questionText: repairText(card.questionText),
-    strategy: repairText(card.strategy),
-    openingLine: repairText(card.openingLine),
-    bullets: card.bullets.map(repairText),
-    risks: card.risks.map(repairText),
-    followUps: card.followUps.map(repairText),
+    questionText: sanitizeDisplayText(card.questionText),
+    strategy: sanitizeDisplayText(card.strategy),
+    openingLine: sanitizeDisplayText(card.openingLine),
+    bullets: card.bullets.map((item) => sanitizeDisplayText(item)),
+    risks: card.risks.map((item) => sanitizeDisplayText(item)),
+    followUps: card.followUps.map((item) => sanitizeDisplayText(item)),
   };
 }
 
@@ -156,6 +156,13 @@ function PersonaBadge({ persona }: { persona: PersonaKey }) {
   };
 
   return <span className="status-chip warn">{labels[persona]}</span>;
+}
+
+function liveTurnLabel(index: number, total: number): string {
+  if (total <= 1) return "当前问";
+  if (index === total - 1) return "当前问";
+  if (index === total - 2) return "上一问";
+  return `第 ${index + 1} 问`;
 }
 
 export function MockSetupModal({
@@ -360,6 +367,7 @@ export function LiveAssistantView({
       setCaptureState("generating");
       setCueCards((current) => [localCard, ...current.filter((item) => item.id !== localCard.id)]);
       setTranscript((current) => [...current, { role: "interviewer", text: question }]);
+      setRecognizedDraft({ interimText: "", finalText: "", editableText: "", lastFinalAt: 0 });
       setCueMeta({ backendStatus: "fallback", skillId: CUE_CARD_SKILL_ID, fallbackReason: "正在连接后端模型，先展示本地练习提词卡。", evidenceTrace: [], latencyMs: 0 });
       setBackendHint("本地练习模式已先生成提词卡，正在尝试服务端模型。");
       setCueProgress([{ id: `start-${Date.now()}`, label: "连接后端模型", status: "running" }]);
@@ -387,13 +395,13 @@ export function LiveAssistantView({
             setCueCards((current) => [normalizeCard(result.card), ...current.filter((item) => item.id !== localCard.id)]);
             if (result.sessionId) setLiveCueSessionId(result.sessionId);
             if (result.history?.length) {
-              setLiveCueHistory(result.history.map((turn) => ({ ...turn, questionText: repairText(turn.questionText), card: normalizeCard(turn.card) })));
+              setLiveCueHistory(result.history.map((turn) => ({ ...turn, questionText: sanitizeDisplayText(turn.questionText), card: normalizeCard(turn.card) })));
             }
             setCueMeta({
               backendStatus: result.backendStatus,
               skillId: CUE_CARD_SKILL_ID,
               fallbackReason: repairText(result.fallbackReason),
-              evidenceTrace: result.evidenceTrace.map((item) => ({ ...item, title: repairText(item.title), reason: repairText(item.reason) })),
+              evidenceTrace: result.evidenceTrace.map((item) => ({ ...item, title: sanitizeDisplayText(item.title), reason: sanitizeDisplayText(item.reason) })),
               latencyMs: result.latencyMs,
             });
             setBackendHint(result.backendStatus === "success" ? `模型生成 · ${result.latencyMs}ms` : `本地练习 · ${repairText(result.fallbackReason)}`);
@@ -728,11 +736,11 @@ export function LiveAssistantView({
             }} />}
             {liveCueHistory.length > 0 ? (
               <details className="live-cue-history">
-                <summary>完整历史提词卡（{liveCueHistory.length}）</summary>
+                <summary>多轮对话历史（{liveCueHistory.length}）</summary>
                 <div className="live-cue-history-list">
-                  {liveCueHistory.slice().reverse().map((turn, index) => (
+                  {liveCueHistory.map((turn, index) => (
                     <article key={turn.id} className="live-cue-history-item">
-                      <span>#{liveCueHistory.length - index} · {repairText(turn.questionText)}</span>
+                      <span>{liveTurnLabel(index, liveCueHistory.length)} · {sanitizeDisplayText(turn.questionText)}</span>
                       <CueCardPanel card={turn.card} meta={turn.meta} onSaveQuestion={(card) => {
                         if (!isLoggedIn) {
                           onRequireLogin();
@@ -826,7 +834,7 @@ export function InterviewRoomView({
   const [cueMeta, setCueMeta] = useState<AiRunMeta | null>(null);
   const [cueProgress, setCueProgress] = useState<AiProgressItem[]>([]);
   const [cueCardLoading, setCueCardLoading] = useState(false);
-  const [backendHint, setBackendHint] = useState("");
+  const [backendHint, setBackendHint] = useState("正在创建模拟面试房间，服务端不可用时会自动进入本地练习模式。");
   const [sessionBackendStatus, setSessionBackendStatus] = useState<"success" | "fallback" | "cache" | "error">("fallback");
   const [questionSourceLabel, setQuestionSourceLabel] = useState("");
   const [instantFeedback, setInstantFeedback] = useState("");
@@ -1014,7 +1022,7 @@ export function InterviewRoomView({
             backendStatus: result.backendStatus,
             skillId: CUE_CARD_SKILL_ID,
             fallbackReason: repairText(result.fallbackReason),
-            evidenceTrace: result.evidenceTrace.map((item) => ({ ...item, title: repairText(item.title), reason: repairText(item.reason) })),
+            evidenceTrace: result.evidenceTrace.map((item) => ({ ...item, title: sanitizeDisplayText(item.title), reason: sanitizeDisplayText(item.reason) })),
             latencyMs: result.latencyMs,
           });
           setBackendHint(result.backendStatus === "success" ? `模型生成 · ${result.latencyMs}ms` : `本地练习 · ${repairText(result.fallbackReason)}`);

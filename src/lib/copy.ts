@@ -1,5 +1,7 @@
 import type { AppState, InterviewRecord, InterviewQuestion, Position } from "../types";
 
+export const DATA_REPAIR_NEEDED = "需重新补充";
+
 const REPLACEMENTS: Array<[string, string]> = [
   ["涓婁笂鏂囪祫鏂?", "上下文资料"],
   ["涓婁笅鏂囪祫鏂?", "上下文资料"],
@@ -62,6 +64,20 @@ const REPLACEMENTS: Array<[string, string]> = [
   ["作答区", "作答区"],
 ];
 
+const MOJIBAKE_PATTERN = /(涓|妯|棰|瀹|鎶|鍊|绛|闈|杩|鍙|鑱|銆|锛|�)/;
+
+export function hasCorruptedText(value: string | undefined | null): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /\?{2,}/.test(trimmed) || MOJIBAKE_PATTERN.test(trimmed);
+}
+
+export function sanitizeDisplayText(value: string | undefined | null, fallback = DATA_REPAIR_NEEDED): string {
+  const repaired = repairText(value);
+  return hasCorruptedText(repaired) ? fallback : repaired;
+}
+
 export function repairText(value: string | undefined | null): string {
   if (!value) return "";
   let next = value;
@@ -72,6 +88,7 @@ export function repairText(value: string | undefined | null): string {
     .split("銆?").join("。")
     .split("锛歖").join("：")
     .split("锛?").join("？")
+    .replace(/\bMVP\b(?!（最小可行产品）)/g, "MVP（最小可行产品）")
     .split("路").join("·")
     .trim();
 }

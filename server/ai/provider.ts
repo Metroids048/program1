@@ -114,7 +114,7 @@ class RemoteJsonProvider implements AiProvider {
     options?: { temperature?: number; signal?: AbortSignal; schemaHint?: string },
   ): Promise<{ data: T; status: "success" | "fallback"; raw: string }> {
     const first = await this.call(messages, options);
-    const parsed = extractStructuredJson<T>(first);
+    const parsed = extractStructuredJson<T>(first, options?.schemaHint);
     if (parsed) return { data: parsed, status: "success", raw: first };
     if (this.lastCallFailed) return { data: fallback, status: "fallback", raw: first };
 
@@ -135,7 +135,7 @@ class RemoteJsonProvider implements AiProvider {
       ],
       { ...options, temperature: 0 },
     );
-    const repaired = extractStructuredJson<T>(repair);
+    const repaired = extractStructuredJson<T>(repair, options?.schemaHint);
     return repaired ? { data: repaired, status: "success", raw: repair } : { data: fallback, status: "fallback", raw: repair || first };
   }
 
@@ -232,10 +232,11 @@ function resolveModelPool(value: string | undefined, fallback: string[]): string
   return parsed?.length ? parsed : fallback;
 }
 
-function extractStructuredJson<T>(text: string): T | null {
+function extractStructuredJson<T>(text: string, schemaHint?: string): T | null {
   const direct = extractJson<T>(text);
-  if (direct) return direct;
-  return extractLenientJson<T>(text);
+  if (direct && isValidBusinessJson(direct, schemaHint)) return direct;
+  const lenient = extractLenientJson<T>(text);
+  return lenient && isValidBusinessJson(lenient, schemaHint) ? lenient : null;
 }
 
 function extractJson<T>(text: string): T | null {
@@ -295,4 +296,18 @@ function trimAfterBalanced(text: string, opening: "{" | "[", closing: "}" | "]")
     if (depth === 0) return text.slice(start, index + 1);
   }
   return null;
+}
+
+function isValidBusinessJson<T>(value: T, schemaHint?: string): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return true;
+  const record = value as Record<string, unknown>;
+  if ("error" in record) return false;
+  if ("message" in record && !schemaHint) return false;
+  if (!schemaHint) return true;
+  const schema = safeJsonParse<Record<string, unknown>>(schemaHint);
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return true;
+  const requiredKeys = Object.keys(schema);
+  if (requiredKeys.length === 0) return true;
+  return requiredKeys.every((key) => key in record);
 }

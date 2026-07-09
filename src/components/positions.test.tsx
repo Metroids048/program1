@@ -19,7 +19,6 @@ describe("positions pages", () => {
         positions={[position]}
         activePositionId={position.id}
         onSubmitJd={vi.fn()}
-        onOpenCreatedPosition={vi.fn()}
         onOpenMockList={vi.fn()}
         onOpenLive={vi.fn()}
         onRequireLogin={vi.fn()}
@@ -31,7 +30,7 @@ describe("positions pages", () => {
     expect(screen.getByLabelText("首页主输入")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /发送/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /上传 JD/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "已保存岗位" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "已保存岗位" })).not.toBeInTheDocument();
     expect(screen.getAllByText("当前岗位").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "进入实时助手" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入模拟面试" })).toBeInTheDocument();
@@ -46,7 +45,6 @@ describe("positions pages", () => {
         positions={[position]}
         activePositionId={position.id}
         onSubmitJd={vi.fn()}
-        onOpenCreatedPosition={vi.fn()}
         onOpenMockList={vi.fn()}
         onOpenLive={vi.fn()}
         onRequireLogin={vi.fn()}
@@ -58,13 +56,12 @@ describe("positions pages", () => {
     expect(screen.queryByText("已练习")).not.toBeInTheDocument();
   });
 
-  it("shows quick prompt pills when there are no positions", () => {
+  it("does not show the removed repeated home prompt pills", () => {
     render(
       <HomeDashboard
         positions={[]}
         activePositionId=""
         onSubmitJd={vi.fn()}
-        onOpenCreatedPosition={vi.fn()}
         onOpenMockList={vi.fn()}
         onOpenLive={vi.fn()}
         onRequireLogin={vi.fn()}
@@ -73,7 +70,8 @@ describe("positions pages", () => {
     );
 
     expect(screen.queryByLabelText("首页新手引导")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /我有一场 AI 产品运营实习面试/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "先放一整段 JD 或面试背景" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /我有一场 AI 产品运营实习面试/ })).not.toBeInTheDocument();
   });
 
   it("drives position detail actions with the full detail page instead of a drawer", async () => {

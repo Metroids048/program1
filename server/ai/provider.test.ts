@@ -107,6 +107,34 @@ describe("DeepSeekProvider 超时与重试", () => {
     expect(body.response_format).toEqual({ type: "json_object" });
   });
 
+  it("上游错误 JSON 不会被当成模型 success", async () => {
+    const { DeepSeekProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(chatPayload('{"error":{"message":"Prompt must contain json"}}'))));
+
+    const fallback = { strategy: "本地策略", openingLine: "本地开场", bullets: [], evidenceIds: [], risks: [], followUps: [] };
+    const provider = new DeepSeekProvider("test-key", "deepseek-chat");
+    const result = await provider.chatJson([{ role: "user", content: "只返回 JSON" }], fallback, {
+      schemaHint: JSON.stringify({ strategy: "string", openingLine: "string", bullets: ["string"], evidenceIds: ["string"], risks: ["string"], followUps: ["string"] }),
+    });
+
+    expect(result.status).toBe("fallback");
+    expect(result.data).toEqual(fallback);
+  });
+
+  it("缺少 schema 字段的 JSON 不会被当成 success", async () => {
+    const { DeepSeekProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(chatPayload('{"strategy":"只有策略"}'))));
+
+    const fallback = { strategy: "本地策略", openingLine: "本地开场" };
+    const provider = new DeepSeekProvider("test-key", "deepseek-chat");
+    const result = await provider.chatJson([{ role: "user", content: "只返回 JSON" }], fallback, {
+      schemaHint: JSON.stringify({ strategy: "string", openingLine: "string" }),
+    });
+
+    expect(result.status).toBe("fallback");
+    expect(result.data).toEqual(fallback);
+  });
+
   it("未配置 DEEPSEEK_API_KEY 时输出明确启动日志", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { createProvider, LocalFallbackProvider } = await loadProvider({ timeoutMs: "2000", maxRetries: "0" });

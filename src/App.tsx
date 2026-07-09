@@ -650,7 +650,6 @@ export function App() {
           positions={positions}
           activePositionId={activePositionId}
           onSubmitJd={createOrUpdatePosition}
-          onOpenCreatedPosition={openPositionConversation}
           onOpenMockList={openMockPositionList}
           onOpenLive={() => openRoute("/live")}
           onRequireLogin={requireLoginFor}
@@ -717,8 +716,9 @@ export function App() {
           position={activePosition}
           initialConfig={interviewConfig}
           onStart={(config) => {
-            void updatePositionPreferences(activePosition.id, config).finally(() => {
-              openMockRoom(activePosition.id, config);
+            openMockRoom(activePosition.id, config);
+            void updatePositionPreferences(activePosition.id, config).catch((error) => {
+              notifySyncError("面试配置保存失败", error, "已进入本地练习模式，本次配置仍会用于当前房间。");
             });
           }}
         />
