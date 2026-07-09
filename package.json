@@ -20,6 +20,7 @@
     "test:ai-success-smoke": "node node_modules/tsx/dist/cli.mjs scripts/ai-success-smoke.ts",
     "test:browser-flow": "node node_modules/tsx/dist/cli.mjs scripts/external-browser-user-flow.ts",
     "test:browser-flow:headed": "node node_modules/tsx/dist/cli.mjs scripts/external-browser-user-flow.ts --headed",
+    "test:perf": "node node_modules/tsx/dist/cli.mjs scripts/ai-perf-bench.ts",
     "test:server": "node node_modules/vitest/vitest.mjs run server/index.test.ts --configLoader runner",
     "test:app": "node node_modules/vitest/vitest.mjs run src/App.test.tsx src/components/positions.test.tsx src/components/questions.test.tsx src/components/records.test.tsx src/components/resume.test.tsx --configLoader runner",
     "test:acceptance": "npm run test:app && npm run test:server && npm run test:full-flow && npm run test:ai-success-smoke",

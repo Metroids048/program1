@@ -4,6 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServer } from "../server/index";
 
+function cleanupTempDir(tempDir: string) {
+  try {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch (error) {
+    console.warn(`[ai-success-smoke] temp cleanup skipped: ${String(error)}`);
+  }
+}
+
 function assertEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -20,9 +28,23 @@ async function main() {
   const dbPath = join(tempDir, "smoke.sqlite");
   const app = buildServer({ dbPath });
   try {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: {
+        phone: `137${String(Date.now()).slice(-8)}`,
+        password: "Password123",
+        displayName: "AI 成功链路验收用户",
+      },
+    });
+    if (register.statusCode !== 201) throw new Error(`REGISTER_FAILED:${register.statusCode}`);
+    const token = register.json().tokens.accessToken as string;
+    const authHeaders = { authorization: `Bearer ${token}` };
+
     const intake = await app.inject({
       method: "POST",
       url: "/api/positions/intake",
+      headers: authHeaders,
       payload: {
         rawJdText: "公司：测试科技\n岗位：AI 产品经理\n负责面试产品、用户研究、数据分析和 AI 功能落地。",
       },
@@ -33,6 +55,7 @@ async function main() {
     const profile = await app.inject({
       method: "POST",
       url: "/api/profile",
+      headers: authHeaders,
       payload: {
         displayName: "测试候选人",
         resumeText: "测试候选人\nAI 产品经理\n做过面试助手、增长分析、项目推进。",
@@ -54,6 +77,7 @@ async function main() {
     const cueCard = await app.inject({
       method: "POST",
       url: "/api/copilot/cue-card/stream",
+      headers: authHeaders,
       payload: {
         questionText: "请介绍一个你做过的 AI 产品项目。",
         positionId,
@@ -68,6 +92,7 @@ async function main() {
     const session = await app.inject({
       method: "POST",
       url: "/api/mock/session",
+      headers: authHeaders,
       payload: { positionId, config: { stage: "上级", difficulty: "压力面", submitMode: "manual" } },
     });
     if (session.statusCode !== 200) throw new Error(`MOCK_SESSION_FAILED:${session.statusCode}`);
@@ -76,6 +101,7 @@ async function main() {
     const answer = await app.inject({
       method: "POST",
       url: `/api/mock/session/${sessionBody.sessionId}/answer`,
+      headers: authHeaders,
       payload: {
         positionId,
         answer: "我负责面试助手项目，先明确用户在真实面试中的提词需求，再设计 RAG 召回和题词卡生成链路，最后用真实资料回归验证可用性。",
@@ -91,6 +117,7 @@ async function main() {
     const resumeAi = await app.inject({
       method: "POST",
       url: "/api/resume/ai",
+      headers: authHeaders,
       payload: {
         positionId,
         action: "section",
@@ -118,7 +145,7 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
   } finally {
     await app.close();
-    rmSync(tempDir, { recursive: true, force: true });
+    cleanupTempDir(tempDir);
   }
 }
 

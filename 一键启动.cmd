@@ -17,7 +17,7 @@ echo Frontend: http://127.0.0.1:5173/
 echo Backend:  http://127.0.0.1:8787/api/health
 echo Logs:     logs\dev.log  and  logs\server.log
 echo.
-echo Open the frontend URL in your browser manually.
+echo Browser should open automatically. If it does not, open the frontend URL above.
 echo This window stays open until you press a key.
 echo Closing this window does NOT stop frontend/backend.
 pause

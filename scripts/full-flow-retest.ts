@@ -7,6 +7,14 @@ import { buildServer } from "../server/index";
 import { LocalFallbackProvider } from "../server/ai/provider";
 import { importResumeFile } from "../src/lib/resumeImport";
 
+function cleanupTempDir(tempDir: string) {
+  try {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch (error) {
+    console.warn(`[full-flow-retest] temp cleanup skipped: ${String(error)}`);
+  }
+}
+
 function extractSseEvent(body: string, eventName: string) {
   const block = body
     .split("\n\n")
@@ -23,26 +31,35 @@ async function main() {
   const tempDir = mkdtempSync(join(tmpdir(), "ai-job-full-flow-"));
   const dbPath = join(tempDir, "retest.sqlite");
   const app = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-  let cookieHeader = "";
+  let appClosed = false;
+  let restarted: FastifyInstance | null = null;
+  let restartedClosed = false;
+  let authToken = "";
 
-  const injectWithGuestCookie = async (target: FastifyInstance, options: Parameters<FastifyInstance["inject"]>[0]) => {
+  const injectAsUser = async (target: FastifyInstance, options: Parameters<FastifyInstance["inject"]>[0]) => {
     const optionObject = options as { headers?: Record<string, string> };
-    const response = await target.inject({
+    return target.inject({
       ...optionObject,
       headers: {
         ...(optionObject.headers ?? {}),
-        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+        ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
       },
     });
-    const setCookie = response.headers["set-cookie"];
-    const firstCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
-    if (firstCookie && !cookieHeader) {
-      cookieHeader = String(firstCookie).split(";")[0];
-    }
-    return response;
   };
 
   try {
+    const register = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: {
+        phone: `139${String(Date.now()).slice(-8)}`,
+        password: "Password123",
+        displayName: "全链路验收用户",
+      },
+    });
+    if (register.statusCode !== 201) throw new Error(`REGISTER_FAILED:${register.statusCode}:${register.body}`);
+    authToken = register.json().tokens.accessToken as string;
+
     const pdfBytes = readFileSync(resolve("测试用/AI产品经理.pdf"));
     const pdfFile = new File([pdfBytes], "AI产品经理.pdf", { type: "application/pdf" });
     const pdfImport = await importResumeFile(pdfFile);
@@ -53,7 +70,7 @@ async function main() {
     });
     const docxImport = await importResumeFile(docxFile);
 
-    const intake = await injectWithGuestCookie(app, {
+    const intake = await injectAsUser(app, {
       method: "POST",
       url: "/api/positions/intake",
       payload: {
@@ -65,10 +82,13 @@ async function main() {
       },
     });
     const intakeBody = intake.json();
+    if (intake.statusCode !== 200 || !Array.isArray(intakeBody.positions) || !intakeBody.positions[0]) {
+      throw new Error(`INTAKE_FAILED:${intake.statusCode}:${intake.body}`);
+    }
     const position = intakeBody.positions[0];
     const positionId = position.id as string;
 
-    const profile = await injectWithGuestCookie(app, {
+    const profile = await injectAsUser(app, {
       method: "POST",
       url: "/api/profile",
       payload: {
@@ -79,7 +99,7 @@ async function main() {
       },
     });
 
-    const materials = await injectWithGuestCookie(app, {
+    const materials = await injectAsUser(app, {
       method: "POST",
       url: `/api/positions/${positionId}/materials`,
       payload: {
@@ -101,7 +121,7 @@ async function main() {
       },
     });
 
-    const questions = await injectWithGuestCookie(app, {
+    const questions = await injectAsUser(app, {
       method: "POST",
       url: `/api/positions/${positionId}/questions`,
       payload: {
@@ -124,7 +144,7 @@ async function main() {
       },
     });
 
-    const cueCard = await injectWithGuestCookie(app, {
+    const cueCard = await injectAsUser(app, {
       method: "POST",
       url: "/api/copilot/cue-card/stream",
       payload: {
@@ -138,7 +158,7 @@ async function main() {
 
     const cueCardEvent = extractSseEvent(cueCard.body, "card");
 
-    const mockSession = await injectWithGuestCookie(app, {
+    const mockSession = await injectAsUser(app, {
       method: "POST",
       url: "/api/mock/session",
       payload: {
@@ -148,7 +168,7 @@ async function main() {
     });
     const mockSessionBody = mockSession.json();
 
-    const mockAnswer = await injectWithGuestCookie(app, {
+    const mockAnswer = await injectAsUser(app, {
       method: "POST",
       url: `/api/mock/session/${mockSessionBody.sessionId}/answer`,
       payload: {
@@ -162,7 +182,7 @@ async function main() {
     });
     const mockAnswerBody = mockAnswer.json();
 
-    const resumeAi = await injectWithGuestCookie(app, {
+    const resumeAi = await injectAsUser(app, {
       method: "POST",
       url: "/api/resume/ai",
       payload: {
@@ -177,29 +197,30 @@ async function main() {
     });
     const resumeAiBody = resumeAi.json();
 
-    const recordSave = await injectWithGuestCookie(app, {
+    const recordSave = await injectAsUser(app, {
       method: "POST",
       url: "/api/records",
       payload: mockAnswerBody.record,
     });
 
-    const search = await injectWithGuestCookie(app, {
+    const search = await injectAsUser(app, {
       method: "POST",
       url: "/api/search",
       payload: { query: "测试科技 AI 产品运营 面试" },
     });
 
-    const stateBeforeRestart = await injectWithGuestCookie(app, { method: "GET", url: "/api/state" });
-    const recordsBeforeRestart = await injectWithGuestCookie(app, { method: "GET", url: "/api/records" });
-    const exportBeforeRestart = await injectWithGuestCookie(app, { method: "POST", url: "/api/export" });
+    const stateBeforeRestart = await injectAsUser(app, { method: "GET", url: "/api/state" });
+    const recordsBeforeRestart = await injectAsUser(app, { method: "GET", url: "/api/records" });
+    const exportBeforeRestart = await injectAsUser(app, { method: "POST", url: "/api/export" });
     const exportedState = exportBeforeRestart.json();
 
     await app.close();
+    appClosed = true;
 
-    const restarted = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
-    const stateAfterRestart = await injectWithGuestCookie(restarted, { method: "GET", url: "/api/state" });
-    const exportAfterRestart = await injectWithGuestCookie(restarted, { method: "POST", url: "/api/export" });
-    const importRoundTrip = await injectWithGuestCookie(restarted, {
+    restarted = buildServer({ dbPath, llmClient: new LocalFallbackProvider() });
+    const stateAfterRestart = await injectAsUser(restarted, { method: "GET", url: "/api/state" });
+    const exportAfterRestart = await injectAsUser(restarted, { method: "POST", url: "/api/export" });
+    const importRoundTrip = await injectAsUser(restarted, {
       method: "POST",
       url: "/api/import",
       payload: exportedState,
@@ -272,8 +293,15 @@ async function main() {
       throw new Error(`full-flow failed: ${failures.join(", ")}`);
     }
     await restarted.close();
+    restartedClosed = true;
   } finally {
-    rmSync(tempDir, { recursive: true, force: true });
+    if (restarted && !restartedClosed) {
+      await restarted.close().catch(() => undefined);
+    }
+    if (!appClosed) {
+      await app.close().catch(() => undefined);
+    }
+    cleanupTempDir(tempDir);
   }
 }
 

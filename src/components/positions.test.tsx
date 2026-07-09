@@ -38,6 +38,26 @@ describe("positions pages", () => {
     expect(screen.queryByRole("heading", { name: "最近岗位" })).not.toBeInTheDocument();
   });
 
+  it("does not mark a newly created position as practiced before real turns exist", () => {
+    const position = buildPosition();
+
+    render(
+      <HomeDashboard
+        positions={[position]}
+        activePositionId={position.id}
+        onSubmitJd={vi.fn()}
+        onOpenCreatedPosition={vi.fn()}
+        onOpenMockList={vi.fn()}
+        onOpenLive={vi.fn()}
+        onRequireLogin={vi.fn()}
+        isLoggedIn
+      />,
+    );
+
+    expect(screen.getAllByText("待配置").length).toBeGreaterThan(0);
+    expect(screen.queryByText("已练习")).not.toBeInTheDocument();
+  });
+
   it("shows quick prompt pills when there are no positions", () => {
     render(
       <HomeDashboard

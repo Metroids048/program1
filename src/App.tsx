@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, Mic } from "lucide-react";
 import { AppShell, type PrimaryRouteName } from "./components/appShell";
-import { HomeDashboard, AuthLandingPage, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
+import { HomeDashboard, MockPositionListPage, MockSetupPage, PositionConversationPage, PositionDetailPage } from "./components/positions";
 import { DEFAULT_CONFIG, type InterviewConfig } from "./components/sharedConfig";
 import { makeId, nowIso } from "./lib/ids";
 import { useAuth } from "./lib/auth";
@@ -22,7 +22,7 @@ import { repairAppState, repairText } from "./lib/copy";
 import { buildInterviewReport, createInitialAppState, saveQuestionFromCueCard, toWorkspace } from "./lib/interviewEngine";
 import { describeRequestError } from "./lib/requestError";
 import { navigateTo, parseRoute } from "./lib/router";
-import { clearCachedWorkspace, loadServerSnapshotCache, saveServerSnapshotCache } from "./lib/store";
+import { clearCachedWorkspace, clearIdentityLocalCache, loadServerSnapshotCache, saveServerSnapshotCache } from "./lib/store";
 import { notify } from "./lib/toast";
 import type {
   AnswerCueCard,
@@ -43,6 +43,7 @@ import type {
   UserJourneyState,
 } from "./types";
 import { LiveAssistantDashboard, InterviewRoomView } from "./components/live";
+import { AudioBridgePage } from "./components/audioBridge";
 import { AccountModal, RecordsView } from "./components/records";
 import { AuthPage } from "./components/auth/AuthPage";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "./components/auth/RecoveryPages";
@@ -173,32 +174,15 @@ export function App() {
 
   useEffect(() => {
     saveServerSnapshotCache(appState);
-    appStateRef.current = appState;
   }, [appState]);
 
   const prevLoggedInRef = useRef(isLoggedIn);
-  const appStateRef = useRef(appState);
 
   useEffect(() => {
     if (!prevLoggedInRef.current && isLoggedIn) {
-      // 登录成功时，先把游客期间产生的岗位/记录合并到用户账户，再拉取服务端快照。
-      // 这样游客在注册前创建的数据不会因登录后被服务端快照覆盖而丢失。
-      const guestState = appStateRef.current;
-      const hasGuestData = guestState.positions.length > 0 || guestState.interviewRecords.length > 0;
-      const mergeStep = hasGuestData
-        ? apiFetch("/api/auth/merge-guest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              profile: guestState.profile,
-              positions: guestState.positions,
-              records: guestState.interviewRecords,
-              journeyState: guestState.journeyState,
-            }),
-          }).catch(() => null)
-        : Promise.resolve(null);
-      void mergeStep
-        .then(() => fetchStateSnapshot())
+      clearIdentityLocalCache();
+      setAppState(repairAppState(createInitialAppState()));
+      void fetchStateSnapshot()
         .then((snapshot) => {
           if (!snapshot?.profile || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.records)) return;
           setAppState((current) => {
@@ -610,6 +594,7 @@ export function App() {
       onNavigate={(nav) => {
         if (nav === "home") openRoute("/");
         if (nav === "live") openRoute("/live");
+        if (nav === "audioBridge") openRoute("/audio-bridge");
         if (nav === "mock") openRoute("/mock");
         if (nav === "jd") openRoute("/jd");
         if (nav === "questions") openRoute("/questions");
@@ -661,23 +646,24 @@ export function App() {
       {route.name === "serverError" && <ServerErrorPage />}
 
       {(route.name === "home" || route.name === "account") && (
-        isLoggedIn ? (
-          <HomeDashboard
-            positions={positions}
-            activePositionId={activePositionId}
-            onSubmitJd={createOrUpdatePosition}
-            onOpenCreatedPosition={openPositionConversation}
-            onOpenMockList={openMockPositionList}
-            onOpenLive={() => openRoute("/live")}
-            onRequireLogin={requireLoginFor}
-            isLoggedIn={isLoggedIn}
-          />
-        ) : route.name === "home" ? (
-          <AuthLandingPage
-            onLogin={() => openRoute("/auth/login")}
-            onRegister={() => openRoute("/auth/register")}
-          />
-        ) : null
+        <HomeDashboard
+          positions={positions}
+          activePositionId={activePositionId}
+          onSubmitJd={createOrUpdatePosition}
+          onOpenCreatedPosition={openPositionConversation}
+          onOpenMockList={openMockPositionList}
+          onOpenLive={() => openRoute("/live")}
+          onRequireLogin={requireLoginFor}
+          isLoggedIn={isLoggedIn}
+        />
+      )}
+
+      {route.name === "audioBridge" && (
+        <AudioBridgePage
+          isLoggedIn={isLoggedIn}
+          onRequireLogin={() => requireLoginFor("/audio-bridge")}
+          onOpenLive={() => requireLoginFor("/live")}
+        />
       )}
 
       {route.name === "positionDetail" && activePosition && (
@@ -844,11 +830,15 @@ export function App() {
           onClose={() => setAccountOpen(false)}
           onLogout={() => {
             clearAuth();
+            clearIdentityLocalCache();
+            setAppState(repairAppState(createInitialAppState()));
             setAccountOpen(false);
             openRoute("/", { replace: true });
           }}
           onSwitchAccount={() => {
             clearAuth();
+            clearIdentityLocalCache();
+            setAppState(repairAppState(createInitialAppState()));
             setAccountOpen(false);
             openRoute("/auth/login", { replace: true });
           }}

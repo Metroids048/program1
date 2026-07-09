@@ -9,6 +9,7 @@ import {
   FileText,
   MessageSquarePlus,
   Headphones,
+  Radio,
   Menu,
   Mic,
   ScrollText,
@@ -25,7 +26,7 @@ const FOOTER_LINKS: Array<{ path: string; label: string }> = [
   { path: "/privacy-policy", label: "隐私政策" },
 ];
 
-export type PrimaryRouteName = "home" | "live" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account";
+export type PrimaryRouteName = "home" | "live" | "audioBridge" | "mock" | "jd" | "questions" | "resume" | "records" | "authLogin" | "authRegister" | "onboarding" | "account";
 
 type NavItem = {
   id: PrimaryRouteName;
@@ -36,6 +37,7 @@ type NavItem = {
 const PRIMARY_NAV: NavItem[] = [
   { id: "home", label: "首页", icon: BriefcaseBusiness },
   { id: "live", label: "实时助手", icon: Headphones },
+  { id: "audioBridge", label: "会议监听", icon: Radio },
   { id: "mock", label: "模拟面试", icon: Mic },
   { id: "jd", label: "JD分析", icon: FileSearch },
   { id: "questions", label: "问题记录", icon: ScrollText },
@@ -43,8 +45,8 @@ const PRIMARY_NAV: NavItem[] = [
   { id: "records", label: "面试记录", icon: ClipboardList },
 ];
 
-const MAIN_NAV = PRIMARY_NAV.slice(0, 3);
-const LIBRARY_NAV = PRIMARY_NAV.slice(3);
+const MAIN_NAV = PRIMARY_NAV.slice(0, 4);
+const LIBRARY_NAV = PRIMARY_NAV.slice(4);
 
 const MOBILE_NAV_BREAKPOINT = 760;
 

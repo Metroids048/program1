@@ -64,11 +64,13 @@ describe("store", () => {
     saveServerSnapshotCache(state);
     saveDraftState({ homeInput: "访客输入的岗位", resumeChatInput: "简历草稿" });
     saveUiPrefs({ desktopSidebarExpanded: false, desktopSidebarTouched: true });
+    window.localStorage.setItem("ai-job:guest-id:v1", "guest-before-login");
 
     clearIdentityLocalCache();
 
     expect(loadServerSnapshotCache().positions).toHaveLength(0);
     expect(loadDraftState()).toEqual({ homeInput: "", resumeChatInput: "" });
+    expect(window.localStorage.getItem("ai-job:guest-id:v1")).toBeNull();
     expect(loadUiPrefs().desktopSidebarExpanded).toBe(false);
     expect(loadUiPrefs().desktopSidebarTouched).toBe(true);
   });

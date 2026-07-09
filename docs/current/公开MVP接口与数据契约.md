@@ -297,3 +297,69 @@ interface ResumeAiResponse {
 - `ASR_NOT_CONFIGURED`：未配置讯飞实时语音转写密钥，前端回退 Web Speech 或文字输入
 - `ASR_CONNECT_FAILED`：讯飞连接失败，前端回退 Web Speech 或文字输入
 - `ASR_UPSTREAM_ERROR`：讯飞返回错误，前端保留已识别文本并提示降级
+
+## 15. Windows 音频桥接口
+
+音频桥用于用户主动授权后的 Windows 系统音频监听。配对、设备管理和事件订阅全部按当前登录账号隔离；桌面桥程序用设备令牌连接 WebSocket 摄取端。
+
+### `POST /api/audio-bridge/pair`
+
+用途：登录用户生成 6 位一次性配对码。
+
+响应：
+
+- `pairingCode: string`
+- `expiresAt: string`
+
+### `POST /api/audio-bridge/claim`
+
+用途：Windows 音频桥程序提交配对码并领取长期设备令牌。
+
+请求：
+
+- `pairingCode: string`
+- `deviceName?: string`
+
+响应：
+
+- `deviceToken: string`
+
+### `GET /api/audio-bridge/devices`
+
+用途：列出当前账号已配对且未撤销的音频桥设备。
+
+响应：
+
+- `devices: Array<{ id: string; deviceName: string; createdAt: string; lastSeenAt: string }>`
+
+### `DELETE /api/audio-bridge/devices/:id`
+
+用途：撤销当前账号名下的音频桥设备。
+
+响应：
+
+- `ok: true`
+
+### `GET /api/audio-bridge/events`
+
+用途：浏览器订阅当前账号的音频桥连接、ASR 和诊断事件。
+
+输出事件：
+
+- `{"type":"bridge_status","connected":true,"deviceName":"..."}`
+- `{"type":"bridge_status","connected":false}`
+- `{"type":"ready","provider":"xfyun"}`
+- `{"type":"interim","text":"..."}`
+- `{"type":"final","text":"..."}`
+- `{"type":"error","code":"ASR_NOT_CONFIGURED"|"ASR_CONNECT_FAILED"|"ASR_UPSTREAM_ERROR","message":"..."}`
+- `{"type":"done"}`
+
+### `WS /api/audio-bridge/stream`
+
+用途：Windows 音频桥程序用 `deviceToken` 推送系统音频 PCM 分片。服务端只转发给 ASR，不落盘保存原始音频。
+
+失败语义：
+
+- 缺少或无效设备令牌：关闭音频桥 WebSocket
+- `ASR_NOT_CONFIGURED`：向浏览器事件流发送错误，并关闭音频桥 WebSocket
+- 设备被撤销：后续连接不再被接受

@@ -3,6 +3,7 @@ export type AppRoute =
   | { name: "positionDetail"; path: `/positions/${string}`; positionId: string }
   | { name: "positionConversation"; path: `/positions/${string}/conversation`; positionId: string }
   | { name: "live"; path: "/live" }
+  | { name: "audioBridge"; path: "/audio-bridge" }
   | { name: "mock"; path: "/mock" }
   | { name: "mockPositionList"; path: "/mock/positions" }
   | { name: "mockSetup"; path: `/mock/setup/${string}`; positionId: string }
@@ -37,6 +38,7 @@ export function parseRoute(pathname: string): AppRoute {
     return { name: "positionDetail", path: `/positions/${positionId}`, positionId };
   }
   if (pathname === "/live") return { name: "live", path: "/live" };
+  if (pathname === "/audio-bridge") return { name: "audioBridge", path: "/audio-bridge" };
   if (pathname === "/mock") return { name: "mock", path: "/mock" };
   if (pathname === "/mock/positions") return { name: "mockPositionList", path: "/mock/positions" };
   if (pathname.startsWith("/mock/setup/")) {

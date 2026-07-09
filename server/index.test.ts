@@ -1587,6 +1587,25 @@ describe("local backend API", () => {
       expect(secondClaim.statusCode).toBe(404);
     });
 
+    it("expires unused pairing codes after ten minutes", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+        const app = testApp();
+        const { token } = await registerAndLogin(app, "13800138207", "过期配对用户");
+
+        const pairRes = await app.inject({ method: "POST", url: "/api/audio-bridge/pair", headers: bearer(token), payload: {} });
+        const { pairingCode } = pairRes.json();
+
+        vi.setSystemTime(new Date("2026-01-01T00:10:01.000Z"));
+        const claimRes = await app.inject({ method: "POST", url: "/api/audio-bridge/claim", payload: { pairingCode } });
+
+        expect(claimRes.statusCode).toBe(404);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("scopes the device list to its owner and lets the owner revoke a device", async () => {
       const app = testApp();
       const { token: ownerToken } = await registerAndLogin(app, "13800138203", "设备主人");

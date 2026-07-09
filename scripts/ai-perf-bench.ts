@@ -224,6 +224,7 @@ async function main() {
 
     if (!report.overallPass) {
       console.log("\n注意：未达标。可尝试设置 DEEPSEEK_MODEL=deepseek-chat 切换非 reasoning 快速模型，或调整 PERF_THRESHOLD_* 阈值。");
+      process.exitCode = 1;
     }
   } finally {
     await app.close();

@@ -4,11 +4,12 @@
 
 **导入/确认简历与 JD → 开启实时面试助手 → 识别问题 → 生成提词卡 → 保存记录 → 复盘改进**
 
-产品参考 Final Round AI、LockedIn AI、Interviews.chat、OfferGoose 的实时转写、即时建议、JD/简历个性化、会后反馈闭环，但不做隐蔽代答、不捕获系统音频、不把本地规则伪装成模型成功。
+产品参考 Final Round AI、LockedIn AI、Interviews.chat、OfferGoose 的实时转写、即时建议、JD/简历个性化、会后反馈闭环，但不做隐蔽代答；系统音频仅在用户主动连接 Windows 音频桥并授权时采集；不把本地规则伪装成模型成功。
 
 ## 核心体验
 
 - **实时助手驾驶舱**：首页第一动作是听取或输入面试官问题，生成可讲的回答框架，而不是铺满 JD 诊断工作台。
+- **会议监听 / 音频桥**：Windows 本地音频桥单独成页，用配对码连接本机系统音频，用于腾讯会议、飞书等会议软件的面试官声音转写。
 - **上下文资料**：JD 与岗位卡、问题库、简历证据都收进二级区域，作为实时助手和模拟练习的上下文底座。
 - **提词卡片**：输出回答策略、开场句、要点、可引用证据、风险提醒和可能追问，不输出自动代答逐字稿。
 - **诚实模型状态**：提词卡和模拟追问展示 `模型生成` 或 `本地练习`，后端未连接、模型失败、JSON 不合规时明确标记 fallback 原因。
@@ -20,6 +21,7 @@
 `App.tsx` 只保留全局状态、导航和路由编排；主要页面拆到组件目录：
 
 - `src/components/live.tsx`：实时助手驾驶舱、实时题词卡、模拟面试间。
+- `src/components/audioBridge.tsx`：会议监听 / Windows 音频桥配对、设备管理和故障诊断页。
 - `src/components/context.tsx`：上下文资料、简历证据、问题库。
 - `src/components/positions.tsx`：首页岗位台、JD 对话收集、岗位卡、面试配置入口。
 - `src/components/records.tsx`：记录列表、复盘报告、账户与数据导入导出。
@@ -109,12 +111,20 @@ Copy-Item .data\ai-job-platform.sqlite backups\ai-job-platform-$(Get-Date -Forma
 - `POST /api/search`
 - `POST /api/export`
 - `POST /api/import`
+- `POST /api/audio-bridge/pair`
+- `POST /api/audio-bridge/claim`
+- `GET /api/audio-bridge/devices`
+- `DELETE /api/audio-bridge/devices/:id`
+- `GET /api/audio-bridge/events`
+- `WS /api/audio-bridge/stream`
 
 ## AI 与语音边界
 
-语音能力使用浏览器麦克风，优先走服务端讯飞 RTASR 流式转写；未配置密钥、连接失败或浏览器录音不可用时，回退到 Web Speech API 或文字输入。不捕获桌面系统音频，不抓会议软件系统声。
+语音能力默认使用浏览器麦克风，优先走服务端讯飞 RTASR 流式转写；未配置密钥、连接失败或浏览器录音不可用时，回退到 Web Speech API 或文字输入。会议软件里的系统音频只在用户进入“会议监听”、生成配对码、启动 Windows 音频桥并授权连接后采集；未连接音频桥时不会抓取桌面系统音频。
 
 语音转写保留 interim、final、editable 文本分离；停止听取不会清空已识别文本，只有用户点击清空/重录才清空。VAD 只辅助自动模式判断说话结束，手动停止按钮仍保留。
+
+Windows 音频桥只转发实时 PCM 分片给服务端 ASR，不落盘保存原始音频。ASR 未配置时必须显示 `ASR_NOT_CONFIGURED` 或本地/语音服务未配置状态，不能把未转写伪装成成功。
 
 ## 验证
 

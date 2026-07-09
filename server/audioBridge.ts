@@ -148,7 +148,11 @@ export function registerAudioBridgeIngestRoute(app: FastifyInstance, db: AppDb):
 
     const relay = createXfyunRelay((event) => publish(device.userId, event));
     if (!relay) {
-      // ASR 未配置：不发 connected:true，直接以关闭码告知桌面端原因，浏览器侧无需感知这次瞬间连接。
+      publish(device.userId, {
+        type: "error",
+        code: "ASR_NOT_CONFIGURED",
+        message: "实时语音识别未配置，系统音频桥已连接但无法转写。",
+      });
       socket.close(1011, "ASR_NOT_CONFIGURED");
       return;
     }

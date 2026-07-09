@@ -42,7 +42,7 @@ export function AuthLandingPage({
 }
 
 function summarizePositionStatus(position: Position) {
-  if (position.mockTurns.length > 0 || position.report.overallScore > 0) return "已练习";
+  if (position.mockTurns.length > 0) return "已练习";
   if (position.intake.configuredInterview) return "已配置";
   if (position.intake.reviewStatus === "confirmed") return "待配置";
   return "待完善";
@@ -117,6 +117,7 @@ export function HomeDashboard({
   const [input, setInput] = useState(() => loadDraftState().homeInput ?? "");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState("");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -127,22 +128,30 @@ export function HomeDashboard({
       return;
     }
     setSubmitError("");
+    setSubmitStage("正在保存岗位信息...");
     setSubmitting(true);
+    const slowTimer = window.setTimeout(() => {
+      setSubmitStage("AI 正在分析 JD 和面试背景，稍等几秒。");
+    }, 1800);
     try {
       const previousMessages = activePosition?.intake.messages?.map((message) => ({ role: message.role, text: message.text })) ?? [];
       const nextMessages = [...previousMessages, { role: "user" as const, text }];
       const positionId = await onSubmitJd(text, { positionId: activePosition?.id, messages: nextMessages });
       if (!positionId) {
-        setSubmitError("保存失败，请检查网络后重试。");
+        setSubmitError("岗位没有保存成功。请确认已登录并重试，刚才输入的内容已保留。");
         setSubmitting(false);
+        setSubmitStage("");
         return;
       }
+      setSubmitStage("岗位已保存，正在更新岗位卡。");
       saveDraftState({ ...loadDraftState(), homeInput: "" });
       setInput("");
     } catch {
-      setSubmitError("保存失败，请检查网络后重试。");
+      setSubmitError("岗位没有保存成功。可能是登录失效或服务暂时不可用，刚才输入的内容已保留。");
     } finally {
+      window.clearTimeout(slowTimer);
       setSubmitting(false);
+      setSubmitStage("");
     }
   };
 
@@ -193,14 +202,16 @@ export function HomeDashboard({
                     <div className="home-dialog-footer-spacer" />
                     <div className="home-intake-actions">
                       <button className="button primary capsule-button home-send-button" type="submit" disabled={!input.trim() || submitting}>
-                        {submitting ? "发送中..." : "发送"}
+                        {submitting ? "处理中..." : "发送"}
                         <ArrowRight size={14} />
                       </button>
                     </div>
                   </div>
                 </div>
               </form>
+              {submitStage ? <p className="inline-message" role="status">{submitStage}</p> : null}
               {submitError ? <p className="inline-message error" role="alert">{submitError}</p> : null}
+              {!isLoggedIn ? <p className="home-guest-hint">未登录也可以先整理 JD；点击发送、实时助手或模拟面试时会提示登录，本地不会自动并入任何账号。</p> : null}
 
               <div className="home-suggestion-grid home-suggestion-grid-product">
                 {[

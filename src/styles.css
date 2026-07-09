@@ -1782,6 +1782,202 @@ select.input:focus,
   line-height: 1.6;
 }
 
+/* ===== 会议监听 / Windows 音频桥 ===== */
+.audio-bridge-page {
+  max-width: 1180px;
+}
+
+.audio-bridge-header {
+  align-items: start;
+}
+
+.audio-bridge-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 14px;
+}
+
+.audio-bridge-connect-card {
+  min-width: 0;
+}
+
+.audio-bridge-events-card {
+  grid-column: 1 / -1;
+}
+
+.audio-bridge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #e8edf2;
+  border-radius: 8px;
+  color: #667085;
+  background: #f7f8fa;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.audio-bridge-status.active {
+  border-color: #cfe9dd;
+  color: #166534;
+  background: #eef9f4;
+}
+
+.audio-bridge-login-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #e8edf2;
+  border-radius: 12px;
+  background: #fafcfb;
+}
+
+.audio-bridge-login-state strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1f2937;
+}
+
+.audio-bridge-status-panel,
+.audio-bridge-command,
+.audio-bridge-code-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #e8edf2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.audio-bridge-status-panel span,
+.audio-bridge-command span,
+.audio-bridge-code-card span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.audio-bridge-status-panel strong {
+  color: #1f2937;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.audio-bridge-code-card {
+  position: relative;
+  background: #f8fbff;
+}
+
+.audio-bridge-code-card strong {
+  color: #111827;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 34px;
+  letter-spacing: 0.18em;
+  line-height: 1.1;
+}
+
+.audio-bridge-code-card .button {
+  justify-self: start;
+}
+
+.audio-bridge-command code {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #344054;
+  background: #f3f5f7;
+  font-size: 13px;
+}
+
+.audio-bridge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.audio-bridge-device-list,
+.audio-bridge-event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.audio-bridge-device {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e8edf2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.audio-bridge-device strong {
+  color: #1f2937;
+}
+
+.audio-bridge-device p {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.audio-bridge-event {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e8edf2;
+  border-left: 3px solid #98a2b3;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.audio-bridge-event.success {
+  border-left-color: #16a34a;
+}
+
+.audio-bridge-event.error {
+  border-left-color: #dc2626;
+}
+
+.audio-bridge-event span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.audio-bridge-event p {
+  color: #344054;
+  font-size: 14px;
+}
+
+@media (max-width: 960px) {
+  .audio-bridge-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .audio-bridge-login-state {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .audio-bridge-code-card strong {
+    font-size: 28px;
+  }
+
+  .audio-bridge-actions,
+  .audio-bridge-header .record-report-actions {
+    display: grid;
+  }
+}
+
 /* ===== 模拟面试配置页 ===== */
 .mock-setup-page {
   max-width: 720px;

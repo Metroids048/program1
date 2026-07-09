@@ -6,6 +6,7 @@ const SNAPSHOT_KEY = "campus-interview-ai-workbench:serverSnapshotCache:v1";
 const DRAFTS_KEY = "campus-interview-ai-workbench:drafts:v1";
 const UI_PREFS_KEY = "campus-interview-ai-workbench:uiPrefs:v1";
 const LEGACY_KEY = "campus-interview-ai-workbench:v1";
+const GUEST_ID_KEY = "ai-job:guest-id:v1";
 const UI_PREFS_VERSION = 2;
 
 export interface UiPrefs {
@@ -168,12 +169,14 @@ export function clearCachedWorkspace(): void {
   window.localStorage.removeItem(DRAFTS_KEY);
   window.localStorage.removeItem(UI_PREFS_KEY);
   window.localStorage.removeItem(LEGACY_KEY);
+  window.localStorage.removeItem(GUEST_ID_KEY);
 }
 
 export function clearIdentityLocalCache(): void {
   window.localStorage.removeItem(SNAPSHOT_KEY);
   window.localStorage.removeItem(DRAFTS_KEY);
   window.localStorage.removeItem(LEGACY_KEY);
+  window.localStorage.removeItem(GUEST_ID_KEY);
 }
 
 export function loadUiPrefs(): UiPrefs {

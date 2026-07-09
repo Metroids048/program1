@@ -38,6 +38,34 @@ function startProcess(command: string, args: string[], env: NodeJS.ProcessEnv) {
   return child;
 }
 
+async function stopChildren() {
+  await Promise.all(
+    children.map(
+      (child) =>
+        new Promise<void>((resolve) => {
+          if (child.exitCode !== null || child.killed) {
+            resolve();
+            return;
+          }
+          const timer = setTimeout(resolve, 1_500);
+          child.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          child.kill();
+        }),
+    ),
+  );
+}
+
+function cleanupTempDir(tempDir: string) {
+  try {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch (error) {
+    console.warn(`[external-browser-flow] temp cleanup skipped: ${String(error)}`);
+  }
+}
+
 async function waitForHttp(url: string, label: string, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = "";
@@ -111,6 +139,12 @@ async function runDesktopFlow(page: Page) {
   await page.getByRole("button", { name: "保存并结束" }).click();
   await expect(page.getByText(/面试记录|实时助手记录/).first()).toBeVisible({ timeout: 15_000 });
 
+  await page.getByRole("button", { name: "会议监听" }).click();
+  await expect(page.getByRole("heading", { name: "Windows 音频桥" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/腾讯会议、飞书/)).toBeVisible();
+  await expect(page.getByText("dotnet run --project audio-bridge/AudioBridge.csproj")).toBeVisible();
+  await assertNoHorizontalOverflow(page, "audio bridge 1280x720");
+
   await page.getByRole("button", { name: "模拟面试" }).click();
   await expect(page.getByRole("heading", { name: "先选择一个岗位" })).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: /字节跳动|AI 产品经理/ }).first().click();
@@ -129,7 +163,7 @@ async function runDesktopFlow(page: Page) {
 
 async function runMobileOverflowSmoke(page: Page) {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/live", "/mock", "/records"]) {
+  for (const path of ["/", "/live", "/audio-bridge", "/mock", "/records"]) {
     await page.goto(`${frontendUrl}${path}`, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
     await assertNoHorizontalOverflow(page, `${path} 390px`);
@@ -196,10 +230,8 @@ async function main() {
     }, null, 2));
   } finally {
     if (browser) await browser.close();
-    for (const child of children) {
-      if (!child.killed) child.kill();
-    }
-    rmSync(tempDir, { recursive: true, force: true });
+    await stopChildren();
+    cleanupTempDir(tempDir);
   }
 }
 

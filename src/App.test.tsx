@@ -102,6 +102,20 @@ function mockTextErrorResponse(text: string, status = 500) {
   } as Response);
 }
 
+function mockSseResponse(events: unknown[] = []) {
+  const stream = new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const event of events) {
+        const eventType = typeof event === "object" && event && "type" in event ? String((event as { type: string }).type) : "message";
+        controller.enqueue(encoder.encode(`event: ${eventType}\ndata: ${JSON.stringify(event)}\n\n`));
+      }
+      controller.close();
+    },
+  });
+  return Promise.resolve({ ok: true, body: stream } as Response);
+}
+
 function mockStateResponse() {
   return {
     profile: createProfile("测试候选人\nAI 产品"),
@@ -366,7 +380,7 @@ describe("App", () => {
     renderApp();
     const nav = within(screen.getByLabelText("主导航"));
 
-    ["首页", "实时助手", "模拟面试"].forEach((name) => {
+    ["首页", "实时助手", "会议监听", "模拟面试"].forEach((name) => {
       expect(nav.getByRole("button", { name })).toBeInTheDocument();
     });
     expect(nav.getByText("资料库")).toBeInTheDocument();
@@ -431,7 +445,7 @@ describe("App", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
   });
 
-  it("redirects guests to login when they trigger gated homepage actions", async () => {
+  it("shows the home intake shell to guests and gates saving behind login", async () => {
     authState = {
       session: null,
       loading: false,
@@ -446,12 +460,35 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "AI 求职台" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("首页主输入")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "注册并开始" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "告诉 AI 你想面试的岗位" })).toBeInTheDocument();
+    expect(screen.getByLabelText("首页主输入")).toBeInTheDocument();
+    expect(screen.getByText(/未登录也可以先整理 JD/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "已有账号，登录" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/auth/login"));
+    await user.type(screen.getByLabelText("首页主输入"), "岗位：AI 产品经理\n公司：测试公司");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByRole("dialog", { name: "登录后继续" })).toBeInTheDocument();
+  });
+
+  it("opens the standalone audio bridge page and generates a pairing code", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/state")) return mockJsonResponse(mockStateWithPosition());
+      if (url.includes("/api/audio-bridge/events")) return mockSseResponse([{ type: "bridge_status", connected: false }]);
+      if (url.includes("/api/audio-bridge/devices")) return mockJsonResponse({ devices: [] });
+      if (url.includes("/api/audio-bridge/pair")) {
+        return mockJsonResponse({ pairingCode: "123456", expiresAt: new Date(Date.now() + 60_000).toISOString() });
+      }
+      return mockJsonResponse(mockStateWithPosition());
+    });
+
+    renderApp("/");
+    await user.click(await screen.findByRole("button", { name: "会议监听" }));
+
+    expect(await screen.findByRole("heading", { name: "Windows 音频桥" })).toBeInTheDocument();
+    expect(screen.getByText(/腾讯会议、飞书/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "生成配对码" }));
+    expect(await screen.findByText("123456")).toBeInTheDocument();
   });
 
   it("covers the supporting routes for auth, onboarding, account and status pages", async () => {
@@ -468,6 +505,10 @@ describe("App", () => {
 
     renderApp("/auth/login");
     expect(await screen.findByRole("heading", { name: "AI 求职台" })).toBeInTheDocument();
+
+    resetDom();
+    renderApp("/audio-bridge");
+    expect(await screen.findByRole("heading", { name: "Windows 音频桥" })).toBeInTheDocument();
 
     renderApp("/auth/register");
     expect(await screen.findByRole("button", { name: "注册并开始使用" })).toBeInTheDocument();

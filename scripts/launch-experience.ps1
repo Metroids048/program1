@@ -27,6 +27,20 @@ function Test-EndpointReady([string]$Url) {
   }
 }
 
+function Open-Frontend([string]$Url) {
+  $browserCandidates = @("msedge.exe", "chrome.exe")
+  foreach ($browser in $browserCandidates) {
+    $command = Get-Command $browser -ErrorAction SilentlyContinue
+    if ($command) {
+      Start-Process -FilePath $command.Source -ArgumentList $Url | Out-Null
+      return $true
+    }
+  }
+
+  Start-Process $Url | Out-Null
+  return $true
+}
+
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host "Node.js not found. Install from https://nodejs.org/"
   exit 1
@@ -54,7 +68,8 @@ if ($backendReady -and $frontendReady) {
   Write-Host "Frontend: $frontendUrl"
   Write-Host "Backend: $backendUrl"
   Write-Host "Logs: $serverLog ; $devLog"
-  Write-Host "Browser is not opened automatically. Open the URL manually."
+  Write-Host "Opening browser..."
+  [void](Open-Frontend $frontendUrl)
   exit 0
 }
 
@@ -99,7 +114,8 @@ if ($backendReady -and $frontendReady) {
   Write-Host "Frontend: $frontendUrl"
   Write-Host "Backend: $backendUrl"
   Write-Host "Logs: $serverLog ; $devLog"
-  Write-Host "Browser is not opened automatically. Open the URL manually or use a controlled browser tool."
+  Write-Host "Opening browser..."
+  [void](Open-Frontend $frontendUrl)
   exit 0
 }
 
@@ -122,5 +138,5 @@ if (Test-Path -LiteralPath $devLog) {
   Write-Host "Last frontend log lines:"
   Get-Content -LiteralPath $devLog -Tail 20
 }
-Write-Host "Browser is not opened automatically on failure."
+Write-Host "Browser was not opened because startup did not finish."
 exit 1
